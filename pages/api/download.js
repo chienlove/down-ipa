@@ -1,3 +1,4 @@
+// pages/api/download.js
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -16,7 +17,7 @@ export default async function handler(req, res) {
     // Đường dẫn đến ipatool binary
     const ipatoolPath = path.join(process.cwd(), 'public', 'bin', 'ipatool');
     
-    // Kiểm tra binary tồn tại
+    // Kiểm tra binary tồn tại và có quyền thực thi
     try {
       await fs.access(ipatoolPath, fs.constants.X_OK);
     } catch (err) {
@@ -24,29 +25,37 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    // Tạo session info
-    const sessionInfo = {
-      appleId,
-      password,
+    // Kiểm tra version ipatool (debug)
+    const versionCheck = await execFileAsync(ipatoolPath, ['--version']);
+    console.log('ipatool version:', versionCheck.stdout);
+
+    // Execute ipatool với cú pháp cho phiên bản 2.1.6
+    const args = [
+      'download',
+      '--bundle-identifier',
       appId,
-      appVerId,
-      code
-    };
+      '--email',
+      appleId,
+      '--password',
+      password
+    ];
 
-    // Set HOME environment variable
-    process.env.HOME = '/tmp';
+    // Thêm 2FA code nếu có
+    if (code) {
+      args.push('--code', code);
+    }
 
-    // Execute ipatool
+    // Thêm App Version ID nếu cần (kiểm tra docs ipatool 2.1.6)
+    if (appVerId) {
+      args.push('--app-version', appVerId);
+    }
+
+    console.log('Executing command:', ipatoolPath, args.join(' '));
+
     const { stdout, stderr } = await execFileAsync(
       ipatoolPath,
-      [
-        'download',
-        '--bundle-identifier',
-        appId,
-        '--session-info',
-        JSON.stringify(sessionInfo)
-      ],
-      { timeout: 60000 }
+      args,
+      { timeout: 60000 } // 60 seconds timeout
     );
 
     if (stderr && stderr.trim() !== '') {
@@ -57,30 +66,28 @@ export default async function handler(req, res) {
       throw new Error(stderr);
     }
 
-    // Parse output
-    let downloadResult;
-    try {
-      downloadResult = JSON.parse(stdout);
-    } catch (err) {
-      console.error('Failed to parse ipatool output:', stdout);
-      throw new Error('Failed to parse download result');
+    console.log('ipatool stdout:', stdout);
+
+    // Xử lý output (tùy thuộc vào định dạng output của ipatool 2.1.6)
+    const downloadPath = stdout.trim().split('\n').find(line => line.endsWith('.ipa'));
+    
+    if (!downloadPath) {
+      throw new Error('Failed to parse download path from output');
     }
 
-    if (!downloadResult.path) {
-      throw new Error('Download failed: no path in result');
-    }
-
-    // Read and return the IPA file
-    const ipaContent = await fs.readFile(downloadResult.path);
-    await fs.unlink(downloadResult.path);
+    // Đọc và trả về file IPA
+    const ipaContent = await fs.readFile(downloadPath);
+    await fs.unlink(downloadPath); // Xóa file tạm
 
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
     return res.send(ipaContent);
+
   } catch (error) {
     console.error('Download error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Failed to download IPA'
+      error: error.message || 'Failed to download IPA',
+      details: error.stack
     });
   }
 }
