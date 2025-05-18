@@ -49,7 +49,7 @@ export default function Home() {
           setShowMfa(true);
           setMessage('Apple ID yêu cầu mã xác thực 2FA. Vui lòng nhập.');
         } else {
-          throw new Error(errorData.details || errorData.error || 'Lỗi khi tải xuống');
+          setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
         }
       }
     } catch (error) {
