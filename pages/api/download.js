@@ -13,7 +13,6 @@ export default async function handler(req, res) {
   try {
     const { appleId, password, appId, appVerId, code } = req.body;
 
-    // 1. Đường dẫn ipatool binary
     const ipatoolPath = path.join('/tmp', 'ipatool');
     await fs.copyFile(
       path.join(process.cwd(), 'public', 'bin', 'ipatool'),
@@ -21,10 +20,11 @@ export default async function handler(req, res) {
     );
     await fs.chmod(ipatoolPath, 0o755);
 
-    // 2. Thiết lập HOME để lưu session
     process.env.HOME = '/tmp';
 
-    // 3. Đăng nhập để tạo session
+    // ---------------------
+    // Bước 1: Đăng nhập
+    // ---------------------
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
@@ -32,23 +32,38 @@ export default async function handler(req, res) {
     ];
     if (code) loginArgs.push('--code', code);
 
-    console.log('Logging in with:', [ipatoolPath, ...loginArgs].join(' '));
+    try {
+      const { stdout: loginOut } = await execFileAsync(ipatoolPath, loginArgs, { timeout: 30000 });
+      console.log('Login success:', loginOut);
+    } catch (loginError) {
+      const message = loginError.stderr?.toString() || loginError.message;
+      console.error('Login error:', message);
 
-    const { stdout: loginOut } = await execFileAsync(ipatoolPath, loginArgs, { timeout: 30000 });
-    console.log('Login output:', loginOut);
+      if (message.includes('two-factor authentication code')) {
+        return res.status(401).json({
+          error: '2FA required',
+          message: 'Cần mã xác thực hai yếu tố (2FA)'
+        });
+      }
 
-    // 4. Tải IPA (sau khi đã login thành công)
+      return res.status(500).json({
+        error: 'Login failed',
+        details: message
+      });
+    }
+
+    // ---------------------
+    // Bước 2: Tải IPA
+    // ---------------------
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
       '--version', appVerId
     ];
 
-    console.log('Downloading with:', [ipatoolPath, ...downloadArgs].join(' '));
+    const { stdout } = await execFileAsync(ipatoolPath, downloadArgs, { timeout: 120000 });
+    const downloadPath = stdout.trim().split('\n').pop();
 
-    const { stdout, stderr } = await execFileAsync(ipatoolPath, downloadArgs, { timeout: 120000 });
-
-    const downloadPath = stdout.trim().split('\n').pop(); // Lấy dòng cuối là đường dẫn file IPA
     if (!downloadPath.endsWith('.ipa')) {
       throw new Error(`Invalid IPA path: ${downloadPath}`);
     }
@@ -61,11 +76,11 @@ export default async function handler(req, res) {
     return res.send(ipaContent);
 
   } catch (error) {
-    console.error('Full error:', error);
+    console.error('Unexpected error:', error);
     return res.status(500).json({
       error: 'Download failed',
       details: error.message,
-      solution: 'Đảm bảo bạn đã cung cấp đúng thông tin và ipatool 2.1.6 đang được dùng. Có thể thử chạy ./ipatool --help để kiểm tra.'
+      solution: 'Kiểm tra ipatool version và thông tin tài khoản.'
     });
   }
 }

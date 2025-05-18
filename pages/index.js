@@ -27,7 +27,7 @@ export default function Home() {
           password,
           appId,
           appVerId,
-          code: showMfa ? code : undefined
+          code: showMfa ? code : undefined,
         }),
       });
 
@@ -41,13 +41,15 @@ export default function Home() {
         a.click();
         a.remove();
         setMessage('Tải xuống thành công!');
+        setShowMfa(false);
+        setCode('');
       } else {
         const errorData = await response.json();
         if (errorData.error === '2FA required') {
           setShowMfa(true);
-          setMessage('Vui lòng nhập mã 2FA');
+          setMessage('Apple ID yêu cầu mã xác thực 2FA. Vui lòng nhập.');
         } else {
-          throw new Error(errorData.error || 'Lỗi khi tải xuống');
+          throw new Error(errorData.details || errorData.error || 'Lỗi khi tải xuống');
         }
       }
     } catch (error) {
@@ -101,7 +103,7 @@ export default function Home() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="appVerId">Phiên bản ứng dụng (App Version ID)</label>
+            <label htmlFor="appVerId">App Version ID</label>
             <input
               type="text"
               id="appVerId"
@@ -112,13 +114,14 @@ export default function Home() {
           </div>
 
           {showMfa && (
-            <div className="form-group">
-              <label htmlFor="code">Mã 2FA (nếu cần)</label>
+            <div className="form-group highlight">
+              <label htmlFor="code">Mã xác thực 2FA (đã gửi đến thiết bị Apple)</label>
               <input
                 type="text"
                 id="code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
+                required
               />
             </div>
           )}
@@ -152,6 +155,11 @@ export default function Home() {
           width: 100%;
           padding: 0.5rem;
           margin-bottom: 0.5rem;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+        .highlight input {
+          border-color: #0070f3;
         }
         button {
           width: 100%;
