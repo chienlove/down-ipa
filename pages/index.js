@@ -44,14 +44,19 @@ export default function Home() {
         setShowMfa(false);
         setCode('');
       } else {
-        const errorData = await response.json();
-        if (errorData.error === '2FA required') {
-          setShowMfa(true);
-          setMessage('Apple ID yêu cầu mã xác thực 2FA. Vui lòng nhập.');
-        } else {
-          setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
-        }
-      }
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    const errorData = await response.json();
+    if (errorData.error === '2FA required') {
+      setShowMfa(true);
+      setMessage('Apple ID yêu cầu mã xác thực 2FA. Vui lòng nhập.');
+    } else {
+      setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
+    }
+  } else {
+    const errorText = await response.text();
+    setMessage(errorText || 'Lỗi không xác định');
+  }
+}
     } catch (error) {
       setMessage(error.message);
     } finally {
