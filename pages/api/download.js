@@ -16,66 +16,54 @@ export default async function handler(req, res) {
 
     // 1. Đường dẫn binary
     const ipatoolPath = path.join('/tmp', 'ipatool');
-    
-    // 2. Copy binary từ public sang /tmp (Vercel chỉ cho phép ghi vào /tmp)
     await fs.copyFile(
       path.join(process.cwd(), 'public', 'bin', 'ipatool'),
       ipatoolPath
     );
-    await fs.chmod(ipatoolPath, 0o755); // Cấp quyền thực thi
+    await fs.chmod(ipatoolPath, 0o755);
 
-    // 3. Thiết lập biến môi trường
-    process.env.HOME = '/tmp'; // Bắt buộc để ghi config
+    // 2. Thiết lập môi trường
+    process.env.HOME = '/tmp';
 
-    // 4. Chuẩn bị lệnh cho ipatool 2.1.6
+    // 3. Chuẩn bị lệnh ĐÚNG cho ipatool 2.1.6
     const args = [
       'download',
-      '--bundle-identifier', appId,
-      '--email', appleId,
+      '--bundle-id', appId,       // Lưu ý: --bundle-id thay vì --bundle-identifier
+      '--email', appleId,          // Một số bản dùng --username thay vì --email
       '--password', password,
-      '--app-version', appVerId
+      '--version', appVerId        // --version thay vì --app-version
     ];
 
-    // Thêm 2FA code nếu có
     if (code) args.push('--code', code);
 
-    console.log('Executing:', ipatoolPath, args.join(' '));
+    console.log('Executing command:', [ipatoolPath, ...args].join(' '));
 
-    // 5. Thực thi ipatool
+    // 4. Thực thi
     const { stdout, stderr } = await execFileAsync(
       ipatoolPath,
       args,
-      { 
-        timeout: 120000, // 120 giây timeout
-        env: process.env
-      }
+      { timeout: 120000 }
     );
 
-    // 6. Xử lý output (ipatool 2.1.6 xuất ra đường dẫn file IPA)
+    // 5. Xử lý kết quả
     const downloadPath = stdout.trim();
     if (!downloadPath.endsWith('.ipa')) {
-      throw new Error(`Invalid output: ${stdout}`);
+      throw new Error(`Invalid IPA path: ${stdout}`);
     }
 
-    // 7. Đọc và trả về file
     const ipaContent = await fs.readFile(downloadPath);
-    
-    // 8. Dọn dẹp
-    await Promise.all([
-      fs.unlink(downloadPath),
-      fs.unlink(ipatoolPath)
-    ]);
+    await fs.unlink(downloadPath);
 
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
     return res.send(ipaContent);
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Full error:', error);
     return res.status(500).json({ 
       error: 'Download failed',
       details: error.message,
-      solution: 'Kiểm tra phiên bản ipatool 2.1.6 linux-amd64 và thử lại'
+      solution: 'Kiểm tra lại flag bằng cách chạy: ./ipatool --help'
     });
   }
 }
