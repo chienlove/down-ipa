@@ -28,8 +28,8 @@ export default async function handler(req, res) {
     // 3. Chuẩn bị lệnh ĐÚNG cho ipatool 2.1.6
     const args = [
       'download',
-      '--bundle-identifier', appId,       // Lưu ý: --bundle-id thay vì --bundle-identifier
-      '--email', appleId,          // Một số bản dùng --username thay vì --email
+      '--bundle-identifier', appId, 
+      '--username', appleId,          
       '--password', password,
       '--version', appVerId        // --version thay vì --app-version
     ];
