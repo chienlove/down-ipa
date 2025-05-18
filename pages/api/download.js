@@ -14,22 +14,23 @@ export default async function handler(req, res) {
   try {
     const { appleId, password, appId, appVerId, code } = req.body;
 
-    // Đường dẫn đến ipatool binary
+    // 1. Chuẩn bị đường dẫn
     const ipatoolPath = path.join(process.cwd(), 'public', 'bin', 'ipatool');
+    const tmpDir = '/tmp';
+    const tmpIpatoolPath = path.join(tmpDir, 'ipatool');
     
-    // Kiểm tra binary tồn tại và có quyền thực thi
-    try {
-      await fs.access(ipatoolPath, fs.constants.X_OK);
-    } catch (err) {
-      console.error('ipatool binary not found or not executable');
-      return res.status(500).json({ error: 'Server configuration error' });
-    }
+    // 2. Copy binary sang /tmp và cấp quyền
+    await fs.copyFile(ipatoolPath, tmpIpatoolPath);
+    await fs.chmod(tmpIpatoolPath, 0o755);
 
-    // Kiểm tra version ipatool (debug)
-    const versionCheck = await execFileAsync(ipatoolPath, ['--version']);
-    console.log('ipatool version:', versionCheck.stdout);
+    // 3. Thiết lập biến môi trường
+    process.env.HOME = tmpDir; // Bắt buộc: để ipatool ghi config vào /tmp
+    process.env.IPATOOL_CONFIG_DIR = path.join(tmpDir, '.ipatool'); // Tùy chỉnh thư mục config
 
-    // Execute ipatool với cú pháp cho phiên bản 2.1.6
+    // 4. Tạo thư mục config trước
+    await fs.mkdir(process.env.IPATOOL_CONFIG_DIR, { recursive: true });
+
+    // 5. Chuẩn bị lệnh thực thi
     const args = [
       'download',
       '--bundle-identifier',
@@ -37,57 +38,53 @@ export default async function handler(req, res) {
       '--email',
       appleId,
       '--password',
-      password
+      password,
+      '--app-version',
+      appVerId
     ];
 
-    // Thêm 2FA code nếu có
-    if (code) {
-      args.push('--code', code);
-    }
+    if (code) args.push('--code', code);
 
-    // Thêm App Version ID nếu cần (kiểm tra docs ipatool 2.1.6)
-    if (appVerId) {
-      args.push('--app-version', appVerId);
-    }
+    console.log('Executing:', tmpIpatoolPath, args.join(' '));
 
-    console.log('Executing command:', ipatoolPath, args.join(' '));
-
+    // 6. Thực thi ipatool
     const { stdout, stderr } = await execFileAsync(
-      ipatoolPath,
+      tmpIpatoolPath,
       args,
-      { timeout: 60000 } // 60 seconds timeout
+      { 
+        timeout: 60000,
+        env: process.env // Truyền đầy đủ biến môi trường
+      }
     );
 
-    if (stderr && stderr.trim() !== '') {
-      console.error('ipatool stderr:', stderr);
-      if (stderr.includes('2FA')) {
-        return res.status(401).json({ error: '2FA required' });
-      }
-      throw new Error(stderr);
-    }
+    // 7. Xử lý kết quả
+    const downloadPath = stdout.trim().split('\n')
+      .find(line => line.endsWith('.ipa'));
 
-    console.log('ipatool stdout:', stdout);
-
-    // Xử lý output (tùy thuộc vào định dạng output của ipatool 2.1.6)
-    const downloadPath = stdout.trim().split('\n').find(line => line.endsWith('.ipa'));
-    
     if (!downloadPath) {
-      throw new Error('Failed to parse download path from output');
+      throw new Error('IPA path not found in output: ' + stdout);
     }
 
-    // Đọc và trả về file IPA
+    // 8. Đọc và trả về file
     const ipaContent = await fs.readFile(downloadPath);
-    await fs.unlink(downloadPath); // Xóa file tạm
+    
+    // 9. Dọn dẹp
+    await Promise.all([
+      fs.unlink(downloadPath),
+      fs.unlink(tmpIpatoolPath),
+      fs.rm(process.env.IPATOOL_CONFIG_DIR, { recursive: true })
+    ]);
 
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
     return res.send(ipaContent);
 
   } catch (error) {
-    console.error('Download error:', error);
+    console.error('Error:', error);
     return res.status(500).json({ 
-      error: error.message || 'Failed to download IPA',
-      details: error.stack
+      error: 'Download failed',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
