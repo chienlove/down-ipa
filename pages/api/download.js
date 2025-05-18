@@ -35,29 +35,23 @@ export default async function handler(req, res) {
     try {
       const { stdout: loginOut } = await execFileAsync(ipatoolPath, loginArgs, { timeout: 30000 });
       console.log('Login success:', loginOut);
-    } } catch (loginError) {
-  const stderr = loginError.stderr?.toString() || '';
-  const stdout = loginError.stdout?.toString() || '';
-  const fullMessage = `${stderr}\n${stdout}`;
+    } catch (loginError) {
+      const stderr = loginError.stderr?.toString() || '';
+      const stdout = loginError.stdout?.toString() || '';
+      const fullMessage = `${stderr}\n${stdout}`;
 
-  console.error('Login error:', fullMessage);
+      console.error('Login error:', fullMessage);
 
-  if (fullMessage.includes('two-factor authentication code')) {
-    return res.status(401).json({
-      error: '2FA required',
-      message: 'Cần mã xác thực hai yếu tố (2FA)'
-    });
-  }
-
-  return res.status(500).json({
-    error: 'Login failed',
-    details: fullMessage
-  });
-}
+      if (fullMessage.includes('two-factor authentication code')) {
+        return res.status(401).json({
+          error: '2FA required',
+          message: 'Cần mã xác thực hai yếu tố (2FA)'
+        });
+      }
 
       return res.status(500).json({
         error: 'Login failed',
-        details: message
+        details: fullMessage
       });
     }
 
