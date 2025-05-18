@@ -35,7 +35,8 @@ export default async function handler(req, res) {
       const { stdout: loginOut } = await execFileAsync(ipatoolPath, loginArgs, { timeout: 30000 });
       console.log('Login success:', loginOut);
     } catch (loginError) {
-      const errorOutput = loginError.stderr?.toString() || loginError.stdout?.toString() || '';
+      const errorOutput = (loginError.stderr || loginError.stdout || loginError.message || '').toString();
+      console.log('Raw login error:', loginError);
       console.error('Login error output:', errorOutput);
 
       if (errorOutput.includes('two-factor') || errorOutput.includes('2FA')) {
