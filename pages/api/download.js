@@ -14,6 +14,7 @@ export default async function handler(req, res) {
     const { appleId, password, appId, appVerId, verificationCode } = req.body;
     console.log('Request received:', { appleId, appId, hasVerificationCode: !!verificationCode });
 
+    // Chuẩn bị ipatool
     const ipatoolPath = path.join('/tmp', 'ipatool');
     await fs.copyFile(
       path.join(process.cwd(), 'public', 'bin', 'ipatool'),
@@ -21,37 +22,48 @@ export default async function handler(req, res) {
     );
     await fs.chmod(ipatoolPath, 0o755);
 
+    // Thiết lập môi trường
     process.env.HOME = '/tmp';
+    const cookieDir = path.join('/tmp', '.ipatool');
+    await fs.mkdir(cookieDir, { recursive: true });
 
-    // Bước 1: Đăng nhập
+    // Bước 1: Đăng nhập với 2FA
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
-      '--password', password
+      '--password', password,
+      '--cookie-directory', cookieDir
     ];
-    
-    // Sử dụng --verification-code thay vì --code
+
     if (verificationCode) {
       loginArgs.push('--verification-code', verificationCode);
       console.log('Using 2FA verification code');
     }
 
     try {
-      // Giảm timeout cho lần thử đầu tiên
-      const loginTimeout = verificationCode ? 30000 : 15000;
-      const { stdout: loginOut } = await execFileAsync(ipatoolPath, loginArgs, { 
-        timeout: loginTimeout 
+      const { stdout: loginOut, stderr: loginErr } = await execFileAsync(ipatoolPath, loginArgs, { 
+        timeout: 30000,
+        env: {
+          ...process.env,
+          IPATOOL_COOKIE_DIRECTORY: cookieDir
+        }
       });
+      
+      if (loginErr && loginErr.includes('ERROR')) {
+        throw new Error(loginErr);
+      }
       console.log('Login success:', loginOut);
     } catch (loginError) {
       const errorOutput = (loginError.stderr || loginError.stdout || loginError.message || '').toString();
-      console.log('Raw login error:', loginError);
-      console.error('Login error output:', errorOutput);
+      console.error('Login error:', errorOutput);
 
-      if (errorOutput.includes('two-factor') || errorOutput.includes('2FA') || errorOutput.includes('verification')) {
+      if (errorOutput.includes('two-factor') || errorOutput.includes('2FA') || 
+          errorOutput.includes('verification') || errorOutput.includes('code')) {
         return res.status(401).json({ 
           error: '2FA required',
-          details: 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn'
+          details: verificationCode 
+            ? 'Mã xác thực không đúng hoặc đã hết hạn. Vui lòng thử lại.' 
+            : 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn'
         });
       }
       throw new Error(`Đăng nhập thất bại: ${errorOutput}`);
@@ -61,15 +73,22 @@ export default async function handler(req, res) {
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
-      '--version', appVerId
+      '--version', appVerId,
+      '--cookie-directory', cookieDir
     ];
 
-    console.log('Starting download with args:', downloadArgs);
-    const { stdout } = await execFileAsync(ipatoolPath, downloadArgs, { timeout: 120000 });
-    const downloadPath = stdout.trim().split('\n').pop();
+    console.log('Starting download...');
+    const { stdout } = await execFileAsync(ipatoolPath, downloadArgs, { 
+      timeout: 120000,
+      env: {
+        ...process.env,
+        IPATOOL_COOKIE_DIRECTORY: cookieDir
+      }
+    });
     
+    const downloadPath = stdout.trim().split('\n').pop();
     if (!downloadPath.endsWith('.ipa')) {
-      throw new Error(`Đường dẫn IPA không hợp lệ: ${downloadPath}`);
+      throw new Error(`Không tìm thấy file IPA: ${downloadPath}`);
     }
 
     const ipaContent = await fs.readFile(downloadPath);
@@ -80,10 +99,12 @@ export default async function handler(req, res) {
     return res.send(ipaContent);
 
   } catch (error) {
-    console.error('Full error:', error);
+    console.error('Error:', error);
     return res.status(500).json({
       error: 'Tải xuống thất bại',
-      details: error.message
+      details: error.message.includes('2FA') 
+        ? 'Xác thực 2FA không thành công' 
+        : error.message
     });
   }
 }

@@ -8,7 +8,7 @@ export default function Home() {
   const [appVerId, setAppVerId] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [showMfa, setShowMfa] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
 
@@ -16,7 +16,7 @@ export default function Home() {
     e.preventDefault();
     setIsLoading(true);
     setIsAuthLoading(true);
-    setMessage('');
+    setMessage({ text: '', type: '' });
 
     try {
       const response = await fetch('/api/download', {
@@ -33,7 +33,10 @@ export default function Home() {
         }),
       });
 
+      const result = await response.json();
+
       if (response.ok) {
+        // Tạo link tải file
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -42,31 +45,36 @@ export default function Home() {
         document.body.appendChild(a);
         a.click();
         a.remove();
-        setMessage('Tải xuống thành công!');
+        
+        setMessage({ 
+          text: 'Tải xuống thành công!', 
+          type: 'success' 
+        });
         setShowMfa(false);
         setVerificationCode('');
       } else {
-        if (response.status === 401) {
-          const errorData = await response.json();
-          if (errorData.error === '2FA required') {
-            setShowMfa(true);
-            setMessage(errorData.details);
-            setIsAuthLoading(false); // Chỉ dừng loading xác thực
-            return; // Thoát sớm để không xử lý tiếp
-          }
-        }
-        
-        // Xử lý các lỗi khác
-        const errorText = await response.text();
-        try {
-          const errorData = JSON.parse(errorText);
-          setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
-        } catch {
-          setMessage(errorText || 'Lỗi không xác định');
+        if (result.error === '2FA required') {
+          setShowMfa(true);
+          setMessage({ 
+            text: result.details, 
+            type: 'info' 
+          });
+          // Focus vào trường nhập mã 2FA
+          setTimeout(() => {
+            document.getElementById('verificationCode')?.focus();
+          }, 100);
+        } else {
+          setMessage({ 
+            text: result.details || result.error || 'Lỗi khi tải xuống', 
+            type: 'error' 
+          });
         }
       }
     } catch (error) {
-      setMessage(error.message || 'Lỗi kết nối');
+      setMessage({ 
+        text: error.message || 'Lỗi kết nối đến server', 
+        type: 'error' 
+      });
     } finally {
       setIsLoading(false);
       setIsAuthLoading(false);
@@ -76,7 +84,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Tải xuống IPA</title>
+        <title>Tải xuống IPA từ App Store</title>
         <meta name="description" content="Công cụ tải xuống file IPA từ App Store" />
       </Head>
 
@@ -92,6 +100,7 @@ export default function Home() {
               onChange={(e) => setAppleId(e.target.value)}
               required
               disabled={isLoading}
+              placeholder="email@example.com"
             />
           </div>
 
@@ -104,11 +113,12 @@ export default function Home() {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={isLoading}
+              placeholder="Mật khẩu Apple ID"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="appId">App ID (Bundle Identifier)</label>
+            <label htmlFor="appId">App Bundle ID</label>
             <input
               type="text"
               id="appId"
@@ -116,6 +126,7 @@ export default function Home() {
               onChange={(e) => setAppId(e.target.value)}
               required
               disabled={isLoading}
+              placeholder="com.example.app"
             />
           </div>
 
@@ -128,6 +139,7 @@ export default function Home() {
               onChange={(e) => setAppVerId(e.target.value)}
               required
               disabled={isLoading}
+              placeholder="1234567890"
             />
           </div>
 
@@ -141,8 +153,11 @@ export default function Home() {
                 onChange={(e) => setVerificationCode(e.target.value)}
                 required
                 disabled={isLoading}
-                placeholder="Nhập mã 6 chữ số từ thiết bị Apple"
+                placeholder="Nhập 6 chữ số từ thiết bị Apple"
+                maxLength="6"
+                pattern="\d{6}"
               />
+              <small className="hint">Mã 6 số gửi đến thiết bị Apple của bạn</small>
             </div>
           )}
 
@@ -156,9 +171,9 @@ export default function Home() {
           </button>
         </form>
 
-        {message && (
-          <div className={`message ${message.includes('thành công') ? 'success' : 'error'}`}>
-            {message}
+        {message.text && (
+          <div className={`message ${message.type}`}>
+            {message.text}
           </div>
         )}
       </div>
@@ -166,32 +181,48 @@ export default function Home() {
       <style jsx>{`
         .container {
           max-width: 600px;
-          margin: 0 auto;
+          margin: 2rem auto;
           padding: 2rem;
+          background: #fff;
+          border-radius: 12px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         h1 {
           text-align: center;
           margin-bottom: 2rem;
+          color: #333;
         }
         .form-group {
-          margin-bottom: 1rem;
+          margin-bottom: 1.5rem;
         }
         label {
           display: block;
           margin-bottom: 0.5rem;
-          font-weight: 500;
+          font-weight: 600;
+          color: #444;
         }
         input {
           width: 100%;
           padding: 0.75rem;
-          margin-bottom: 0.5rem;
           border: 1px solid #ddd;
-          border-radius: 6px;
+          border-radius: 8px;
           font-size: 1rem;
+          transition: border 0.2s;
+        }
+        input:focus {
+          outline: none;
+          border-color: #0070f3;
+          box-shadow: 0 0 0 2px rgba(0,118,255,0.1);
         }
         .highlight input {
           border-color: #0070f3;
           background-color: #f5f9ff;
+        }
+        .hint {
+          display: block;
+          margin-top: 0.25rem;
+          color: #666;
+          font-size: 0.85rem;
         }
         button {
           width: 100%;
@@ -199,14 +230,18 @@ export default function Home() {
           background-color: #0070f3;
           color: white;
           border: none;
-          border-radius: 6px;
-          cursor: pointer;
+          border-radius: 8px;
           font-size: 1rem;
           font-weight: 600;
+          cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 0.5rem;
+          transition: background 0.2s;
+        }
+        button:hover {
+          background-color: #0061d5;
         }
         button:disabled {
           background-color: #ccc;
@@ -227,18 +262,23 @@ export default function Home() {
         .message {
           margin-top: 1.5rem;
           padding: 1rem;
-          border-radius: 6px;
+          border-radius: 8px;
           font-size: 0.95rem;
         }
         .message.success {
-          background-color: #d4edda;
-          color: #155724;
-          border: 1px solid #c3e6cb;
+          background-color: #e6ffed;
+          color: #1a7f37;
+          border: 1px solid #d2f8d9;
         }
         .message.error {
-          background-color: #f8d7da;
-          color: #721c24;
-          border: 1px solid #f5c6cb;
+          background-color: #ffebee;
+          color: #d32f2f;
+          border: 1px solid #ffcdd2;
+        }
+        .message.info {
+          background-color: #e3f2fd;
+          color: #1976d2;
+          border: 1px solid #bbdefb;
         }
       `}</style>
     </>
