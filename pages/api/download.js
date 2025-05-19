@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { appleId, password, appId, appVerId, twoFactorCode } = req.body;
+    const { appleId, password, appId, twoFactorCode } = req.body;
     console.log('Request received:', { appleId, appId, twoFactorCode: !!twoFactorCode });
 
     // Chuẩn bị ipatool
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     );
     await fs.chmod(ipatoolPath, 0o755);
 
-    // Thiết lập môi trường
+    // Thiết lập môi trường HOME tạm riêng biệt
     const tmpHome = path.join('/tmp', `ipatool-home-${Date.now()}`);
     await fs.mkdir(tmpHome, { recursive: true });
     process.env.HOME = tmpHome;
@@ -40,7 +40,6 @@ export default async function handler(req, res) {
     }
 
     try {
-      // Giảm timeout cho lần thử đầu
       const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
         timeout: twoFactorCode ? 30000 : 10000
       });
@@ -48,7 +47,6 @@ export default async function handler(req, res) {
       console.log('Login output:', stdout);
       if (stderr) console.error('Login stderr:', stderr);
 
-      // Kiểm tra kết quả đăng nhập
       if (stdout.includes('Login successful') || !stderr) {
         console.log('Authentication successful');
       } else {
@@ -56,24 +54,7 @@ export default async function handler(req, res) {
       }
 
     } catch (loginError) {
-      const errorOutput = (loginError.stderr || loginError.stdout || loginError.message).toString();
-      console.error('Login error:', errorOutput);
-
-      // Phát hiện yêu cầu 2FA
-      if (/two[- ]?factor|2FA|verification code|keyring|get account/i.test(errorOutput)) {
-        
-        const message = errorOutput.includes('sent to') 
-          ? errorOutput.match(/sent to (.*)/)?.[0] || 'Mã xác thực đã được gửi đến thiết bị của bạn'
-          : 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple';
-        
-        return res.status(401).json({ 
-          error: '2FA_REQUIRED',
-          message,
-          details: errorOutput
-        });
-      }
-      
-      throw new Error(`Đăng nhập thất bại: ${errorOutput}`);
+      console.error('Login error:', loginError);
     }
 
     // Bước 2: Tải IPA
@@ -117,6 +98,5 @@ export default async function handler(req, res) {
       message: 'Tải xuống thất bại',
       details: rawMessage
     });
-  });
   }
 }
