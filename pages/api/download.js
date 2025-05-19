@@ -29,35 +29,27 @@ export default async function handler(req, res) {
     );
     await fs.chmod(ipatoolPath, 0o755);
 
-    // Tạo một passphrase duy nhất cho mỗi phiên
-    let keychainPassphrase;
-    
-    // Nếu có sessionId, sử dụng lại phiên hiện có
-    if (sessionId && sessions.has(sessionId)) {
-      console.log(`Using existing session: ${sessionId}`);
-      keychainPassphrase = sessions.get(sessionId);
-    } else {
-      // Tạo phiên mới
-      keychainPassphrase = process.env.KEYCHAIN_PASSPHRASE || 
-        Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-      
-      // Tạo sessionId mới
-      const newSessionId = Math.random().toString(36).slice(2);
-      sessions.set(newSessionId, keychainPassphrase);
-      
-      // Xóa phiên cũ sau 10 phút
+    // Tạo session file
+    let finalSessionId = sessionId;
+    if (!finalSessionId && !twoFactorCode) {
+      finalSessionId = Math.random().toString(36).slice(2);
+      req.body.sessionId = finalSessionId;
+    }
+
+    const sessionFileName = `session-${finalSessionId || 'default'}.json`;
+    const sessionPath = path.join('/tmp', sessionFileName);
+
+    if (!sessionId || !sessions.has(finalSessionId)) {
+      sessions.set(finalSessionId, sessionPath);
+
+      // Dọn dẹp session sau 10 phút
       setTimeout(() => {
-        if (sessions.has(newSessionId)) {
-          console.log(`Cleaning up session: ${newSessionId}`);
-          sessions.delete(newSessionId);
+        if (sessions.has(finalSessionId)) {
+          console.log(`Cleaning up session file: ${sessionPath}`);
+          sessions.delete(finalSessionId);
+          fs.unlink(sessionPath).catch(() => {});
         }
       }, 10 * 60 * 1000);
-      
-      // Trả về sessionId cho lần gọi API đầu tiên
-      if (!twoFactorCode) {
-        console.log(`Created new session: ${newSessionId}`);
-        req.body.sessionId = newSessionId;
-      }
     }
 
     // Xử lý đăng nhập
@@ -66,8 +58,8 @@ export default async function handler(req, res) {
       '--email', appleId,
       '--password', password,
       '--non-interactive',
-      '--keychain-passphrase', keychainPassphrase,
       ...(twoFactorCode ? ['--auth-code', twoFactorCode] : []),
+      '--output-session', sessionPath
     ];
 
     console.log('Executing login command...');
@@ -75,7 +67,6 @@ export default async function handler(req, res) {
       timeout: 60000
     });
 
-    // Kiểm tra kết quả đăng nhập
     console.log('Login output:', loginOutput);
     if (loginError) console.log('Login error:', loginError);
 
@@ -84,11 +75,10 @@ export default async function handler(req, res) {
         return res.status(401).json({
           error: '2FA_REQUIRED',
           message: 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn.',
-          sessionId: req.body.sessionId // Trả về sessionId để sử dụng cho yêu cầu tiếp theo
+          sessionId: req.body.sessionId
         });
       }
 
-      // Kiểm tra lỗi đăng nhập cụ thể
       if (loginError && loginError.includes('Invalid verification code')) {
         return res.status(400).json({
           error: 'INVALID_2FA',
@@ -99,27 +89,25 @@ export default async function handler(req, res) {
       throw new Error(loginError || 'Đăng nhập thất bại');
     }
 
-    // Sau khi đăng nhập thành công, tiến hành tải xuống
     console.log('Login successful, proceeding to download...');
     const downloadArgs = [
       'download',
       appVerId ? '--app-id' : '--bundle-identifier',
       appVerId || appId,
       '--non-interactive',
-      '--keychain-passphrase', keychainPassphrase,
+      '--session', sessionPath,
       '--purchase',
       '--verbose'
     ];
 
     console.log('Executing download command with args:', downloadArgs);
     const { stdout: downloadOutput, stderr: downloadError } = await execFileAsync(ipatoolPath, downloadArgs, {
-      timeout: 300000 // tăng timeout lên 5 phút
+      timeout: 300000 // 5 phút
     });
 
     console.log('Download output:', downloadOutput);
     if (downloadError) console.log('Download error:', downloadError);
 
-    // Tìm đường dẫn file IPA trong output
     const ipaPath = downloadOutput.trim().split('\n')
       .reverse()
       .find(line => line.trim().endsWith('.ipa'))?.trim();
@@ -130,14 +118,14 @@ export default async function handler(req, res) {
       throw new Error('Không tìm thấy file IPA');
     }
 
-    // Đọc nội dung file và gửi về client
     const ipaContent = await fs.readFile(ipaPath);
     console.log(`Read IPA file, size: ${ipaContent.length} bytes`);
-    
-    // Dọn dẹp file tạm
     await fs.unlink(ipaPath).catch(() => {});
 
-    // Trả về file cho client
+    // (Tuỳ chọn) cleanup session sau khi tải xong
+    // await fs.unlink(sessionPath).catch(() => {});
+    // sessions.delete(finalSessionId);
+
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId || 'app'}.ipa"`);
     res.setHeader('Content-Length', ipaContent.length);
@@ -146,7 +134,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error during execution:', error);
     const errorMessage = error.stderr || error.stdout || error.message;
-    
+
     return res.status(500).json({
       error: 'DOWNLOAD_FAILED',
       message: 'Tải xuống thất bại',
