@@ -22,12 +22,12 @@ export default async function handler(req, res) {
     );
     await fs.chmod(ipatoolPath, 0o755);
 
-    // Thiết lập môi trường HOME tạm riêng biệt
+    // Thiết lập HOME riêng biệt
     const tmpHome = path.join('/tmp', `ipatool-home-${Date.now()}`);
     await fs.mkdir(tmpHome, { recursive: true });
     process.env.HOME = tmpHome;
 
-    // Bước 1: Đăng nhập
+    // Luôn đăng nhập ngay trước khi tải
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
@@ -39,25 +39,19 @@ export default async function handler(req, res) {
       loginArgs.push('--verification-code', twoFactorCode);
     }
 
-    try {
-      const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
-        timeout: twoFactorCode ? 30000 : 10000
-      });
+    console.log('Logging in...');
+    const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
+      timeout: 30000
+    });
 
-      console.log('Login output:', stdout);
-      if (stderr) console.error('Login stderr:', stderr);
+    console.log('Login output:', stdout);
+    if (stderr) console.error('Login stderr:', stderr);
 
-      if (stdout.includes('Login successful') || !stderr) {
-        console.log('Authentication successful');
-      } else {
-        throw new Error(stderr || stdout);
-      }
-
-    } catch (loginError) {
-      console.error('Login error:', loginError);
+    if (!stdout.includes('Login successful')) {
+      throw new Error(stderr || stdout || 'Login failed');
     }
 
-    // Bước 2: Tải IPA
+    // Tiếp tục tải IPA
     console.log('Starting download...');
     const downloadArgs = [
       'download',
