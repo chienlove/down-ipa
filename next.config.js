@@ -3,7 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
   
-  // Bỏ cấu hình experimental.serverActions vì đã được tích hợp sẵn từ Next.js 14
   experimental: {
     serverComponentsExternalPackages: [
       'child_process',
@@ -13,7 +12,6 @@ const nextConfig = {
       'util'
     ],
     optimizeServerReact: true,
-    // serverActions: true, // Đã bỏ vì không cần thiết
   },
 
   webpack: (config, { isServer }) => {
@@ -26,25 +24,22 @@ const nextConfig = {
       }
     });
 
-    // Cấu hình fallback
+    // Cấu hình fallback đơn giản hơn
     config.resolve.fallback = { 
       fs: false,
       child_process: false,
-      net: false,
-      tls: false,
-      path: require.resolve('path-browserify')
+      path: false // Không cần path-browserify nếu không dùng ở client side
     };
 
-    // Copy file binary khi build
+    // Chỉ xử lý copy file khi ở server side
     if (isServer) {
-      const { CopyPlugin } = require('webpack').CopyPlugin;
+      const CopyPlugin = require('copy-webpack-plugin');
       config.plugins.push(
         new CopyPlugin({
           patterns: [
             {
-              from: path.join(__dirname, 'public/bin/ipatool'),
-              to: path.join(__dirname, '.next/server/bin/ipatool'),
-              force: true
+              from: 'public/bin/ipatool',
+              to: 'bin/ipatool'
             }
           ]
         })
@@ -54,19 +49,6 @@ const nextConfig = {
     return config;
   },
 
-  async headers() {
-    return [
-      {
-        source: '/api/(.*)',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'POST' },
-        ],
-      },
-    ];
-  },
-
-  // Bật compression nếu không có yêu cầu đặc biệt từ ipatool
   compress: true,
 };
 
