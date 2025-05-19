@@ -1,0 +1,28 @@
+name: Check ipatool flags
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  check-ipatool:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Download ipatool
+      run: |
+        mkdir -p public/bin
+        wget -O public/bin/ipatool https://github.com/majd/ipatool/releases/latest/download/ipatool-linux-amd64
+        chmod +x public/bin/ipatool
+
+    - name: Check auth help
+      run: ./public/bin/ipatool auth login --help
+
+    - name: Check download help
+      run: ./public/bin/ipatool download --help
+
+    - name: Check version
+      run: ./public/bin/ipatool --version
