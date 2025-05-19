@@ -27,12 +27,17 @@ export default async function handler(req, res) {
     await fs.mkdir(tmpHome, { recursive: true });
     process.env.HOME = tmpHome;
 
+    // Tạo passphrase ngẫu nhiên cho keychain
+    const keychainPassphrase = Math.random().toString(36).substring(2, 15) + 
+                              Math.random().toString(36).substring(2, 15);
+
     // Luôn đăng nhập ngay trước khi tải
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
       '--password', password,
-      '--non-interactive'
+      '--non-interactive',
+      '--keychain-passphrase', keychainPassphrase
     ];
 
     // Thay đổi cách truyền mã xác thực 2FA
@@ -57,7 +62,9 @@ export default async function handler(req, res) {
     console.log('Starting download...');
     const downloadArgs = [
       'download',
-      '--bundle-identifier', appId
+      '--bundle-identifier', appId,
+      '--non-interactive',
+      '--keychain-passphrase', keychainPassphrase
     ];
 
     const { stdout: downloadOutput } = await execFileAsync(ipatoolPath, downloadArgs, {
