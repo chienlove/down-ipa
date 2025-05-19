@@ -23,7 +23,9 @@ export default async function handler(req, res) {
     await fs.chmod(ipatoolPath, 0o755);
 
     // Thiết lập môi trường
-    process.env.HOME = '/tmp';
+    const tmpHome = path.join('/tmp', `ipatool-home-${Date.now()}`);
+    await fs.mkdir(tmpHome, { recursive: true });
+    process.env.HOME = tmpHome;
 
     // Bước 1: Đăng nhập
     const loginArgs = [
@@ -58,9 +60,7 @@ export default async function handler(req, res) {
       console.error('Login error:', errorOutput);
 
       // Phát hiện yêu cầu 2FA
-      if (errorOutput.includes('two-factor') || 
-          errorOutput.includes('2FA') || 
-          errorOutput.includes('verification code')) {
+      if (/two[- ]?factor|2FA|verification code|keyring|get account/i.test(errorOutput)) {
         
         const message = errorOutput.includes('sent to') 
           ? errorOutput.match(/sent to (.*)/)?.[0] || 'Mã xác thực đã được gửi đến thiết bị của bạn'
@@ -79,9 +79,9 @@ export default async function handler(req, res) {
     // Bước 2: Tải IPA
     console.log('Starting download...');
     const downloadArgs = [
-  'download',
-  '--bundle-identifier', appId
-];
+      'download',
+      '--bundle-identifier', appId
+    ];
 
     const { stdout: downloadOutput } = await execFileAsync(ipatoolPath, downloadArgs, {
       timeout: 120000
