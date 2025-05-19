@@ -15,7 +15,7 @@ export default function Home() {
   const [countdown, setCountdown] = useState(0);
   const twoFactorRef = useRef(null);
 
-  // Tự động focus vào trường 2FA khi hiển thị
+  // Tự động focus vào trường 2FA
   useEffect(() => {
     if (show2FA && twoFactorRef.current) {
       twoFactorRef.current.focus();
@@ -46,7 +46,7 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        // Xử lý tải file thành công
+        // Tải file IPA thành công
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -66,7 +66,7 @@ export default function Home() {
             type: 'info', 
             content: data.message || 'Vui lòng nhập mã xác thực 2FA' 
           });
-          setCountdown(30); // Bắt đầu đếm ngược 30s
+          setCountdown(30); // Đếm ngược 30s
         } else {
           setMessage({ 
             type: 'error', 
@@ -140,13 +140,12 @@ export default function Home() {
         </div>
 
         <div className="form-group">
-          <label>Version ID</label>
+          <label>Version ID (tùy chọn)</label>
           <input
             type="text"
             id="appVerId"
             value={formData.appVerId}
             onChange={handleChange}
-            required
             disabled={isLoading}
           />
         </div>
