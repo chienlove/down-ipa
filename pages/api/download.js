@@ -11,8 +11,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { appleId, password, appId, appVerId, verificationCode } = req.body;
-    console.log('Request received:', { appleId, appId, hasVerificationCode: !!verificationCode });
+    const { appleId, password, appId, appVerId, twoFactorCode } = req.body;
+    console.log('Request received:', { appleId, appId, twoFactorCode: !!twoFactorCode });
 
     // Chuẩn bị ipatool
     const ipatoolPath = path.join('/tmp', 'ipatool');
@@ -29,61 +29,68 @@ export default async function handler(req, res) {
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
-      '--password', password
+      '--password', password,
+      '--non-interactive'
     ];
 
-    if (verificationCode) {
-      loginArgs.push('--verification-code', verificationCode);
-      console.log('Using 2FA verification code');
+    if (twoFactorCode) {
+      loginArgs.push('--verification-code', twoFactorCode);
     }
 
     try {
+      // Giảm timeout cho lần thử đầu
       const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
-        timeout: 30000
+        timeout: twoFactorCode ? 30000 : 10000
       });
 
       console.log('Login output:', stdout);
-      if (stderr) console.error('Login error:', stderr);
+      if (stderr) console.error('Login stderr:', stderr);
 
-      // Kiểm tra xem có cần mã 2FA không
-      if (stdout.includes('Enter the 6 digit code') || stderr.includes('two-factor')) {
-        return res.status(401).json({
-          error: '2FA required',
-          details: 'Mã xác thực đã được gửi đến thiết bị Apple của bạn. Vui lòng nhập mã 6 số.'
-        });
+      // Kiểm tra kết quả đăng nhập
+      if (stdout.includes('Login successful') || !stderr) {
+        console.log('Authentication successful');
+      } else {
+        throw new Error(stderr || stdout);
       }
 
     } catch (loginError) {
-      const errorOutput = (loginError.stderr || loginError.stdout || loginError.message || '').toString();
-      console.error('Login error details:', errorOutput);
+      const errorOutput = (loginError.stderr || loginError.stdout || loginError.message).toString();
+      console.error('Login error:', errorOutput);
 
-      if (errorOutput.includes('two-factor') || errorOutput.includes('2FA') || 
-          errorOutput.includes('verification') || errorOutput.includes('code')) {
-        return res.status(401).json({
-          error: '2FA required',
-          details: errorOutput.includes('sent') 
-            ? errorOutput.match(/sent.*device/)?.[0] || 'Mã xác thực đã được gửi đến thiết bị Apple của bạn'
-            : 'Vui lòng kiểm tra thiết bị Apple của bạn để lấy mã xác thực'
+      // Phát hiện yêu cầu 2FA
+      if (errorOutput.includes('two-factor') || 
+          errorOutput.includes('2FA') || 
+          errorOutput.includes('verification code')) {
+        
+        const message = errorOutput.includes('sent to') 
+          ? errorOutput.match(/sent to (.*)/)?.[0] || 'Mã xác thực đã được gửi đến thiết bị của bạn'
+          : 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple';
+        
+        return res.status(401).json({ 
+          error: '2FA_REQUIRED',
+          message,
+          details: errorOutput
         });
       }
+      
       throw new Error(`Đăng nhập thất bại: ${errorOutput}`);
     }
 
     // Bước 2: Tải IPA
+    console.log('Starting download...');
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
       '--version', appVerId
     ];
 
-    console.log('Starting download...');
-    const { stdout } = await execFileAsync(ipatoolPath, downloadArgs, { 
+    const { stdout: downloadOutput } = await execFileAsync(ipatoolPath, downloadArgs, {
       timeout: 120000
     });
-    
-    const downloadPath = stdout.trim().split('\n').pop();
+
+    const downloadPath = downloadOutput.trim().split('\n').pop();
     if (!downloadPath.endsWith('.ipa')) {
-      throw new Error(`Không tìm thấy file IPA: ${downloadPath}`);
+      throw new Error(`Invalid IPA path: ${downloadPath}`);
     }
 
     const ipaContent = await fs.readFile(downloadPath);
@@ -96,10 +103,11 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('Error:', error);
     return res.status(500).json({
-      error: 'Tải xuống thất bại',
-      details: error.message.includes('2FA') 
+      error: 'DOWNLOAD_FAILED',
+      message: error.message.includes('2FA') 
         ? 'Xác thực 2FA không thành công' 
-        : error.message
+        : 'Tải xuống thất bại',
+      details: error.message
     });
   }
 }
