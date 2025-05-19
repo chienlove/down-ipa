@@ -6,14 +6,16 @@ export default function Home() {
   const [password, setPassword] = useState('');
   const [appId, setAppId] = useState('');
   const [appVerId, setAppVerId] = useState('');
-  const [code, setCode] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [showMfa, setShowMfa] = useState(false);
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setIsAuthLoading(true);
     setMessage('');
 
     try {
@@ -27,7 +29,7 @@ export default function Home() {
           password,
           appId,
           appVerId,
-          code: showMfa ? code : undefined,
+          verificationCode: showMfa ? verificationCode : undefined,
         }),
       });
 
@@ -42,25 +44,32 @@ export default function Home() {
         a.remove();
         setMessage('Tải xuống thành công!');
         setShowMfa(false);
-        setCode('');
+        setVerificationCode('');
       } else {
-  if (response.headers.get("content-type")?.includes("application/json")) {
-    const errorData = await response.json();
-    if (errorData.error === '2FA required') {
-      setShowMfa(true);
-      setMessage('Apple ID yêu cầu mã xác thực 2FA. Vui lòng nhập.');
-    } else {
-      setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
-    }
-  } else {
-    const errorText = await response.text();
-    setMessage(errorText || 'Lỗi không xác định');
-  }
-}
+        if (response.status === 401) {
+          const errorData = await response.json();
+          if (errorData.error === '2FA required') {
+            setShowMfa(true);
+            setMessage(errorData.details);
+            setIsAuthLoading(false); // Chỉ dừng loading xác thực
+            return; // Thoát sớm để không xử lý tiếp
+          }
+        }
+        
+        // Xử lý các lỗi khác
+        const errorText = await response.text();
+        try {
+          const errorData = JSON.parse(errorText);
+          setMessage(errorData.details || errorData.error || 'Lỗi khi tải xuống');
+        } catch {
+          setMessage(errorText || 'Lỗi không xác định');
+        }
+      }
     } catch (error) {
-      setMessage(error.message);
+      setMessage(error.message || 'Lỗi kết nối');
     } finally {
       setIsLoading(false);
+      setIsAuthLoading(false);
     }
   };
 
@@ -82,6 +91,7 @@ export default function Home() {
               value={appleId}
               onChange={(e) => setAppleId(e.target.value)}
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -93,17 +103,19 @@ export default function Home() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={isLoading}
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="appId">App ID</label>
+            <label htmlFor="appId">App ID (Bundle Identifier)</label>
             <input
               type="text"
               id="appId"
               value={appId}
               onChange={(e) => setAppId(e.target.value)}
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -115,28 +127,40 @@ export default function Home() {
               value={appVerId}
               onChange={(e) => setAppVerId(e.target.value)}
               required
+              disabled={isLoading}
             />
           </div>
 
           {showMfa && (
             <div className="form-group highlight">
-              <label htmlFor="code">Mã xác thực 2FA (đã gửi đến thiết bị Apple)</label>
+              <label htmlFor="verificationCode">Mã xác thực 2FA</label>
               <input
                 type="text"
-                id="code"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
+                id="verificationCode"
+                value={verificationCode}
+                onChange={(e) => setVerificationCode(e.target.value)}
                 required
+                disabled={isLoading}
+                placeholder="Nhập mã 6 chữ số từ thiết bị Apple"
               />
             </div>
           )}
 
           <button type="submit" disabled={isLoading}>
-            {isLoading ? 'Đang xử lý...' : 'Tải xuống'}
+            {isLoading ? (
+              <>
+                {isAuthLoading ? 'Đang xác thực...' : 'Đang tải xuống...'}
+                <span className="spinner"></span>
+              </>
+            ) : 'Tải xuống'}
           </button>
         </form>
 
-        {message && <div className="message">{message}</div>}
+        {message && (
+          <div className={`message ${message.includes('thành công') ? 'success' : 'error'}`}>
+            {message}
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -155,36 +179,66 @@ export default function Home() {
         label {
           display: block;
           margin-bottom: 0.5rem;
+          font-weight: 500;
         }
         input {
           width: 100%;
-          padding: 0.5rem;
+          padding: 0.75rem;
           margin-bottom: 0.5rem;
-          border: 1px solid #ccc;
-          border-radius: 4px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 1rem;
         }
         .highlight input {
           border-color: #0070f3;
+          background-color: #f5f9ff;
         }
         button {
           width: 100%;
-          padding: 0.75rem;
+          padding: 1rem;
           background-color: #0070f3;
           color: white;
           border: none;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
+          font-size: 1rem;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
         }
         button:disabled {
           background-color: #ccc;
           cursor: not-allowed;
         }
+        .spinner {
+          display: inline-block;
+          width: 1rem;
+          height: 1rem;
+          border: 2px solid rgba(255,255,255,0.3);
+          border-radius: 50%;
+          border-top-color: white;
+          animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
         .message {
-          margin-top: 1rem;
+          margin-top: 1.5rem;
           padding: 1rem;
-          border-radius: 4px;
-          background-color: ${message.includes('thành công') ? '#d4edda' : '#f8d7da'};
-          color: ${message.includes('thành công') ? '#155724' : '#721c24'};
+          border-radius: 6px;
+          font-size: 0.95rem;
+        }
+        .message.success {
+          background-color: #d4edda;
+          color: #155724;
+          border: 1px solid #c3e6cb;
+        }
+        .message.error {
+          background-color: #f8d7da;
+          color: #721c24;
+          border: 1px solid #f5c6cb;
         }
       `}</style>
     </>
