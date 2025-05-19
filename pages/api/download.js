@@ -79,10 +79,9 @@ export default async function handler(req, res) {
     // Bước 2: Tải IPA
     console.log('Starting download...');
     const downloadArgs = [
-      'download',
-      '--bundle-identifier', appId,
-      '--version', appVerId
-    ];
+  'download',
+  '--bundle-identifier', appId
+];
 
     const { stdout: downloadOutput } = await execFileAsync(ipatoolPath, downloadArgs, {
       timeout: 120000
