@@ -38,6 +38,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          appVerId: formData.appVerId || undefined,
           twoFactorCode: show2FA ? formData.twoFactorCode : undefined
         })
       });

@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { appleId, password, appId, twoFactorCode } = req.body;
+    const { appleId, password, appId, appVerId, twoFactorCode } = req.body;
     console.log('Request received:', { appleId, appId, twoFactorCode: !!twoFactorCode });
 
     // Chuẩn bị ipatool
@@ -70,7 +70,8 @@ export default async function handler(req, res) {
     // Thêm flag --purchase để đảm bảo ứng dụng được mua nếu cần
     const downloadArgs = [
       'download',
-      '--bundle-identifier', appId,
+      appVerId ? '--app-id' : '--bundle-identifier', 
+      appVerId || appId,
       '--non-interactive',
       '--keychain-passphrase', keychainPassphrase,
       '--purchase',
@@ -78,6 +79,9 @@ export default async function handler(req, res) {
     ];
     
     console.log('Download command:', downloadArgs);
+    if (!appId && !appVerId) {
+      throw new Error('Missing appId or appVerId. Please provide one.');
+    }
     
     try {
       const { stdout: downloadOutput, stderr: downloadError } = await execFileAsync(ipatoolPath, downloadArgs, {
