@@ -101,12 +101,22 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Error:', error);
+    const rawMessage = error?.stderr || error?.stdout || error?.message || '';
+    const lower = rawMessage.toLowerCase();
+
+    if (/two[- ]?factor|2fa|verification code|keyring|get account/.test(lower)) {
+      return res.status(401).json({
+        error: '2FA_REQUIRED',
+        message: 'Cần xác thực hai yếu tố (2FA). Vui lòng nhập mã từ thiết bị Apple của bạn.',
+        details: rawMessage
+      });
+    }
+
     return res.status(500).json({
       error: 'DOWNLOAD_FAILED',
-      message: error.message.includes('2FA') 
-        ? 'Xác thực 2FA không thành công' 
-        : 'Tải xuống thất bại',
-      details: error.message
+      message: 'Tải xuống thất bại',
+      details: rawMessage
     });
+  });
   }
 }
