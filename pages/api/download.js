@@ -56,9 +56,10 @@ export default async function handler(req, res) {
       console.log('Login output:', stdout);
       if (stderr) console.error('Login stderr:', stderr);
 
-      if (!stdout.includes('Login successful') && !stdout.includes('success=true')) {
-        throw new Error(stderr || stdout || 'Login failed');
-      }
+      if (!stdout.toLowerCase().includes('success=true')) {
+  console.error('Login failed:', stdout, stderr);
+  throw new Error(stderr || stdout || 'Login failed');
+}
     } catch (loginErr) {
       console.error('Login error:', loginErr);
       throw loginErr;
