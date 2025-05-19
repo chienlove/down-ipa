@@ -16,7 +16,9 @@ export default function Home() {
   const [message, setMessage] = useState({ type: '', content: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [downloadUrl, setDownloadUrl] = useState(null);
   const twoFactorRef = useRef(null);
+  const downloadRef = useRef(null);
 
   // Tự động focus vào trường 2FA khi hiển thị
   useEffect(() => {
@@ -24,6 +26,17 @@ export default function Home() {
       twoFactorRef.current.focus();
     }
   }, [show2FA]);
+
+  // Tự động kích hoạt tải xuống khi có URL
+  useEffect(() => {
+    if (downloadUrl && downloadRef.current) {
+      downloadRef.current.click();
+      // Xóa URL sau khi đã tải xuống
+      setTimeout(() => {
+        setDownloadUrl(null);
+      }, 1000);
+    }
+  }, [downloadUrl]);
 
   // Xử lý thay đổi giá trị các trường input
   const handleChange = (e) => {
@@ -48,37 +61,50 @@ export default function Home() {
         })
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Xử lý tải file thành công
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${formData.appId}.ipa`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+      // Xử lý các loại phản hồi
+      if (response.status === 401) {
+        // Yêu cầu xác thực 2FA
+        const data = await response.json();
+        setShow2FA(true);
+        setMessage({ 
+          type: 'info', 
+          content: data.message || 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn.' 
+        });
+        setCountdown(30); // Đếm ngược 30 giây
+      } else if (response.ok) {
+        // Kiểm tra loại nội dung phản hồi
+        const contentType = response.headers.get('content-type');
         
-        // Reset form và hiển thị thông báo
-        setMessage({ type: 'success', content: 'Tải xuống thành công!' });
-        setShow2FA(false);
-        setFormData(prev => ({ ...prev, twoFactorCode: '' }));
-      } else {
-        // Xử lý yêu cầu 2FA
-        if (data.error === '2FA_REQUIRED') {
-          setShow2FA(true);
-          setMessage({ 
-            type: 'info', 
-            content: data.message || 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn.' 
-          });
-          setCountdown(30); // Đếm ngược 30 giây
+        if (contentType && contentType.includes('application/octet-stream')) {
+          // Phản hồi là file - xử lý tải xuống
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          setDownloadUrl(url);
+          
+          // Hiển thị thông báo thành công
+          setMessage({ type: 'success', content: 'Tải xuống thành công!' });
+          
+          // Reset form 2FA nếu đã sử dụng
+          if (show2FA) {
+            setShow2FA(false);
+            setFormData(prev => ({ ...prev, twoFactorCode: '' }));
+          }
         } else {
-          setMessage({ 
-            type: 'error', 
-            content: data.message || 'Đã xảy ra lỗi không xác định' 
-          });
+          // Phản hồi là JSON - có thể là thông báo
+          const data = await response.json();
+          setMessage({ type: 'success', content: data.message || 'Thao tác thành công!' });
+        }
+      } else {
+        // Xử lý lỗi khác
+        const data = await response.json();
+        setMessage({ 
+          type: 'error', 
+          content: data.message || 'Đã xảy ra lỗi không xác định' 
+        });
+        
+        // Hiển thị chi tiết lỗi nếu có
+        if (data.details) {
+          console.error('Error details:', data.details);
         }
       }
     } catch (error) {
@@ -86,6 +112,7 @@ export default function Home() {
         type: 'error', 
         content: error.message || 'Lỗi kết nối với máy chủ' 
       });
+      console.error('Client error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -204,7 +231,7 @@ export default function Home() {
                 <span className="spinner"></span>
                 {show2FA ? 'Đang xác thực...' : 'Đang đăng nhập...'}
               </>
-            ) : 'Tải xuống'}
+            ) : (show2FA ? 'Xác thực & Tải xuống' : 'Tải xuống')}
           </button>
 
           {/* Hiển thị thông báo */}
@@ -212,6 +239,18 @@ export default function Home() {
             <div className={`message ${message.type}`}>
               {message.content}
             </div>
+          )}
+          
+          {/* Link tải xuống ẩn */}
+          {downloadUrl && (
+            <a 
+              ref={downloadRef}
+              href={downloadUrl}
+              download={`${formData.appId || 'app'}.ipa`}
+              style={{display: 'none'}}
+            >
+              Download
+            </a>
           )}
         </form>
       </main>
