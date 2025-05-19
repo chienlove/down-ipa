@@ -35,11 +35,13 @@ export default async function handler(req, res) {
       '--non-interactive'
     ];
 
+    // Thay đổi cách truyền mã xác thực 2FA
     if (twoFactorCode) {
-      loginArgs.push('--verification-code', twoFactorCode);
+      // Sử dụng tham số --auth-code đúng với phiên bản ipatool 2.1.6
+      loginArgs.push('--auth-code', twoFactorCode);
     }
 
-    console.log('Logging in...');
+    console.log('Logging in with args:', loginArgs);
     const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
       timeout: 30000
     });
@@ -62,11 +64,17 @@ export default async function handler(req, res) {
       timeout: 120000
     });
 
-    const downloadPath = downloadOutput.trim().split('\n').pop();
-    if (!downloadPath.endsWith('.ipa')) {
+    console.log('Download output:', downloadOutput);
+    
+    // Tìm đường dẫn tệp IPA trong kết quả
+    const outputLines = downloadOutput.trim().split('\n');
+    const downloadPath = outputLines[outputLines.length - 1];
+    
+    if (!downloadPath || !downloadPath.endsWith('.ipa')) {
       throw new Error(`Invalid IPA path: ${downloadPath}`);
     }
 
+    console.log('IPA path:', downloadPath);
     const ipaContent = await fs.readFile(downloadPath);
     await fs.unlink(downloadPath);
 
@@ -79,7 +87,7 @@ export default async function handler(req, res) {
     const rawMessage = error?.stderr || error?.stdout || error?.message || '';
     const lower = rawMessage.toLowerCase();
 
-    if (/two[- ]?factor|2fa|verification code|keyring|get account/.test(lower)) {
+    if (/two[- ]?factor|2fa|verification code|auth[- ]?code|keyring|get account/.test(lower)) {
       return res.status(401).json({
         error: '2FA_REQUIRED',
         message: 'Cần xác thực hai yếu tố (2FA). Vui lòng nhập mã từ thiết bị Apple của bạn.',
