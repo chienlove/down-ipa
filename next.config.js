@@ -1,16 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // =============================================
-  // 1. CẤU HÌNH CƠ BẢN
-  // =============================================
   reactStrictMode: true,
-  output: 'standalone', // Tối ưu cho môi trường serverless
-
-  // =============================================
-  // 2. CẤU HÌNH QUAN TRỌNG CHO IPATOOL
-  // =============================================
+  output: 'standalone',
+  
+  // Bỏ cấu hình experimental.serverActions vì đã được tích hợp sẵn từ Next.js 14
   experimental: {
-    // Cho phép sử dụng các package hệ thống
     serverComponentsExternalPackages: [
       'child_process',
       'fs',
@@ -18,62 +12,48 @@ const nextConfig = {
       'path',
       'util'
     ],
-    
-    // Bật tính năng mới cần thiết
     optimizeServerReact: true,
-    serverActions: true,
+    // serverActions: true, // Đã bỏ vì không cần thiết
   },
 
-  // =============================================
-  // 3. CẤU HÌNH WEBPACK ĐẶC BIỆT
-  // =============================================
   webpack: (config, { isServer }) => {
-    // Rule xử lý binary files (ipatool)
+    // Thêm rule cho binary files
     config.module.rules.push({
       test: /\.(bin|node)$/,
-      use: {
-        loader: 'raw-loader',
-      },
+      type: 'asset/resource',
+      generator: {
+        filename: 'static/bin/[name][ext]'
+      }
     });
 
-    // Bỏ qua cảnh báo về các package native
+    // Cấu hình fallback
     config.resolve.fallback = { 
       fs: false,
       child_process: false,
       net: false,
       tls: false,
+      path: require.resolve('path-browserify')
     };
 
-    // Copy file binary sang thư mục build
+    // Copy file binary khi build
     if (isServer) {
-      config.plugins.push({
-        apply: (compiler) => {
-          compiler.hooks.afterEmit.tapPromise('CopyIpatool', async (compilation) => {
-            const fs = require('fs/promises');
-            const path = require('path');
-            
-            const source = path.join(__dirname, 'public', 'bin', 'ipatool');
-            const destination = path.join(__dirname, '.next', 'server', 'bin', 'ipatool');
-            
-            try {
-              await fs.mkdir(path.dirname(destination), { recursive: true });
-              await fs.copyFile(source, destination);
-              await fs.chmod(destination, 0o755); // cấp quyền thực thi
-              console.log('✅ Copied ipatool binary to build directory');
-            } catch (err) {
-              console.error('❌ Failed to copy ipatool:', err);
+      const { CopyPlugin } = require('webpack').CopyPlugin;
+      config.plugins.push(
+        new CopyPlugin({
+          patterns: [
+            {
+              from: path.join(__dirname, 'public/bin/ipatool'),
+              to: path.join(__dirname, '.next/server/bin/ipatool'),
+              force: true
             }
-          });
-        }
-      });
+          ]
+        })
+      );
     }
 
     return config;
   },
 
-  // =============================================
-  // 4. CẤU HÌNH HEADERS (NẾU CẦN)
-  // =============================================
   async headers() {
     return [
       {
@@ -86,10 +66,8 @@ const nextConfig = {
     ];
   },
 
-  // =============================================
-  // 5. TẮT COMPRESSION (NẾU IPATOOL YÊU CẦU)
-  // =============================================
-  compress: false,
+  // Bật compression nếu không có yêu cầu đặc biệt từ ipatool
+  compress: true,
 };
 
 module.exports = nextConfig;
