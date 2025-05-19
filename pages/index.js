@@ -8,7 +8,8 @@ export default function Home() {
     password: '',
     appId: '',
     appVerId: '',
-    twoFactorCode: ''
+    twoFactorCode: '',
+    sessionId: null
   });
 
   // State quản lý giao diện
@@ -51,32 +52,54 @@ export default function Home() {
     setMessage({ type: '', content: '' });
 
     try {
+      // Chuẩn bị dữ liệu gửi đi
+      const requestData = {
+        ...formData,
+        appVerId: formData.appVerId || undefined
+      };
+      
+      if (!show2FA) {
+        // Reset twoFactorCode nếu không đang ở màn hình 2FA
+        requestData.twoFactorCode = undefined;
+      }
+      
+      console.log('Sending request with data:', { 
+        ...requestData, 
+        password: '********' // Ẩn mật khẩu trong log
+      });
+
       const response = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          appVerId: formData.appVerId || undefined,
-          twoFactorCode: show2FA ? formData.twoFactorCode : undefined
-        })
+        body: JSON.stringify(requestData)
       });
 
-      // Xử lý các loại phản hồi
+      // Kiểm tra phản hồi từ server
       if (response.status === 401) {
         // Yêu cầu xác thực 2FA
         const data = await response.json();
+        console.log('2FA required response:', data);
+        
         setShow2FA(true);
         setMessage({ 
           type: 'info', 
           content: data.message || 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn.' 
         });
+        
+        // Lưu sessionId để sử dụng cho lần gọi tiếp theo
+        if (data.sessionId) {
+          setFormData(prev => ({ ...prev, sessionId: data.sessionId }));
+        }
+        
         setCountdown(30); // Đếm ngược 30 giây
       } else if (response.ok) {
         // Kiểm tra loại nội dung phản hồi
         const contentType = response.headers.get('content-type');
+        console.log('Success response content type:', contentType);
         
         if (contentType && contentType.includes('application/octet-stream')) {
           // Phản hồi là file - xử lý tải xuống
+          console.log('Processing file download');
           const blob = await response.blob();
           const url = window.URL.createObjectURL(blob);
           setDownloadUrl(url);
@@ -87,32 +110,38 @@ export default function Home() {
           // Reset form 2FA nếu đã sử dụng
           if (show2FA) {
             setShow2FA(false);
-            setFormData(prev => ({ ...prev, twoFactorCode: '' }));
+            setFormData(prev => ({ ...prev, twoFactorCode: '', sessionId: null }));
           }
         } else {
           // Phản hồi là JSON - có thể là thông báo
           const data = await response.json();
+          console.log('Success JSON response:', data);
           setMessage({ type: 'success', content: data.message || 'Thao tác thành công!' });
         }
       } else {
         // Xử lý lỗi khác
         const data = await response.json();
-        setMessage({ 
-          type: 'error', 
-          content: data.message || 'Đã xảy ra lỗi không xác định' 
-        });
+        console.error('Error response:', data);
         
-        // Hiển thị chi tiết lỗi nếu có
+        let errorMessage = data.message || 'Đã xảy ra lỗi không xác định';
+        
+        // Hiển thị thông tin chi tiết lỗi nếu có
         if (data.details) {
-          console.error('Error details:', data.details);
+          if (data.error === 'INVALID_2FA') {
+            errorMessage = 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
+          } else if (data.details.includes('Invalid verification code')) {
+            errorMessage = 'Mã xác thực không hợp lệ hoặc đã hết hạn.';
+          }
         }
+        
+        setMessage({ type: 'error', content: errorMessage });
       }
     } catch (error) {
+      console.error('Client-side error:', error);
       setMessage({ 
         type: 'error', 
         content: error.message || 'Lỗi kết nối với máy chủ' 
       });
-      console.error('Client error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -147,7 +176,7 @@ export default function Home() {
               value={formData.appleId}
               onChange={handleChange}
               required
-              disabled={isLoading}
+              disabled={isLoading || show2FA}
               className="input"
               placeholder="email@example.com"
             />
@@ -162,7 +191,7 @@ export default function Home() {
               value={formData.password}
               onChange={handleChange}
               required
-              disabled={isLoading}
+              disabled={isLoading || show2FA}
               className="input"
               placeholder="••••••••"
             />
@@ -177,7 +206,7 @@ export default function Home() {
               value={formData.appId}
               onChange={handleChange}
               required
-              disabled={isLoading}
+              disabled={isLoading || show2FA}
               className="input"
               placeholder="com.example.app"
             />
@@ -191,7 +220,7 @@ export default function Home() {
               id="appVerId"
               value={formData.appVerId}
               onChange={handleChange}
-              disabled={isLoading}
+              disabled={isLoading || show2FA}
               className="input"
               placeholder="123456789"
             />
@@ -229,7 +258,7 @@ export default function Home() {
             {isLoading ? (
               <>
                 <span className="spinner"></span>
-                {show2FA ? 'Đang xác thực...' : 'Đang đăng nhập...'}
+                {show2FA ? 'Đang xác thực...' : 'Đang xử lý...'}
               </>
             ) : (show2FA ? 'Xác thực & Tải xuống' : 'Tải xuống')}
           </button>
@@ -253,6 +282,21 @@ export default function Home() {
             </a>
           )}
         </form>
+
+        {/* Hiển thị hướng dẫn về 2FA nếu đang ở màn hình đó */}
+        {show2FA && (
+          <div className="info-box">
+            <h3>Hướng dẫn nhập mã xác thực hai lớp (2FA)</h3>
+            <p>Mã xác thực sẽ được gửi đến các thiết bị Apple của bạn.</p>
+            <p>Nếu bạn không nhận được mã, hãy kiểm tra:</p>
+            <ul>
+              <li>Thông báo trên iPhone/iPad của bạn</li>
+              <li>Xem có thông báo hiển thị trên màn hình khóa không</li>
+              <li>Đảm bảo thiết bị có kết nối internet</li>
+            </ul>
+            <p>Mã có hiệu lực trong khoảng 30 giây.</p>
+          </div>
+        )}
       </main>
 
       {/* CSS */}
@@ -273,6 +317,7 @@ export default function Home() {
           padding: 2rem;
           border-radius: 8px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          margin-bottom: 1.5rem;
         }
         .form-group {
           margin-bottom: 1.5rem;
@@ -354,6 +399,20 @@ export default function Home() {
         .message.info {
           background: #e3f2fd;
           color: #1976d2;
+        }
+        .info-box {
+          background: #f8f9fa;
+          padding: 1.5rem;
+          border-radius: 8px;
+          margin-top: 1.5rem;
+          border-left: 3px solid #0070f3;
+        }
+        .info-box h3 {
+          margin-top: 0;
+          color: #0070f3;
+        }
+        .info-box ul {
+          padding-left: 1.5rem;
         }
         @keyframes spin {
           to { transform: rotate(360deg); }
