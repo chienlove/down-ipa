@@ -2,20 +2,25 @@ import { useState } from 'react';
 import Head from 'next/head';
 
 export default function Home() {
-  const [appleId, setAppleId] = useState('');
-  const [password, setPassword] = useState('');
-  const [appId, setAppId] = useState('');
-  const [appVerId, setAppVerId] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+  const [formData, setFormData] = useState({
+    appleId: '',
+    password: '',
+    appId: '',
+    appVerId: '',
+    verificationCode: ''
+  });
   const [showMfa, setShowMfa] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  const handleChange = (e) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    setIsAuthLoading(true);
     setMessage({ text: '', type: '' });
 
     try {
@@ -25,11 +30,8 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          appleId,
-          password,
-          appId,
-          appVerId,
-          verificationCode: showMfa ? verificationCode : undefined,
+          ...formData,
+          verificationCode: showMfa ? formData.verificationCode : undefined
         }),
       });
 
@@ -41,7 +43,7 @@ export default function Home() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${appId}.ipa`;
+        a.download = `${formData.appId}.ipa`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -51,7 +53,7 @@ export default function Home() {
           type: 'success' 
         });
         setShowMfa(false);
-        setVerificationCode('');
+        setFormData(prev => ({ ...prev, verificationCode: '' }));
       } else {
         if (result.error === '2FA required') {
           setShowMfa(true);
@@ -77,7 +79,6 @@ export default function Home() {
       });
     } finally {
       setIsLoading(false);
-      setIsAuthLoading(false);
     }
   };
 
@@ -96,8 +97,8 @@ export default function Home() {
             <input
               type="text"
               id="appleId"
-              value={appleId}
-              onChange={(e) => setAppleId(e.target.value)}
+              value={formData.appleId}
+              onChange={handleChange}
               required
               disabled={isLoading}
               placeholder="email@example.com"
@@ -109,8 +110,8 @@ export default function Home() {
             <input
               type="password"
               id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={formData.password}
+              onChange={handleChange}
               required
               disabled={isLoading}
               placeholder="Mật khẩu Apple ID"
@@ -122,8 +123,8 @@ export default function Home() {
             <input
               type="text"
               id="appId"
-              value={appId}
-              onChange={(e) => setAppId(e.target.value)}
+              value={formData.appId}
+              onChange={handleChange}
               required
               disabled={isLoading}
               placeholder="com.example.app"
@@ -135,8 +136,8 @@ export default function Home() {
             <input
               type="text"
               id="appVerId"
-              value={appVerId}
-              onChange={(e) => setAppVerId(e.target.value)}
+              value={formData.appVerId}
+              onChange={handleChange}
               required
               disabled={isLoading}
               placeholder="1234567890"
@@ -149,8 +150,8 @@ export default function Home() {
               <input
                 type="text"
                 id="verificationCode"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
+                value={formData.verificationCode}
+                onChange={handleChange}
                 required
                 disabled={isLoading}
                 placeholder="Nhập 6 chữ số từ thiết bị Apple"
@@ -164,7 +165,7 @@ export default function Home() {
           <button type="submit" disabled={isLoading}>
             {isLoading ? (
               <>
-                {isAuthLoading ? 'Đang xác thực...' : 'Đang tải xuống...'}
+                Đang xử lý...
                 <span className="spinner"></span>
               </>
             ) : 'Tải xuống'}

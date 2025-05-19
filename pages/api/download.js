@@ -24,15 +24,12 @@ export default async function handler(req, res) {
 
     // Thiết lập môi trường
     process.env.HOME = '/tmp';
-    const cookieDir = path.join('/tmp', '.ipatool');
-    await fs.mkdir(cookieDir, { recursive: true });
 
-    // Bước 1: Đăng nhập với 2FA
+    // Bước 1: Đăng nhập
     const loginArgs = [
       'auth', 'login',
       '--email', appleId,
-      '--password', password,
-      '--cookie-directory', cookieDir
+      '--password', password
     ];
 
     if (verificationCode) {
@@ -41,29 +38,32 @@ export default async function handler(req, res) {
     }
 
     try {
-      const { stdout: loginOut, stderr: loginErr } = await execFileAsync(ipatoolPath, loginArgs, { 
-        timeout: 30000,
-        env: {
-          ...process.env,
-          IPATOOL_COOKIE_DIRECTORY: cookieDir
-        }
+      const { stdout, stderr } = await execFileAsync(ipatoolPath, loginArgs, {
+        timeout: 30000
       });
-      
-      if (loginErr && loginErr.includes('ERROR')) {
-        throw new Error(loginErr);
+
+      console.log('Login output:', stdout);
+      if (stderr) console.error('Login error:', stderr);
+
+      // Kiểm tra xem có cần mã 2FA không
+      if (stdout.includes('Enter the 6 digit code') || stderr.includes('two-factor')) {
+        return res.status(401).json({
+          error: '2FA required',
+          details: 'Mã xác thực đã được gửi đến thiết bị Apple của bạn. Vui lòng nhập mã 6 số.'
+        });
       }
-      console.log('Login success:', loginOut);
+
     } catch (loginError) {
       const errorOutput = (loginError.stderr || loginError.stdout || loginError.message || '').toString();
-      console.error('Login error:', errorOutput);
+      console.error('Login error details:', errorOutput);
 
       if (errorOutput.includes('two-factor') || errorOutput.includes('2FA') || 
           errorOutput.includes('verification') || errorOutput.includes('code')) {
-        return res.status(401).json({ 
+        return res.status(401).json({
           error: '2FA required',
-          details: verificationCode 
-            ? 'Mã xác thực không đúng hoặc đã hết hạn. Vui lòng thử lại.' 
-            : 'Vui lòng nhập mã xác thực 2FA từ thiết bị Apple của bạn'
+          details: errorOutput.includes('sent') 
+            ? errorOutput.match(/sent.*device/)?.[0] || 'Mã xác thực đã được gửi đến thiết bị Apple của bạn'
+            : 'Vui lòng kiểm tra thiết bị Apple của bạn để lấy mã xác thực'
         });
       }
       throw new Error(`Đăng nhập thất bại: ${errorOutput}`);
@@ -73,17 +73,12 @@ export default async function handler(req, res) {
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
-      '--version', appVerId,
-      '--cookie-directory', cookieDir
+      '--version', appVerId
     ];
 
     console.log('Starting download...');
     const { stdout } = await execFileAsync(ipatoolPath, downloadArgs, { 
-      timeout: 120000,
-      env: {
-        ...process.env,
-        IPATOOL_COOKIE_DIRECTORY: cookieDir
-      }
+      timeout: 120000
     });
     
     const downloadPath = stdout.trim().split('\n').pop();
