@@ -1,0 +1,45 @@
+name: Check ipatool flags
+
+on:
+  workflow_dispatch:  # Cho phép chạy thủ công từ GitHub interface
+
+jobs:
+  check-ipatool:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set executable permissions
+        run: chmod +x ./public/bin/ipatool
+      
+      - name: Check ipatool general help
+        run: |
+          echo "===== ipatool --help ====="
+          ./public/bin/ipatool --help
+        continue-on-error: true  # Tiếp tục ngay cả khi lệnh lỗi
+      
+      - name: Check auth login help
+        run: |
+          echo "===== ipatool auth login --help ====="
+          ./public/bin/ipatool auth login --help
+        continue-on-error: true
+        
+      - name: Check auth help
+        run: |
+          echo "===== ipatool auth --help ====="
+          ./public/bin/ipatool auth --help
+        continue-on-error: true
+        
+      - name: Check download help
+        run: |
+          echo "===== ipatool download --help ====="
+          ./public/bin/ipatool download --help
+        continue-on-error: true
+        
+      - name: Check ipatool version
+        run: |
+          echo "===== ipatool version ====="
+          ./public/bin/ipatool --version
+        continue-on-error: true
