@@ -221,10 +221,10 @@ export default async function handler(req, res) {
   }
 }
 
+  const oneHour = 60 * 60 * 1000;
 // Cleanup old sessions every hour
 setInterval(() => {
   const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
   
   for (const [sessionId, session] of sessions.entries()) {
     if (now - session.timestamp > oneHour) {
