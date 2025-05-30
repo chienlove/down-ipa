@@ -28,33 +28,30 @@ export default async function handler(req, res) {
   const keychainPath = path.join(tempDir, 'ipatool.keychain');
   
   try {
+    // Create temp directory with proper permissions
     await fs.mkdir(tempDir, { recursive: true });
     await fs.chmod(tempDir, 0o700);
-  } catch (err) {
-    console.warn('Không thể tạo thư mục tạm:', err.message);
-  }
 
-  const ipatoolPath = '/usr/local/bin/ipatool';
-  if (!existsSync(ipatoolPath)) {
-    return res.status(500).json({
-      error: 'TOOL_NOT_FOUND',
-      message: 'Không tìm thấy ipatool'
-    });
-  }
+    const ipatoolPath = '/usr/local/bin/ipatool';
+    if (!existsSync(ipatoolPath)) {
+      return res.status(500).json({
+        error: 'TOOL_NOT_FOUND',
+        message: 'Không tìm thấy ipatool'
+      });
+    }
 
-  const env = {
-    ...process.env,
-    HOME: tempDir,
-    TMPDIR: tempDir,
-    KEYCHAIN_PATH: keychainPath,
-    PATH: `/usr/local/bin:${process.env.PATH}`
-  };
+    const env = {
+      ...process.env,
+      HOME: tempDir,
+      TMPDIR: tempDir,
+      KEYCHAIN_PATH: keychainPath,
+      PATH: `/usr/local/bin:${process.env.PATH}`
+    };
 
-  try {
-    // 1. Kiểm tra session hiện có
+    // 1. Check existing session
     const existingSession = sessions.get(tempSessionId);
 
-    // 2. Xử lý 2FA nếu có session
+    // 2. Handle 2FA if required
     if (existingSession) {
       if (!twoFactorCode) {
         return res.status(202).json({
@@ -64,7 +61,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // Thực hiện xác thực 2FA
+      // Complete 2FA auth
       try {
         await execFileAsync(
           ipatoolPath,
@@ -79,14 +76,14 @@ export default async function handler(req, res) {
         );
         sessions.delete(tempSessionId);
       } catch (authError) {
-        console.error('Lỗi xác thực 2FA:', authError);
+        console.error('2FA Error:', authError);
         return res.status(400).json({
           error: 'TWO_FACTOR_FAILED',
           message: 'Mã 2FA không hợp lệ'
         });
       }
     } 
-    // 3. Đăng nhập lần đầu
+    // 3. Initial login
     else {
       try {
         const { stdout, stderr } = await execFileAsync(
@@ -101,7 +98,7 @@ export default async function handler(req, res) {
           { env, cwd: tempDir, timeout: 60000 }
         );
 
-        // Phát hiện yêu cầu 2FA
+        // Check for 2FA requirement
         const output = stdout + stderr;
         if (output.includes('verification code') || output.includes('two-factor')) {
           sessions.set(tempSessionId, {
@@ -117,7 +114,7 @@ export default async function handler(req, res) {
           });
         }
       } catch (loginError) {
-        console.error('Lỗi đăng nhập:', loginError);
+        console.error('Login Error:', loginError);
         
         if (loginError.message.includes('verification code') || 
             loginError.stderr?.includes('verification code')) {
@@ -136,41 +133,48 @@ export default async function handler(req, res) {
 
         return res.status(401).json({
           error: 'AUTH_FAILED',
-          message: 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'
+          message: 'Đăng nhập thất bại. Vui lòng kiểm lại thông tin.'
         });
       }
     }
 
-    // 4. Tải IPA sau khi xác thực thành công
+    // 4. After successful auth - download IPA
     const ipaPath = path.join(tempDir, `${appId}.ipa`);
     
-    const { stdout } = await execFileAsync(
-      ipatoolPath,
-      [
-        'download',
-        '--bundle-identifier', appId,
-        '--output', ipaPath,
-        '--keychain-passphrase', ''
-      ],
-      { env, cwd: tempDir, timeout: 300000 }
-    );
+    try {
+      const { stdout } = await execFileAsync(
+        ipatoolPath,
+        [
+          'download',
+          '--bundle-identifier', appId,
+          '--output', ipaPath,
+          '--keychain-passphrase', ''
+        ],
+        { env, cwd: tempDir, timeout: 300000 }
+      );
 
-    console.log('Download thành công:', stdout);
-    
-    if (!existsSync(ipaPath)) {
-      throw new Error('File IPA không được tạo');
+      console.log('Download Output:', stdout);
+      
+      if (!existsSync(ipaPath)) {
+        throw new Error('File IPA không được tạo');
+      }
+
+      const fileStats = await fs.stat(ipaPath);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
+      res.setHeader('Content-Length', fileStats.size);
+      
+      const fileStream = fs.createReadStream(ipaPath);
+      fileStream.pipe(res);
+      return;
+
+    } catch (downloadError) {
+      console.error('Download Error:', downloadError);
+      throw new Error(`Lỗi tải ứng dụng: ${downloadError.message}`);
     }
 
-    const fileStats = await fs.stat(ipaPath);
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
-    res.setHeader('Content-Length', fileStats.size);
-    
-    const fileStream = fs.createReadStream(ipaPath);
-    fileStream.pipe(res);
-
   } catch (error) {
-    console.error('Lỗi chính:', error);
+    console.error('Server Error:', error);
     res.status(500).json({
       error: 'SERVER_ERROR',
       message: error.message || 'Lỗi máy chủ nội bộ'
@@ -179,12 +183,12 @@ export default async function handler(req, res) {
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
     } catch (cleanupError) {
-      console.warn('Lỗi dọn dẹp:', cleanupError.message);
+      console.warn('Cleanup Error:', cleanupError.message);
     }
   }
 }
 
-// Dọn session mỗi giờ
+// Cleanup old sessions hourly
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of sessions.entries()) {
