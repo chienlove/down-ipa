@@ -19,6 +19,7 @@ export default async function handler(req, res) {
   try {
     const { appleId, password, appId, appVerId, twoFactorCode, sessionId } = req.body;
 
+    // Validate required fields
     if (!appleId || !password || !appId) {
       return res.status(400).json({
         error: 'MISSING_FIELDS',
@@ -30,15 +31,17 @@ export default async function handler(req, res) {
     tempDir = path.join('/tmp', `ipa_${tempSessionId}`);
     const keychainPath = path.join(tempDir, 'ipatool.keychain');
 
+    // Create temp directory
     try {
       await fs.mkdir(tempDir, { recursive: true });
+      await fs.chmod(tempDir, 0o700); // Đảm bảo quyền truy cập
     } catch (err) {
       console.warn('Could not create temp directory:', err.message);
       tempDir = '/tmp';
     }
 
+    // Check ipatool exists
     const ipatoolPath = '/usr/local/bin/ipatool';
-
     if (!existsSync(ipatoolPath)) {
       return res.status(500).json({
         error: 'TOOL_NOT_FOUND',
@@ -46,137 +49,179 @@ export default async function handler(req, res) {
       });
     }
 
+    // Setup environment
     const env = {
       ...process.env,
       HOME: tempDir,
       TMPDIR: tempDir,
-      KEYCHAIN_PATH: keychainPath
+      KEYCHAIN_PATH: keychainPath,
+      PATH: `/usr/local/bin:${process.env.PATH}` // Đảm bảo PATH chứa ipatool
     };
 
+    // 1. Kiểm tra session hiện có
     const existingSession = sessions.get(tempSessionId);
 
+    // 2. Xử lý 2FA nếu có session nhưng chưa có mã
     if (existingSession && !twoFactorCode) {
-      // Nếu đã xác thực bước 1, nhưng chưa có mã 2FA
       return res.status(202).json({
         requiresTwoFactor: true,
         sessionId: tempSessionId,
-        message: 'Cần nhập mã xác thực 2 yếu tố'
+        message: 'Vui lòng nhập mã 2FA'
       });
     }
 
+    // 3. Xác thực 2FA nếu có mã
     if (existingSession && twoFactorCode) {
-      // Xác thực 2FA
       try {
-        const { stdout } = await execFileAsync(
+        await execFileAsync(
           ipatoolPath,
-          ['auth', '--keychain-passphrase', '', '--non-interactive', '--auth-code', twoFactorCode],
+          [
+            'auth', 'complete',
+            '--keychain-passphrase', '',
+            '--non-interactive',
+            '--auth-code', twoFactorCode
+          ],
           { env, cwd: tempDir, timeout: 30000 }
         );
-        console.log('2FA success:', stdout);
-        sessions.delete(tempSessionId);
-      } catch (err) {
-        console.error('2FA failed:', err);
+        sessions.delete(tempSessionId); // Xóa session sau khi xác thực thành công
+      } catch (authError) {
+        console.error('2FA Error:', authError);
         return res.status(400).json({
           error: 'TWO_FACTOR_FAILED',
-          message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
+          message: 'Mã 2FA không đúng hoặc đã hết hạn'
         });
       }
-    } else if (!existingSession) {
-      // Thực hiện đăng nhập ban đầu
+    }
+    // 4. Đăng nhập nếu không có session
+    else if (!existingSession) {
       try {
-        const { stdout } = await execFileAsync(
+        const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
-          ['auth', 'login', '--email', appleId, '--password', password, '--keychain-passphrase', '', '--non-interactive'],
+          [
+            'auth', 'login',
+            '--email', appleId,
+            '--password', password,
+            '--keychain-passphrase', '',
+            '--non-interactive'
+          ],
           { env, cwd: tempDir, timeout: 60000 }
         );
-        console.log('Auth login thành công:', stdout);
-      } catch (err) {
-        if (err.message.includes('verification code')) {
-          // Phát hiện cần 2FA
+
+        // Phát hiện yêu cầu 2FA
+        if (stdout.includes('verification code') || stderr.includes('verification code')) {
           sessions.set(tempSessionId, {
             appleId,
             password,
             appId,
-            appVerId,
             timestamp: Date.now()
           });
           return res.status(202).json({
             requiresTwoFactor: true,
             sessionId: tempSessionId,
-            message: 'Cần nhập mã xác thực 2 yếu tố'
+            message: 'Vui lòng nhập mã 2FA được gửi đến thiết bị của bạn'
+          });
+        }
+
+        console.log('Đăng nhập thành công');
+      } catch (loginError) {
+        console.error('Login Error:', loginError);
+
+        // Phát hiện yêu cầu 2FA từ lỗi
+        if (loginError.message.includes('verification code') || 
+            loginError.stderr?.includes('verification code')) {
+          sessions.set(tempSessionId, {
+            appleId,
+            password,
+            appId,
+            timestamp: Date.now()
+          });
+          return res.status(202).json({
+            requiresTwoFactor: true,
+            sessionId: tempSessionId,
+            message: 'Vui lòng nhập mã 2FA'
           });
         }
 
         return res.status(401).json({
           error: 'AUTH_FAILED',
-          message: 'Đăng nhập thất bại'
+          message: 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'
         });
       }
     }
 
-    // Đã xác thực → tiến hành tải IPA
-    console.log(`Starting download for app: ${appId}`);
-
+    // 5. Tải IPA sau khi xác thực thành công
     const ipaFilename = `${appId}.ipa`;
     const ipaPath = path.join(tempDir, ipaFilename);
 
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
-      '--output', ipaPath
+      '--output', ipaPath,
+      '--keychain-passphrase', ''
     ];
 
     if (appVerId) {
       downloadArgs.push('--app-version-id', appVerId);
     }
 
-    const { stdout: downloadResult } = await execFileAsync(
-      ipatoolPath,
-      downloadArgs,
-      {
-        env,
-        cwd: tempDir,
-        timeout: 300000
+    try {
+      const { stdout } = await execFileAsync(
+        ipatoolPath,
+        downloadArgs,
+        { env, cwd: tempDir, timeout: 300000 }
+      );
+      console.log('Download Output:', stdout);
+
+      // Kiểm tra file tồn tại
+      if (!existsSync(ipaPath)) {
+        throw new Error('File IPA không được tạo');
       }
-    );
 
-    console.log('Download completed:', downloadResult);
+      const fileStats = await fs.stat(ipaPath);
+      if (fileStats.size === 0) {
+        throw new Error('File IPA rỗng');
+      }
 
-    downloadedFile = ipaPath;
-    const fileStats = await fs.stat(downloadedFile);
-    const fileBuffer = await fs.readFile(downloadedFile);
+      // Trả về file
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${ipaFilename}"`);
+      res.setHeader('Content-Length', fileStats.size);
 
-    res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${ipaFilename}"`);
-    res.setHeader('Content-Length', fileStats.size);
+      const fileStream = fs.createReadStream(ipaPath);
+      fileStream.pipe(res);
 
-    res.send(fileBuffer);
+    } catch (downloadError) {
+      console.error('Download Error:', downloadError);
+      return res.status(500).json({
+        error: 'DOWNLOAD_FAILED',
+        message: `Lỗi khi tải ứng dụng: ${downloadError.message}`
+      });
+    }
 
   } catch (error) {
-    console.error('Handler error:', error);
+    console.error('Server Error:', error);
     return res.status(500).json({
-      error: 'DOWNLOAD_FAILED',
-      message: error.message || 'Tải xuống thất bại'
+      error: 'SERVER_ERROR',
+      message: 'Lỗi máy chủ nội bộ'
     });
   } finally {
+    // Dọn dẹp
     if (tempDir && tempDir !== '/tmp') {
       try {
         await fs.rm(tempDir, { recursive: true, force: true });
       } catch (cleanupError) {
-        console.warn('Cleanup warning:', cleanupError.message);
+        console.warn('Cleanup Error:', cleanupError.message);
       }
     }
   }
 }
 
-const oneHour = 60 * 60 * 1000;
-
+// Dọn session cũ mỗi giờ
 setInterval(() => {
   const now = Date.now();
-
   for (const [sessionId, session] of sessions.entries()) {
-    if (now - session.timestamp > oneHour) {
+    if (now - session.timestamp > 3600000) { // 1 giờ
       sessions.delete(sessionId);
     }
   }
-}, oneHour);
+}, 3600000);
