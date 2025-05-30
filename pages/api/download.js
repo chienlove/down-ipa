@@ -49,15 +49,7 @@ export default async function handler(req, res) {
     const existingSession = sessions.get(tempSessionId);
 
     // Xử lý 2FA
-    if (existingSession) {
-      if (!twoFactorCode) {
-        return res.status(202).json({
-          requiresTwoFactor: true,
-          sessionId: tempSessionId,
-          message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
-        });
-      }
-
+    if (existingSession && twoFactorCode) {
       try {
         await execFileAsync(
           ipatoolPath,
@@ -78,7 +70,7 @@ export default async function handler(req, res) {
         });
       }
     } 
-    // Đăng nhập lần đầu
+    // Đăng nhập lần đầu hoặc yêu cầu 2FA
     else {
       try {
         const { stdout, stderr } = await execFileAsync(
@@ -125,7 +117,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // Xử lý lỗi đăng nhập thông thường
         return res.status(401).json({
           error: 'AUTH_FAILED',
           message: 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin'
@@ -169,13 +160,3 @@ export default async function handler(req, res) {
     }
   }
 }
-
-// Dọn session cũ mỗi giờ
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of sessions.entries()) {
-    if (now - session.timestamp > 3600000) {
-      sessions.delete(sessionId);
-    }
-  }
-}, 3600000);

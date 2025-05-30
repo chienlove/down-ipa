@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function IPADownloader() {
   const [form, setForm] = useState({
@@ -11,11 +11,20 @@ export default function IPADownloader() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [message, setMessage] = useState('');
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
+    setCountdown(30); // 30s countdown
 
     try {
       const payload = {
@@ -35,7 +44,8 @@ export default function IPADownloader() {
       if (res.status === 202) {
         setRequires2FA(true);
         setSessionId(data.sessionId);
-        setMessage(data.message);
+        setMessage(data.message || 'Vui lòng nhập mã 2FA từ thiết bị của bạn');
+        setCountdown(120); // Reset countdown to 2 minutes for 2FA
         return;
       }
 
@@ -53,20 +63,26 @@ export default function IPADownloader() {
         a.download = `${form.appId}.ipa`;
         a.click();
         setMessage('Tải xuống thành công!');
+        resetForm();
       }
 
     } catch (error) {
       console.error('Error:', error);
       setMessage(error.message || 'Đã xảy ra lỗi');
       
-      // Reset trạng thái 2FA nếu lỗi không liên quan
       if (!error.message.includes('2FA')) {
-        setRequires2FA(false);
-        setTwoFactorCode('');
+        resetForm();
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetForm = () => {
+    setRequires2FA(false);
+    setTwoFactorCode('');
+    setSessionId('');
+    setCountdown(0);
   };
 
   return (
@@ -140,21 +156,21 @@ export default function IPADownloader() {
             />
             <p style={{ fontSize: '0.8em', color: '#666', marginTop: '5px' }}>
               Mã đã được gửi đến thiết bị đáng tin cậy của bạn
+              {countdown > 0 && ` (${countdown}s)`}
             </p>
           </div>
         )}
 
         <button 
           type="submit" 
-          disabled={loading}
+          disabled={loading || countdown > 0}
           style={{ 
-            background: '#007AFF', 
+            background: loading || countdown > 0 ? '#ccc' : '#007AFF', 
             color: 'white', 
             border: 'none', 
             padding: '10px 15px',
             borderRadius: '4px',
-            cursor: 'pointer',
-            opacity: loading ? 0.7 : 1
+            cursor: loading || countdown > 0 ? 'not-allowed' : 'pointer'
           }}
         >
           {loading ? 'Đang xử lý...' : requires2FA ? 'Xác nhận mã 2FA' : 'Tải về'}
@@ -176,8 +192,8 @@ export default function IPADownloader() {
       <div style={{ background: '#fff3cd', padding: '15px', borderRadius: '4px' }}>
         <h3 style={{ marginTop: 0 }}>Lưu ý quan trọng:</h3>
         <ul style={{ marginBottom: 0 }}>
-          <li>Chỉ tải được ứng dụng bạn đã mua/tải miễn phí trước đó</li>
-          <li>Apple ID phải bật xác thực 2 yếu tố</li>
+          <li>Nếu không thấy form nhập 2FA, vui lòng kiểm tra console (F12)</li>
+          <li>Mã 2FA sẽ hết hạn sau 2 phút</li>
           <li>Với tài khoản không bật 2FA, hệ thống sẽ tự động xử lý</li>
         </ul>
       </div>
