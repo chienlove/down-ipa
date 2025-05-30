@@ -1,10 +1,10 @@
 import { useState } from 'react';
 
-export default function Home() {
-  const [form, setForm] = useState({ 
-    appleId: '', 
-    password: '', 
-    appId: '' 
+export default function IPADownloader() {
+  const [form, setForm] = useState({
+    appleId: '',
+    password: '',
+    appId: ''
   });
   const [loading, setLoading] = useState(false);
   const [requires2FA, setRequires2FA] = useState(false);
@@ -35,7 +35,7 @@ export default function Home() {
       if (res.status === 202) {
         setRequires2FA(true);
         setSessionId(data.sessionId);
-        setMessage(data.message || 'Vui lòng nhập mã 2FA được gửi đến thiết bị của bạn');
+        setMessage(data.message);
         return;
       }
 
@@ -45,20 +45,21 @@ export default function Home() {
       }
 
       // Xử lý download thành công
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${form.appId}.ipa`;
-      a.click();
-      
-      setMessage('Tải xuống thành công!');
+      if (res.headers.get('content-type')?.includes('application/octet-stream')) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${form.appId}.ipa`;
+        a.click();
+        setMessage('Tải xuống thành công!');
+      }
 
     } catch (error) {
       console.error('Error:', error);
       setMessage(error.message || 'Đã xảy ra lỗi');
       
-      // Reset 2FA state nếu lỗi không liên quan đến 2FA
+      // Reset trạng thái 2FA nếu lỗi không liên quan
       if (!error.message.includes('2FA')) {
         setRequires2FA(false);
         setTwoFactorCode('');
@@ -75,7 +76,8 @@ export default function Home() {
       <form onSubmit={handleSubmit} style={{ 
         background: '#f5f5f5', 
         padding: '20px', 
-        borderRadius: '8px' 
+        borderRadius: '8px',
+        marginBottom: '20px'
       }}>
         {!requires2FA ? (
           <>
@@ -170,6 +172,15 @@ export default function Home() {
           </div>
         )}
       </form>
+
+      <div style={{ background: '#fff3cd', padding: '15px', borderRadius: '4px' }}>
+        <h3 style={{ marginTop: 0 }}>Lưu ý quan trọng:</h3>
+        <ul style={{ marginBottom: 0 }}>
+          <li>Chỉ tải được ứng dụng bạn đã mua/tải miễn phí trước đó</li>
+          <li>Apple ID phải bật xác thực 2 yếu tố</li>
+          <li>Với tài khoản không bật 2FA, hệ thống sẽ tự động xử lý</li>
+        </ul>
+      </div>
     </div>
   );
 }

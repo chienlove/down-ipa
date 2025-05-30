@@ -15,7 +15,6 @@ export default async function handler(req, res) {
 
   const { appleId, password, appId, twoFactorCode, sessionId } = req.body;
   
-  // Validate input
   if (!appleId || !password || !appId) {
     return res.status(400).json({ 
       error: 'MISSING_FIELDS',
@@ -46,10 +45,10 @@ export default async function handler(req, res) {
       KEYCHAIN_PATH: keychainPath
     };
 
-    // 1. Check existing session
+    // Kiểm tra session hiện có
     const existingSession = sessions.get(tempSessionId);
 
-    // 2. Handle 2FA if required
+    // Xử lý 2FA
     if (existingSession) {
       if (!twoFactorCode) {
         return res.status(202).json({
@@ -79,7 +78,7 @@ export default async function handler(req, res) {
         });
       }
     } 
-    // 3. Initial login
+    // Đăng nhập lần đầu
     else {
       try {
         const { stdout, stderr } = await execFileAsync(
@@ -93,7 +92,7 @@ export default async function handler(req, res) {
           { env, cwd: tempDir, timeout: 60000 }
         );
 
-        // Check for 2FA requirement
+        // Kiểm tra yêu cầu 2FA
         const output = stdout + stderr;
         if (output.includes('verification code') || output.includes('two-factor')) {
           sessions.set(tempSessionId, { 
@@ -111,6 +110,7 @@ export default async function handler(req, res) {
       } catch (error) {
         console.error('Login Error:', error);
         
+        // Phát hiện yêu cầu 2FA từ lỗi
         if (error.message.includes('verification code') || error.stderr?.includes('verification code')) {
           sessions.set(tempSessionId, { 
             appleId, 
@@ -125,6 +125,7 @@ export default async function handler(req, res) {
           });
         }
 
+        // Xử lý lỗi đăng nhập thông thường
         return res.status(401).json({
           error: 'AUTH_FAILED',
           message: 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin'
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // 4. Download IPA
+    // Tải IPA sau khi xác thực thành công
     const ipaPath = path.join(tempDir, `${appId}.ipa`);
     const { stdout } = await execFileAsync(
       ipatoolPath,
@@ -169,11 +170,11 @@ export default async function handler(req, res) {
   }
 }
 
-// Cleanup old sessions
+// Dọn session cũ mỗi giờ
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of sessions.entries()) {
-    if (now - session.timestamp > 3600000) { // 1 hour
+    if (now - session.timestamp > 3600000) {
       sessions.delete(sessionId);
     }
   }
