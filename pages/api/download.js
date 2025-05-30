@@ -53,66 +53,46 @@ export default async function handler(req, res) {
       KEYCHAIN_PATH: keychainPath
     };
 
-    let existingSession = sessions.get(tempSessionId);
+    const existingSession = sessions.get(tempSessionId);
 
-    // Nếu có session và client gửi mã 2FA
-    if (existingSession && twoFactorCode) {
-      console.log('Completing 2FA authentication...');
-
-      try {
-        const { stdout: authResult } = await execFileAsync(
-          ipatoolPath,
-          ['auth', '--keychain-passphrase', '', '--non-interactive', '--auth-code', twoFactorCode],
-          {
-            env,
-            cwd: tempDir,
-            timeout: 30000
-          }
-        );
-
-        console.log('2FA completed:', authResult);
-        sessions.delete(tempSessionId);
-        existingSession = null;
-      } catch (authError) {
-        console.error('2FA error:', authError.message);
-        return res.status(400).json({
-          error: 'TWO_FACTOR_FAILED',
-          message: 'Mã 2FA không đúng hoặc đã hết hạn'
-        });
-      }
+    if (existingSession && !twoFactorCode) {
+      // Nếu đã xác thực bước 1, nhưng chưa có mã 2FA
+      return res.status(202).json({
+        requiresTwoFactor: true,
+        sessionId: tempSessionId,
+        message: 'Cần nhập mã xác thực 2 yếu tố'
+      });
     }
 
-    // Nếu chưa có session => đăng nhập
-    if (!existingSession) {
-      console.log('Starting authentication...');
-
+    if (existingSession && twoFactorCode) {
+      // Xác thực 2FA
       try {
-        const { stdout: authResult } = await execFileAsync(
+        const { stdout } = await execFileAsync(
           ipatoolPath,
-          [
-            'auth',
-            'login',
-            '--email', appleId,
-            '--password', password,
-            '--keychain-passphrase', '',
-            '--non-interactive'
-          ],
-          {
-            env,
-            cwd: tempDir,
-            timeout: 60000
-          }
+          ['auth', '--keychain-passphrase', '', '--non-interactive', '--auth-code', twoFactorCode],
+          { env, cwd: tempDir, timeout: 30000 }
         );
-
-        console.log('Authentication successful:', authResult);
-      } catch (authError) {
-        console.error('Auth error:', authError);
-
-        if (
-          authError.message.includes('verification code') ||
-          authError.message.includes('two-factor') ||
-          authError.stdout?.includes('verification code')
-        ) {
+        console.log('2FA success:', stdout);
+        sessions.delete(tempSessionId);
+      } catch (err) {
+        console.error('2FA failed:', err);
+        return res.status(400).json({
+          error: 'TWO_FACTOR_FAILED',
+          message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
+        });
+      }
+    } else if (!existingSession) {
+      // Thực hiện đăng nhập ban đầu
+      try {
+        const { stdout } = await execFileAsync(
+          ipatoolPath,
+          ['auth', 'login', '--email', appleId, '--password', password, '--keychain-passphrase', '', '--non-interactive'],
+          { env, cwd: tempDir, timeout: 60000 }
+        );
+        console.log('Auth login thành công:', stdout);
+      } catch (err) {
+        if (err.message.includes('verification code')) {
+          // Phát hiện cần 2FA
           sessions.set(tempSessionId, {
             appleId,
             password,
@@ -120,7 +100,6 @@ export default async function handler(req, res) {
             appVerId,
             timestamp: Date.now()
           });
-
           return res.status(202).json({
             requiresTwoFactor: true,
             sessionId: tempSessionId,
@@ -130,7 +109,7 @@ export default async function handler(req, res) {
 
         return res.status(401).json({
           error: 'AUTH_FAILED',
-          message: 'Đăng nhập thất bại. Vui lòng kiểm tra Apple ID và mật khẩu.'
+          message: 'Đăng nhập thất bại'
         });
       }
     }
