@@ -24,10 +24,10 @@ export default function IPADownloader() {
     e.preventDefault();
     setLoading(true);
     setMessage('');
-    
-    // Chỉ set countdown cho initial request, không set cho 2FA
+
+    // Không cần delay nếu là xác thực 2FA
     if (!requires2FA) {
-      setCountdown(30);
+      setCountdown(0); // Đảm bảo không bị delay form khi login ban đầu
     }
 
     try {
@@ -47,7 +47,6 @@ export default function IPADownloader() {
       console.log('Response status:', res.status);
       console.log('Response headers:', Object.fromEntries(res.headers.entries()));
 
-      // Xử lý file download
       if (res.ok && res.headers.get('content-type')?.includes('application/octet-stream')) {
         console.log('Downloading file...');
         const blob = await res.blob();
@@ -59,39 +58,33 @@ export default function IPADownloader() {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-        
+
         setMessage('Tải xuống thành công!');
         resetForm();
         return;
       }
 
-      // Xử lý JSON response
       const data = await res.json();
       console.log('Response data:', data);
 
-      // Xử lý yêu cầu 2FA
       if (data.requiresTwoFactor) {
         console.log('2FA required, sessionId:', data.sessionId);
         setRequires2FA(true);
         setSessionId(data.sessionId);
         setMessage(data.message || 'Vui lòng nhập mã 2FA từ thiết bị của bạn');
-        setCountdown(120); // 2 minutes for 2FA
+        setCountdown(0); // Không countdown khi chờ nhập mã
         return;
       }
 
-      // Xử lý lỗi
       if (!res.ok) {
         throw new Error(data.message || `HTTP ${res.status}: ${res.statusText}`);
       }
 
-      // Fallback cho các trường hợp khác
       setMessage(data.message || 'Yêu cầu hoàn thành');
-
     } catch (error) {
       console.error('Request Error:', error);
       setMessage(error.message || 'Đã xảy ra lỗi kết nối');
-      
-      // Reset form nếu không phải lỗi 2FA
+
       if (!error.message?.includes('2FA') && !requires2FA) {
         resetForm();
       }
@@ -116,10 +109,10 @@ export default function IPADownloader() {
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px' }}>
       <h1>Tải ứng dụng IPA</h1>
-      
-      <form onSubmit={handleSubmit} style={{ 
-        background: '#f5f5f5', 
-        padding: '20px', 
+
+      <form onSubmit={handleSubmit} style={{
+        background: '#f5f5f5',
+        padding: '20px',
         borderRadius: '8px',
         marginBottom: '20px'
       }}>
@@ -133,11 +126,11 @@ export default function IPADownloader() {
                 type="email"
                 name="appleId"
                 value={form.appleId}
-                onChange={(e) => setForm({...form, appleId: e.target.value})}
+                onChange={(e) => setForm({ ...form, appleId: e.target.value })}
                 required
                 disabled={loading}
-                style={{ 
-                  width: '100%', 
+                style={{
+                  width: '100%',
                   padding: '8px',
                   borderRadius: '4px',
                   border: '1px solid #ddd'
@@ -154,11 +147,11 @@ export default function IPADownloader() {
                 type="password"
                 name="password"
                 value={form.password}
-                onChange={(e) => setForm({...form, password: e.target.value})}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
                 required
                 disabled={loading}
-                style={{ 
-                  width: '100%', 
+                style={{
+                  width: '100%',
                   padding: '8px',
                   borderRadius: '4px',
                   border: '1px solid #ddd'
@@ -174,11 +167,11 @@ export default function IPADownloader() {
               <input
                 name="appId"
                 value={form.appId}
-                onChange={(e) => setForm({...form, appId: e.target.value})}
+                onChange={(e) => setForm({ ...form, appId: e.target.value })}
                 required
                 disabled={loading}
-                style={{ 
-                  width: '100%', 
+                style={{
+                  width: '100%',
                   padding: '8px',
                   borderRadius: '4px',
                   border: '1px solid #ddd'
@@ -208,8 +201,8 @@ export default function IPADownloader() {
               required
               autoFocus
               disabled={loading}
-              style={{ 
-                width: '100%', 
+              style={{
+                width: '100%',
                 padding: '12px',
                 textAlign: 'center',
                 letterSpacing: '3px',
@@ -220,9 +213,8 @@ export default function IPADownloader() {
             />
             <p style={{ fontSize: '0.8em', color: '#666', marginTop: '5px', textAlign: 'center' }}>
               Mã đã được gửi đến thiết bị đáng tin cậy của bạn
-              {countdown > 0 && ` (${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')})`}
             </p>
-            <button 
+            <button
               type="button"
               onClick={handleReset}
               style={{
@@ -241,16 +233,16 @@ export default function IPADownloader() {
           </div>
         )}
 
-        <button 
-          type="submit" 
-          disabled={loading || (countdown > 0 && !requires2FA)}
-          style={{ 
-            background: loading || (countdown > 0 && !requires2FA) ? '#ccc' : '#007AFF', 
-            color: 'white', 
-            border: 'none', 
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            background: loading ? '#ccc' : '#007AFF',
+            color: 'white',
+            border: 'none',
             padding: '12px 20px',
             borderRadius: '4px',
-            cursor: loading || (countdown > 0 && !requires2FA) ? 'not-allowed' : 'pointer',
+            cursor: loading ? 'not-allowed' : 'pointer',
             width: '100%',
             fontSize: '16px',
             fontWeight: 'bold'
@@ -260,16 +252,16 @@ export default function IPADownloader() {
         </button>
 
         {message && (
-          <div style={{ 
-            marginTop: '15px', 
+          <div style={{
+            marginTop: '15px',
             padding: '12px',
-            background: message.includes('thành công') ? '#d4edda' : 
-                       message.includes('2FA') || message.includes('mã') ? '#d1ecf1' : '#f8d7da',
-            color: message.includes('thành công') ? '#155724' : 
-                   message.includes('2FA') || message.includes('mã') ? '#0c5460' : '#721c24',
+            background: message.includes('thành công') ? '#d4edda' :
+              message.includes('2FA') || message.includes('mã') ? '#d1ecf1' : '#f8d7da',
+            color: message.includes('thành công') ? '#155724' :
+              message.includes('2FA') || message.includes('mã') ? '#0c5460' : '#721c24',
             borderRadius: '4px',
-            borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' : 
-                                   message.includes('2FA') || message.includes('mã') ? '#17a2b8' : '#dc3545'}`
+            borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' :
+              message.includes('2FA') || message.includes('mã') ? '#17a2b8' : '#dc3545'}`
           }}>
             {message}
           </div>
@@ -285,24 +277,6 @@ export default function IPADownloader() {
           <li>Bundle ID có thể tìm thấy trên App Store Connect hoặc các trang web phân tích ứng dụng</li>
         </ul>
       </div>
-
-      {/* Debug info in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div style={{ 
-          marginTop: '20px', 
-          padding: '10px', 
-          background: '#f8f9fa', 
-          borderRadius: '4px',
-          fontSize: '0.8em',
-          fontFamily: 'monospace'
-        }}>
-          <strong>Debug:</strong><br/>
-          Loading: {loading.toString()}<br/>
-          Requires2FA: {requires2FA.toString()}<br/>
-          SessionId: {sessionId}<br/>
-          Countdown: {countdown}
-        </div>
-      )}
     </div>
   );
 }
