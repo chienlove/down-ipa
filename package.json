@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
-    "start:regular": "next start",
+    "start:regular": "next start -H 0.0.0.0 -p 8080",
     "lint": "next lint"
   },
   "dependencies": {

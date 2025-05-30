@@ -25,7 +25,7 @@ RUN npm run build
 RUN mkdir -p downloads && chmod 755 downloads
 
 # Expose port
-EXPOSE ${PORT:-3000}
+EXPOSE 8080
 
 # Start the application using regular next start
 CMD ["npm", "run", "start:regular"]
