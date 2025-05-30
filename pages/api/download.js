@@ -29,6 +29,7 @@ export default async function handler(req, res) {
   
   try {
     await fs.mkdir(tempDir, { recursive: true });
+    await fs.chmod(tempDir, 0o700);
   } catch (err) {
     console.warn('Không thể tạo thư mục tạm:', err.message);
   }
@@ -45,29 +46,31 @@ export default async function handler(req, res) {
     ...process.env,
     HOME: tempDir,
     TMPDIR: tempDir,
-    KEYCHAIN_PATH: keychainPath
+    KEYCHAIN_PATH: keychainPath,
+    PATH: `/usr/local/bin:${process.env.PATH}`
   };
 
-  // Phần quan trọng: Xử lý 2FA flow
   try {
+    // 1. Kiểm tra session hiện có
     const existingSession = sessions.get(tempSessionId);
 
-    // Trường hợp 1: Đã có session nhưng chưa gửi mã 2FA
-    if (existingSession && !twoFactorCode) {
-      return res.status(202).json({
-        requiresTwoFactor: true,
-        sessionId: tempSessionId,
-        message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
-      });
-    }
+    // 2. Xử lý 2FA nếu có session
+    if (existingSession) {
+      if (!twoFactorCode) {
+        return res.status(202).json({
+          requiresTwoFactor: true,
+          sessionId: tempSessionId,
+          message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
+        });
+      }
 
-    // Trường hợp 2: Xử lý mã 2FA
-    if (existingSession && twoFactorCode) {
+      // Thực hiện xác thực 2FA
       try {
         await execFileAsync(
           ipatoolPath,
           [
             'auth', 'complete',
+            '--email', appleId,
             '--keychain-passphrase', '',
             '--non-interactive',
             '--auth-code', twoFactorCode
@@ -83,41 +86,65 @@ export default async function handler(req, res) {
         });
       }
     } 
-    // Trường hợp 3: Đăng nhập lần đầu
-    else if (!existingSession) {
-      const { stdout, stderr } = await execFileAsync(
-        ipatoolPath,
-        [
-          'auth', 'login',
-          '--email', appleId,
-          '--password', password,
-          '--keychain-passphrase', '',
-          '--non-interactive'
-        ],
-        { env, cwd: tempDir, timeout: 60000 }
-      );
+    // 3. Đăng nhập lần đầu
+    else {
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          ipatoolPath,
+          [
+            'auth', 'login',
+            '--email', appleId,
+            '--password', password,
+            '--keychain-passphrase', '',
+            '--non-interactive'
+          ],
+          { env, cwd: tempDir, timeout: 60000 }
+        );
 
-      // Phát hiện yêu cầu 2FA
-      const output = stdout + stderr;
-      if (output.includes('verification code') || output.includes('two-factor')) {
-        sessions.set(tempSessionId, {
-          appleId,
-          password,
-          appId,
-          timestamp: Date.now()
-        });
-        return res.status(202).json({
-          requiresTwoFactor: true,
-          sessionId: tempSessionId,
-          message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
+        // Phát hiện yêu cầu 2FA
+        const output = stdout + stderr;
+        if (output.includes('verification code') || output.includes('two-factor')) {
+          sessions.set(tempSessionId, {
+            appleId,
+            password,
+            appId,
+            timestamp: Date.now()
+          });
+          return res.status(202).json({
+            requiresTwoFactor: true,
+            sessionId: tempSessionId,
+            message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
+          });
+        }
+      } catch (loginError) {
+        console.error('Lỗi đăng nhập:', loginError);
+        
+        if (loginError.message.includes('verification code') || 
+            loginError.stderr?.includes('verification code')) {
+          sessions.set(tempSessionId, {
+            appleId,
+            password,
+            appId,
+            timestamp: Date.now()
+          });
+          return res.status(202).json({
+            requiresTwoFactor: true,
+            sessionId: tempSessionId,
+            message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
+          });
+        }
+
+        return res.status(401).json({
+          error: 'AUTH_FAILED',
+          message: 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.'
         });
       }
     }
 
-    // Sau khi xác thực thành công - thực hiện download
+    // 4. Tải IPA sau khi xác thực thành công
     const ipaPath = path.join(tempDir, `${appId}.ipa`);
     
-    const { stdout: downloadOutput } = await execFileAsync(
+    const { stdout } = await execFileAsync(
       ipatoolPath,
       [
         'download',
@@ -128,8 +155,12 @@ export default async function handler(req, res) {
       { env, cwd: tempDir, timeout: 300000 }
     );
 
-    console.log('Download thành công:', downloadOutput);
+    console.log('Download thành công:', stdout);
     
+    if (!existsSync(ipaPath)) {
+      throw new Error('File IPA không được tạo');
+    }
+
     const fileStats = await fs.stat(ipaPath);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
@@ -140,25 +171,9 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Lỗi chính:', error);
-    
-    // Xử lý các trường hợp lỗi đặc biệt
-    if (error.message.includes('verification code')) {
-      sessions.set(tempSessionId, {
-        appleId,
-        password,
-        appId,
-        timestamp: Date.now()
-      });
-      return res.status(202).json({
-        requiresTwoFactor: true,
-        sessionId: tempSessionId,
-        message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
-      });
-    }
-
     res.status(500).json({
       error: 'SERVER_ERROR',
-      message: error.message || 'Lỗi không xác định'
+      message: error.message || 'Lỗi máy chủ nội bộ'
     });
   } finally {
     try {
