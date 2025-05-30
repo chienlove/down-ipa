@@ -1,17 +1,17 @@
 import { useState } from 'react';
 
-export default function Home() {
-  const [form, setForm] = useState({ 
-    appleId: '', 
-    password: '', 
+export default function IPADownloader() {
+  const [form, setForm] = useState({
+    appleId: '',
+    password: '',
     appId: '',
     appVerId: ''
   });
   const [loading, setLoading] = useState(false);
-  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
+  const [requires2FA, setRequires2FA] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [sessionId, setSessionId] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState({ text: '', isError: false });
   const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
@@ -21,108 +21,114 @@ export default function Home() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
+    setMessage({ text: '', isError: false });
 
     try {
       const payload = {
-        appleId: form.appleId,
-        password: form.password,
-        appId: form.appId,
-        appVerId: form.appVerId,
-        ...(requiresTwoFactor && { 
-          twoFactorCode,
-          sessionId 
-        })
+        ...form,
+        ...(requires2FA && { twoFactorCode, sessionId })
       };
 
-      const res = await fetch('/api/download', {
+      const response = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
-      // Xử lý response
-      if (res.status === 202) {
-        // Yêu cầu 2FA
-        const data = await res.json();
-        setRequiresTwoFactor(true);
+      // Handle 2FA requirement
+      if (response.status === 202) {
+        const data = await response.json();
+        setRequires2FA(true);
         setSessionId(data.sessionId);
-        setMessage(data.message);
-      } else if (res.ok) {
-        // Download thành công
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${form.appId}.ipa`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        setMessage('✅ Tải xuống thành công!');
-        resetForm();
-      } else {
-        // Xử lý lỗi
-        const error = await res.json();
-        const errorMsg = error.message || 'Lỗi không xác định';
-        
-        setMessage(`❌ ${errorMsg}`);
-        if (!errorMsg.includes('2FA')) {
-          setRequiresTwoFactor(false);
-          setTwoFactorCode('');
-        }
+        setMessage({ 
+          text: data.message || 'Vui lòng nhập mã xác thực 2 yếu tố', 
+          isError: false 
+        });
+        return;
       }
+
+      // Handle errors
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Yêu cầu thất bại');
+      }
+
+      // Handle successful download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${form.appId}.ipa`;
+      a.click();
+      
+      setMessage({ 
+        text: 'Tải xuống thành công!', 
+        isError: false 
+      });
+      resetForm();
+
     } catch (error) {
-      console.error('Request error:', error);
-      setMessage('❌ Lỗi kết nối. Vui lòng thử lại.');
+      console.error('Error:', error);
+      setMessage({ 
+        text: error.message || 'Đã xảy ra lỗi', 
+        isError: true 
+      });
+      
+      // Reset 2FA state if error is not 2FA related
+      if (!error.message.includes('2FA') && !error.message.includes('xác thực')) {
+        setRequires2FA(false);
+        setTwoFactorCode('');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const resetForm = () => {
-    setRequiresTwoFactor(false);
+    setRequires2FA(false);
     setTwoFactorCode('');
     setSessionId('');
-    setMessage('');
+    setForm({ appleId: '', password: '', appId: '', appVerId: '' });
   };
 
   return (
     <div className="container">
       <h1>IPA Downloader</h1>
       
-      <div className="form-container">
+      <div className="card">
         <form onSubmit={handleSubmit}>
-          {!requiresTwoFactor ? (
+          {!requires2FA ? (
             <>
               <div className="form-group">
-                <label>Apple ID:</label>
+                <label htmlFor="appleId">Apple ID</label>
                 <input
+                  id="appleId"
                   type="email"
                   name="appleId"
-                  placeholder="your@email.com"
                   value={form.appleId}
                   onChange={handleChange}
+                  placeholder="email@example.com"
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label>Mật khẩu:</label>
+                <label htmlFor="password">Mật khẩu</label>
                 <div className="password-input">
                   <input
-                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
                     name="password"
-                    placeholder="Mật khẩu Apple ID"
                     value={form.password}
                     onChange={handleChange}
+                    placeholder="Mật khẩu Apple ID"
                     required
                   />
                   <button
                     type="button"
                     className="toggle-password"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
                     {showPassword ? '🙈' : '👁️'}
                   </button>
@@ -130,87 +136,93 @@ export default function Home() {
               </div>
 
               <div className="form-group">
-                <label>Bundle ID:</label>
+                <label htmlFor="appId">Bundle ID</label>
                 <input
+                  id="appId"
+                  type="text"
                   name="appId"
-                  placeholder="com.example.app"
                   value={form.appId}
                   onChange={handleChange}
+                  placeholder="com.example.app"
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label>App Version ID (tùy chọn):</label>
+                <label htmlFor="appVerId">App Version ID (tùy chọn)</label>
                 <input
+                  id="appVerId"
+                  type="text"
                   name="appVerId"
-                  placeholder="Để trống nếu không biết"
                   value={form.appVerId}
                   onChange={handleChange}
+                  placeholder="Để trống cho phiên bản mới nhất"
                 />
               </div>
             </>
           ) : (
             <div className="form-group">
-              <label>Mã xác thực 2 yếu tố:</label>
+              <label htmlFor="twoFactorCode">Mã xác thực 2 yếu tố</label>
               <input
+                id="twoFactorCode"
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
-                placeholder="Nhập mã 6 số"
                 value={twoFactorCode}
                 onChange={(e) => {
                   const value = e.target.value.replace(/\D/g, '');
                   setTwoFactorCode(value.slice(0, 6));
                 }}
+                placeholder="Nhập mã 6 số"
                 required
-                className="two-factor-input"
+                autoFocus
               />
-              <p className="hint">Vui lòng kiểm tra thiết bị đáng tin cậy của bạn để lấy mã</p>
+              <p className="hint">Kiểm tra thiết bị đáng tin cậy của bạn để lấy mã</p>
             </div>
           )}
 
           <div className="button-group">
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={loading}
               className={loading ? 'loading' : ''}
             >
               {loading ? (
-                <span className="spinner"></span>
-              ) : requiresTwoFactor ? (
+                <span className="spinner" aria-hidden="true"></span>
+              ) : requires2FA ? (
                 'Xác nhận mã 2FA'
               ) : (
                 'Tải xuống IPA'
               )}
             </button>
 
-            {requiresTwoFactor && (
-              <button 
+            {requires2FA && (
+              <button
                 type="button"
                 onClick={resetForm}
-                className="cancel-btn"
+                className="secondary"
+                disabled={loading}
               >
                 Hủy bỏ
               </button>
             )}
           </div>
-        </form>
 
-        {message && (
-          <div className={`message ${message.includes('❌') ? 'error' : 'success'}`}>
-            {message}
-          </div>
-        )}
+          {message.text && (
+            <div className={`message ${message.isError ? 'error' : 'success'}`}>
+              {message.text}
+            </div>
+          )}
+        </form>
       </div>
 
-      <div className="notes">
-        <h3>Lưu ý quan trọng:</h3>
+      <div className="notice">
+        <h3>Lưu ý quan trọng</h3>
         <ul>
           <li>Chỉ tải được ứng dụng bạn đã mua hoặc từng tải miễn phí</li>
           <li>Apple ID phải bật xác thực 2 yếu tố (2FA)</li>
           <li>Không lưu trữ thông tin đăng nhập của bạn</li>
-          <li>Bundle ID có thể tìm trên <a href="https://apps.apple.com" target="_blank">App Store</a></li>
+          <li>Bundle ID có thể tìm trên <a href="https://apps.apple.com" target="_blank" rel="noopener noreferrer">App Store</a></li>
         </ul>
       </div>
 
@@ -219,7 +231,7 @@ export default function Home() {
           max-width: 600px;
           margin: 0 auto;
           padding: 2rem;
-          font-family: 'Segoe UI', sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
         }
         
         h1 {
@@ -228,11 +240,11 @@ export default function Home() {
           margin-bottom: 2rem;
         }
         
-        .form-container {
-          background: #f8f9fa;
-          padding: 2rem;
+        .card {
+          background: #fff;
           border-radius: 8px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          padding: 2rem;
         }
         
         .form-group {
@@ -268,18 +280,12 @@ export default function Home() {
           border: none;
           cursor: pointer;
           font-size: 1.2rem;
-        }
-        
-        .two-factor-input {
-          text-align: center;
-          letter-spacing: 0.5rem;
-          font-size: 1.2rem;
-          font-family: monospace;
+          padding: 0;
         }
         
         .hint {
           margin-top: 0.5rem;
-          font-size: 0.9rem;
+          font-size: 0.875rem;
           color: #666;
         }
         
@@ -289,7 +295,7 @@ export default function Home() {
           margin-top: 1rem;
         }
         
-        button[type="submit"] {
+        button {
           flex: 1;
           padding: 0.75rem;
           background: #007AFF;
@@ -305,32 +311,33 @@ export default function Home() {
           justify-content: center;
         }
         
-        button[type="submit"]:hover {
+        button:hover {
           background: #0062CC;
         }
         
-        button[type="submit"].loading {
+        button.loading {
           background: #0062CC;
         }
         
-        .cancel-btn {
-          padding: 0.75rem 1.5rem;
+        button.secondary {
           background: #6c757d;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          font-size: 1rem;
-          cursor: pointer;
+          flex: 0 1 auto;
+          padding: 0.75rem 1.5rem;
         }
         
-        .cancel-btn:hover {
+        button.secondary:hover {
           background: #5a6268;
         }
         
+        button:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+        
         .spinner {
-          border: 3px solid rgba(255,255,255,0.3);
+          border: 2px solid rgba(255,255,255,0.3);
           border-radius: 50%;
-          border-top: 3px solid white;
+          border-top: 2px solid white;
           width: 20px;
           height: 20px;
           animation: spin 1s linear infinite;
@@ -359,30 +366,30 @@ export default function Home() {
           border: 1px solid #f5c6cb;
         }
         
-        .notes {
+        .notice {
           margin-top: 2rem;
           padding: 1.5rem;
           background: #fff3cd;
           border-radius: 4px;
-          border: 1px solid #ffeaa7;
           color: #856404;
         }
         
-        .notes h3 {
+        .notice h3 {
           margin-top: 0;
+          margin-bottom: 1rem;
         }
         
-        .notes ul {
+        .notice ul {
           padding-left: 1.5rem;
-          margin-bottom: 0;
+          margin: 0;
         }
         
-        .notes a {
+        .notice a {
           color: #0056b3;
           text-decoration: none;
         }
         
-        .notes a:hover {
+        .notice a:hover {
           text-decoration: underline;
         }
       `}</style>
