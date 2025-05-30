@@ -49,8 +49,7 @@ export default async function handler(req, res) {
     const env = {
       ...process.env,
       HOME: tempDir,
-      TMPDIR: tempDir,
-      KEYCHAIN_PATH: keychainPath
+      TMPDIR: tempDir
     };
 
     let existingSession = sessions.get(tempSessionId);
@@ -62,17 +61,26 @@ export default async function handler(req, res) {
       try {
         const { stdout: authResult } = await execFileAsync(
           ipatoolPath,
-          ['auth', '--keychain-passphrase', '', '--non-interactive', '--auth-code', twoFactorCode],
+          [
+            'auth', 
+            '--keychain', keychainPath,
+            '--keychain-passphrase', '', 
+            '--non-interactive', 
+            '--auth-code', twoFactorCode
+          ],
           {
             env,
             cwd: tempDir,
-            timeout: 30000
+            timeout: 60000
           }
         );
 
         console.log('2FA completed:', authResult);
-        sessions.delete(tempSessionId);
-        existingSession = null;
+        
+        // ✅ QUAN TRỌNG: Không xóa session sau 2FA, mà đánh dấu đã xác thực
+        existingSession.authenticated = true;
+        sessions.set(tempSessionId, existingSession);
+        
       } catch (authError) {
         console.error('2FA error:', authError.message);
         return res.status(400).json({
@@ -82,8 +90,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // Nếu chưa có session => đăng nhập
-    if (!existingSession) {
+    // Nếu chưa có session hoặc chưa xác thực => đăng nhập
+    if (!existingSession || !existingSession.authenticated) {
       console.log('Starting authentication...');
 
       try {
@@ -94,31 +102,43 @@ export default async function handler(req, res) {
             'login',
             '--email', appleId,
             '--password', password,
+            '--keychain', keychainPath,  // ✅ Thêm keychain path
             '--keychain-passphrase', '',
             '--non-interactive'
           ],
           {
             env,
             cwd: tempDir,
-            timeout: 60000
+            timeout: 90000  // ✅ Tăng timeout
           }
         );
 
         console.log('Authentication successful:', authResult);
+        
+        // ✅ Đánh dấu đã xác thực thành công
+        if (existingSession) {
+          existingSession.authenticated = true;
+        }
+        
       } catch (authError) {
         console.error('Auth error:', authError);
 
         if (
           authError.message.includes('verification code') ||
           authError.message.includes('two-factor') ||
-          authError.stdout?.includes('verification code')
+          authError.message.includes('두 단계') ||
+          authError.stdout?.includes('verification code') ||
+          authError.stderr?.includes('verification code')
         ) {
+          // ✅ Lưu session với keychain path
           sessions.set(tempSessionId, {
             appleId,
             password,
             appId,
             appVerId,
-            timestamp: Date.now()
+            keychainPath,  // ✅ Lưu keychain path
+            timestamp: Date.now(),
+            authenticated: false
           });
 
           return res.status(202).json({
@@ -135,6 +155,15 @@ export default async function handler(req, res) {
       }
     }
 
+    // ✅ Kiểm tra xác thực trước khi download
+    const currentSession = sessions.get(tempSessionId);
+    if (currentSession && !currentSession.authenticated) {
+      return res.status(401).json({
+        error: 'NOT_AUTHENTICATED',
+        message: 'Chưa hoàn tất xác thực'
+      });
+    }
+
     // Đã xác thực → tiến hành tải IPA
     console.log(`Starting download for app: ${appId}`);
 
@@ -144,6 +173,7 @@ export default async function handler(req, res) {
     const downloadArgs = [
       'download',
       '--bundle-identifier', appId,
+      '--keychain', keychainPath,  // ✅ Thêm keychain path
       '--output', ipaPath
     ];
 
@@ -157,7 +187,7 @@ export default async function handler(req, res) {
       {
         env,
         cwd: tempDir,
-        timeout: 300000
+        timeout: 600000  // ✅ Tăng timeout lên 10 phút
       }
     );
 
@@ -165,13 +195,27 @@ export default async function handler(req, res) {
 
     downloadedFile = ipaPath;
     const fileStats = await fs.stat(downloadedFile);
-    const fileBuffer = await fs.readFile(downloadedFile);
 
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${ipaFilename}"`);
     res.setHeader('Content-Length', fileStats.size);
 
-    res.send(fileBuffer);
+    // ✅ Stream file thay vì load hết vào memory
+    const fileStream = await fs.open(downloadedFile, 'r');
+    const readStream = fileStream.createReadStream();
+    
+    readStream.on('end', async () => {
+      await fileStream.close();
+      // ✅ Xóa session sau khi download thành công
+      sessions.delete(tempSessionId);
+    });
+    
+    readStream.on('error', async (error) => {
+      await fileStream.close();
+      console.error('Stream error:', error);
+    });
+
+    readStream.pipe(res);
 
   } catch (error) {
     console.error('Handler error:', error);
@@ -180,24 +224,29 @@ export default async function handler(req, res) {
       message: error.message || 'Tải xuống thất bại'
     });
   } finally {
+    // ✅ Delay cleanup để đảm bảo file được stream xong
     if (tempDir && tempDir !== '/tmp') {
-      try {
-        await fs.rm(tempDir, { recursive: true, force: true });
-      } catch (cleanupError) {
-        console.warn('Cleanup warning:', cleanupError.message);
-      }
+      setTimeout(async () => {
+        try {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        } catch (cleanupError) {
+          console.warn('Cleanup warning:', cleanupError.message);
+        }
+      }, 5000); // Delay 5 giây
     }
   }
 }
 
-const oneHour = 60 * 60 * 1000;
+// ✅ Cleanup session mỗi 30 phút thay vì 1 giờ
+const thirtyMinutes = 30 * 60 * 1000;
 
 setInterval(() => {
   const now = Date.now();
-
+  
   for (const [sessionId, session] of sessions.entries()) {
-    if (now - session.timestamp > oneHour) {
+    if (now - session.timestamp > thirtyMinutes) {
+      console.log(`Cleaning up expired session: ${sessionId}`);
       sessions.delete(sessionId);
     }
   }
-}, oneHour);
+}, thirtyMinutes);
