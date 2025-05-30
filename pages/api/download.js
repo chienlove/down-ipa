@@ -90,9 +90,11 @@ export default async function handler(req, res) {
         });
       }
     } 
-    // Đăng nhập lần đầu
+    // Đăng nhập lần đầu - Strategy mới
     else if (!existingSession) {
       console.log('Initial login attempt for:', appleId);
+      
+      // Strategy 1: Thử login trực tiếp và bắt error
       try {
         const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
@@ -102,61 +104,88 @@ export default async function handler(req, res) {
             '--password', password,
             '--keychain-passphrase', ''
           ],
-          { env, cwd: tempDir, timeout: 60000 }
+          { env, cwd: tempDir, timeout: 30000 }
         );
 
-        const output = (stdout + stderr).toLowerCase();
-        console.log('Login output:', output);
-
-        // Kiểm tra các patterns yêu cầu 2FA
-        const require2FAPatterns = [
-          'verification code',
-          'two-factor',
-          'enter the verification code',
-          'please enter the 6-digit verification code',
-          'authentication code',
-          'security code'
-        ];
-
-        const needs2FA = require2FAPatterns.some(pattern => output.includes(pattern));
-
-        if (needs2FA) {
-          console.log('2FA required detected');
-          sessions.set(tempSessionId, { 
-            appleId, 
-            password, 
-            appId,
-            timestamp: Date.now()
-          });
-          
-          return res.status(200).json({
-            requiresTwoFactor: true,
-            sessionId: tempSessionId,
-            message: 'Vui lòng nhập mã 2FA từ thiết bị của bạn'
-          });
-        }
-
-        // Nếu không cần 2FA, tiếp tục với download
+        console.log('Direct login stdout:', stdout);
+        console.log('Direct login stderr:', stderr);
+        
+        // Nếu đến đây thì login thành công không cần 2FA
         console.log('Login successful without 2FA');
         
-      } catch (error) {
-        console.error('Login Error:', error);
-        console.error('Login Error stdout:', error.stdout);
-        console.error('Login Error stderr:', error.stderr);
+      } catch (loginError) {
+        console.log('Login failed, analyzing error...');
+        console.log('Error code:', loginError.code);
+        console.log('Error stdout:', loginError.stdout);
+        console.log('Error stderr:', loginError.stderr);
+        console.log('Error message:', loginError.message);
         
-        const errorOutput = ((error.stdout || '') + (error.stderr || '') + (error.message || '')).toLowerCase();
+        const allErrorOutput = [
+          loginError.stdout || '',
+          loginError.stderr || '',
+          loginError.message || ''
+        ].join(' ').toLowerCase();
         
-        // Kiểm tra yêu cầu 2FA từ error message
+        console.log('Combined error output:', allErrorOutput);
+
+        // Enhanced 2FA detection patterns
         const require2FAPatterns = [
           'verification code',
           'two-factor',
           'enter the verification code',
-          'please enter the 6-digit verification code',
           'authentication code',
-          'security code'
+          'security code',
+          'two factor authentication',
+          'enter verification code',
+          'verification code sent',
+          'code has been sent',
+          'enter the code',
+          'trusted device',
+          'sent to your',
+          'verify your identity',
+          'complete authentication',
+          '2fa',
+          'verify',
+          'code'
         ];
 
-        const needs2FA = require2FAPatterns.some(pattern => errorOutput.includes(pattern));
+        const needs2FA = require2FAPatterns.some(pattern => {
+          const found = allErrorOutput.includes(pattern);
+          if (found) {
+            console.log('2FA pattern found:', pattern);
+          }
+          return found;
+        });
+
+        // Strategy 2: Nếu không phát hiện được 2FA từ error, thử strategy khác
+        if (!needs2FA) {
+          console.log('No 2FA pattern detected, checking if this might be 2FA account...');
+          
+          // Thử một số heuristics để detect 2FA account:
+          // 1. Login error nhưng không phải sai password
+          // 2. Apple ID hợp lệ nhưng không thể authenticate
+          const isValidAppleId = appleId.includes('@') && appleId.includes('.');
+          const isNotPasswordError = !allErrorOutput.includes('invalid credentials') && 
+                                   !allErrorOutput.includes('wrong password') &&
+                                   !allErrorOutput.includes('incorrect password');
+          
+          if (isValidAppleId && isNotPasswordError) {
+            console.log('Heuristic suggests this might be 2FA account');
+            // Force assume 2FA is needed
+            sessions.set(tempSessionId, { 
+              appleId, 
+              password, 
+              appId,
+              timestamp: Date.now()
+            });
+            
+            return res.status(200).json({
+              requiresTwoFactor: true,
+              sessionId: tempSessionId,
+              message: 'Tài khoản có thể cần xác thực 2FA. Vui lòng nhập mã 2FA nếu bạn nhận được.'
+            });
+          }
+        }
 
         if (needs2FA) {
           console.log('2FA required detected from error');
@@ -174,17 +203,41 @@ export default async function handler(req, res) {
           });
         }
 
-        // Các lỗi khác
+        // Xử lý các lỗi khác
         let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin';
         
-        if (errorOutput.includes('invalid credentials') || errorOutput.includes('wrong password')) {
+        if (allErrorOutput.includes('invalid credentials') || 
+            allErrorOutput.includes('wrong password') || 
+            allErrorOutput.includes('incorrect')) {
           errorMessage = 'Sai Apple ID hoặc mật khẩu';
-        } else if (errorOutput.includes('account locked')) {
+        } else if (allErrorOutput.includes('account locked') || 
+                   allErrorOutput.includes('locked')) {
           errorMessage = 'Tài khoản bị khóa. Vui lòng thử lại sau';
-        } else if (errorOutput.includes('network') || errorOutput.includes('connection')) {
+        } else if (allErrorOutput.includes('network') || 
+                   allErrorOutput.includes('connection') || 
+                   allErrorOutput.includes('timeout')) {
           errorMessage = 'Lỗi kết nối mạng. Vui lòng thử lại';
+        } else if (allErrorOutput.includes('rate limit') || 
+                   allErrorOutput.includes('too many')) {
+          errorMessage = 'Quá nhiều lần thử. Vui lòng đợi và thử lại sau';
+        } else {
+          // Fallback: nếu không rõ lỗi gì, có thể là 2FA
+          console.log('Unknown error, offering 2FA option as fallback');
+          sessions.set(tempSessionId, { 
+            appleId, 
+            password, 
+            appId,
+            timestamp: Date.now()
+          });
+          
+          return res.status(200).json({
+            requiresTwoFactor: true,
+            sessionId: tempSessionId,
+            message: 'Không thể đăng nhập. Nếu tài khoản có bật 2FA, vui lòng nhập mã xác thực.'
+          });
         }
 
+        console.log('Login failed with message:', errorMessage);
         return res.status(401).json({
           error: 'AUTH_FAILED',
           message: errorMessage
