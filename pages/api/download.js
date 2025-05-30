@@ -57,12 +57,16 @@ export default async function handler(req, res) {
 
     // Kiểm tra session hiện có
     const existingSession = sessions.get(tempSessionId);
-    if (!existingSession) {
-      console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
-      return res.status(400).json({
-        error: 'SESSION_EXPIRED',
-        message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
-      });
+
+// Nếu đang cố xác thực 2FA mà session không còn → lỗi
+if (twoFactorCode && !existingSession) {
+  console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
+  return res.status(400).json({
+    error: 'SESSION_EXPIRED',
+    message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
+  });
+}
+;
     }
 
 
