@@ -56,42 +56,47 @@ export default async function handler(req, res) {
     };
 
     // Kiểm tra session hiện có
+    const is2FARequest = !!twoFactorCode;
+
+  if (is2FARequest) {
     const existingSession = sessions.get(tempSessionId);
 
-// Nếu đang cố xác thực 2FA mà session không còn → lỗi
-if (twoFactorCode && !existingSession) {
-  console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
-  return res.status(400).json({
-    error: 'SESSION_EXPIRED',
-    message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
-  });
-}
-;
+    if (!existingSession) {
+      console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
+      return res.status(400).json({
+        error: 'SESSION_EXPIRED',
+        message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
+      });
     }
 
+    // Thực hiện xác thực 2FA
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        ipatoolPath,
+        [
+          'auth', 'complete',
+          '--email', existingSession.appleId,
+          '--password', existingSession.password,
+          '--keychain-passphrase', '',
+          '--auth-code', twoFactorCode
+        ],
+        { env, cwd: tempDir, timeout: 30000 }
+      );
 
-    // Xử lý 2FA
-    if (existingSession && twoFactorCode) {
-      console.log('Processing 2FA code:', twoFactorCode);
-      try {
-        const { stdout, stderr } = await execFileAsync(
-          ipatoolPath,
-          [
-            'auth', 'complete',
-            '--email', existingSession.appleId,
-            '--password', existingSession.password,
-            '--keychain-passphrase', '',
-            '--auth-code', twoFactorCode
-          ],
-          { env, cwd: tempDir, timeout: 30000 }
-        );
-        
-        console.log('2FA Complete stdout:', stdout);
-        console.log('2FA Complete stderr:', stderr);
-        
-        sessions.delete(tempSessionId);
-        
-        // Tiếp tục với việc download sau khi 2FA thành công
+      console.log('2FA Complete stdout:', stdout);
+      console.log('2FA Complete stderr:', stderr);
+
+      sessions.delete(tempSessionId);
+
+      // Tiếp tục với việc download sau khi 2FA thành công
+    } catch (error) {
+      console.error('2FA Error:', error);
+      return res.status(400).json({
+        error: 'TWO_FACTOR_FAILED',
+        message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
+      });
+    }
+  } else
       } catch (error) {
         console.error('2FA Error:', error);
         console.error('2FA Error stdout:', error.stdout);
