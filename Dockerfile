@@ -21,11 +21,16 @@ RUN chmod +x /usr/local/bin/ipatool
 # Build the application
 RUN npm run build
 
+# Copy the standalone output
+RUN cp -r .next/standalone/* ./
+RUN cp -r .next/static ./.next/static
+RUN cp -r public ./public
+
 # Create downloads directory
 RUN mkdir -p /app/downloads && chmod 755 /app/downloads
 
-# Expose port
-EXPOSE 3000
+# Expose port (Railway uses PORT env var)
+EXPOSE ${PORT:-3000}
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
