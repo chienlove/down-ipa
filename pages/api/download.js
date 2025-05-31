@@ -55,64 +55,49 @@ export default async function handler(req, res) {
       KEYCHAIN_PATH: keychainPath
     };
 
-    // Kiểm tra session hiện có
+    // Kiểm tra có phải là request 2FA không
     const is2FARequest = !!twoFactorCode;
-
-  if (is2FARequest) {
     const existingSession = sessions.get(tempSessionId);
 
-    if (!existingSession) {
-      console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
-      return res.status(400).json({
-        error: 'SESSION_EXPIRED',
-        message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
-      });
-    }
+    if (is2FARequest) {
+      // Xử lý 2FA
+      if (!existingSession) {
+        console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
+        return res.status(400).json({
+          error: 'SESSION_EXPIRED',
+          message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
+        });
+      }
 
-    // Thực hiện xác thực 2FA
-    try {
-      const { stdout, stderr } = await execFileAsync(
-        ipatoolPath,
-        [
-          'auth', 'complete',
-          '--email', existingSession.appleId,
-          '--password', existingSession.password,
-          '--keychain-passphrase', '',
-          '--auth-code', twoFactorCode
-        ],
-        { env, cwd: tempDir, timeout: 30000 }
-      );
+      try {
+        const { stdout, stderr } = await execFileAsync(
+          ipatoolPath,
+          [
+            'auth', 'complete',
+            '--email', existingSession.appleId,
+            '--password', existingSession.password,
+            '--keychain-passphrase', '',
+            '--auth-code', twoFactorCode
+          ],
+          { env, cwd: tempDir, timeout: 30000 }
+        );
 
-      console.log('2FA Complete stdout:', stdout);
-      console.log('2FA Complete stderr:', stderr);
+        console.log('2FA Complete stdout:', stdout);
+        console.log('2FA Complete stderr:', stderr);
 
-      sessions.delete(tempSessionId);
-
-      // Tiếp tục với việc download sau khi 2FA thành công
-    } catch (error) {
-      console.error('2FA Error:', error);
-      return res.status(400).json({
-        error: 'TWO_FACTOR_FAILED',
-        message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
-      });
-    }
-  } else
+        sessions.delete(tempSessionId);
+        // Tiếp tục với việc download sau khi 2FA thành công
       } catch (error) {
         console.error('2FA Error:', error);
-        console.error('2FA Error stdout:', error.stdout);
-        console.error('2FA Error stderr:', error.stderr);
-        
         return res.status(400).json({
           error: 'TWO_FACTOR_FAILED',
           message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
         });
       }
-    } 
-    // Đăng nhập lần đầu - Strategy mới
-    else if (!existingSession) {
+    } else {
+      // Xử lý đăng nhập thông thường
       console.log('Initial login attempt for:', appleId);
       
-      // Strategy 1: Thử login trực tiếp và bắt error
       try {
         const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
@@ -175,36 +160,6 @@ export default async function handler(req, res) {
           return found;
         });
 
-        // Strategy 2: Nếu không phát hiện được 2FA từ error, thử strategy khác
-        if (!needs2FA) {
-          console.log('No 2FA pattern detected, checking if this might be 2FA account...');
-          
-          // Thử một số heuristics để detect 2FA account:
-          // 1. Login error nhưng không phải sai password
-          // 2. Apple ID hợp lệ nhưng không thể authenticate
-          const isValidAppleId = appleId.includes('@') && appleId.includes('.');
-          const isNotPasswordError = !allErrorOutput.includes('invalid credentials') && 
-                                   !allErrorOutput.includes('wrong password') &&
-                                   !allErrorOutput.includes('incorrect password');
-          
-          if (isValidAppleId && isNotPasswordError) {
-            console.log('Heuristic suggests this might be 2FA account');
-            // Force assume 2FA is needed
-            sessions.set(tempSessionId, { 
-              appleId, 
-              password, 
-              appId,
-              timestamp: Date.now()
-            });
-            
-            return res.status(200).json({
-              requiresTwoFactor: true,
-              sessionId: tempSessionId,
-              message: 'Tài khoản có thể cần xác thực 2FA. Vui lòng nhập mã 2FA nếu bạn nhận được.'
-            });
-          }
-        }
-
         if (needs2FA) {
           console.log('2FA required detected from error');
           sessions.set(tempSessionId, { 
@@ -238,21 +193,6 @@ export default async function handler(req, res) {
         } else if (allErrorOutput.includes('rate limit') || 
                    allErrorOutput.includes('too many')) {
           errorMessage = 'Quá nhiều lần thử. Vui lòng đợi và thử lại sau';
-        } else {
-          // Fallback: nếu không rõ lỗi gì, có thể là 2FA
-          console.log('Unknown error, offering 2FA option as fallback');
-          sessions.set(tempSessionId, { 
-            appleId, 
-            password, 
-            appId,
-            timestamp: Date.now()
-          });
-          
-          return res.status(200).json({
-            requiresTwoFactor: true,
-            sessionId: tempSessionId,
-            message: 'Không thể đăng nhập. Nếu tài khoản có bật 2FA, vui lòng nhập mã xác thực.'
-          });
         }
 
         console.log('Login failed with message:', errorMessage);
