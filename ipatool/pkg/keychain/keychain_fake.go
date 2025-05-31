@@ -1,26 +1,55 @@
-//go:build !darwin
-
 package keychain
 
-// Keychain is a fake implementation for non-macOS systems like Linux.
-type Keychain struct{}
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sync"
+)
 
-// New returns a new fake Keychain instance.
-func New() (*Keychain, error) {
-	return &Keychain{}, nil
+type Keychain struct {
+	mu     sync.Mutex
+	dbPath string
+	data   map[string]string
 }
 
-// Set is a no-op fake method.
-func (k *Keychain) Set(service, account, password string) error {
+func New(name string) (*Keychain, error) {
+	k := &Keychain{
+		dbPath: filepath.Join(os.TempDir(), name+".json"),
+		data:   map[string]string{},
+	}
+	_ = k.load()
+	return k, nil
+}
+
+func (k *Keychain) load() error {
+	file, err := os.ReadFile(k.dbPath)
+	if err == nil {
+		json.Unmarshal(file, &k.data)
+	}
 	return nil
 }
 
-// Get always returns an empty string and no error.
+func (k *Keychain) save() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	file, _ := json.Marshal(k.data)
+	return os.WriteFile(k.dbPath, file, 0600)
+}
+
 func (k *Keychain) Get(service, account string) (string, error) {
-	return "", nil
+	k.load()
+	return k.data[service+"|"+account], nil
 }
 
-// Remove is a no-op fake method.
+func (k *Keychain) Set(service, account, password string) error {
+	k.load()
+	k.data[service+"|"+account] = password
+	return k.save()
+}
+
 func (k *Keychain) Remove(service, account string) error {
-	return nil
+	k.load()
+	delete(k.data, service+"|"+account)
+	return k.save()
 }
