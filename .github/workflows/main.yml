@@ -20,7 +20,7 @@ jobs:
 
     - name: Build for Linux
       run: |
-        GOOS=linux GOARCH=amd64 go build -o ipatool
+        GOOS=linux GOARCH=amd64 go build -o ../ipatool
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
