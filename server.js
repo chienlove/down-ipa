@@ -7,39 +7,24 @@ import { Store } from './src/client.js';
 import { SignatureClient } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 
-// =============================================
-// CẤU HÌNH CƠ BẢN
-// =============================================
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 5004;
 
-// =============================================
-// MIDDLEWARE
-// =============================================
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// =============================================
-// ROUTES CƠ BẢN
-// =============================================
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy',
-    timestamp: new Date().toISOString()
-  });
+  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// =============================================
-// HÀM HỖ TRỢ
-// =============================================
 const CHUNK_SIZE = 5 * 1024 * 1024;
 const MAX_CONCURRENT_DOWNLOADS = 10;
 const MAX_RETRIES = 5;
@@ -52,12 +37,12 @@ function generateRandomString(length) {
 
 async function downloadChunk({ url, start, end, output }) {
   const headers = { Range: `bytes=${start}-${end}` };
-  
+
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(url, { headers });
       if (!response.ok) throw new Error(`Failed to fetch chunk: ${response.statusText}`);
-      
+
       const fileStream = createWriteStream(output, { flags: 'a' });
       await new Promise((resolve, reject) => {
         response.body.pipe(fileStream);
@@ -75,9 +60,7 @@ async function downloadChunk({ url, start, end, output }) {
 async function clearCache(cacheDir) {
   try {
     const files = await fsPromises.readdir(cacheDir);
-    await Promise.all(files.map(file => 
-      fsPromises.unlink(path.join(cacheDir, file))
-    ));
+    await Promise.all(files.map(file => fsPromises.unlink(path.join(cacheDir, file))));
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.error(`Cache clearance error: ${error.message}`);
@@ -85,10 +68,7 @@ async function clearCache(cacheDir) {
   }
 }
 
-// =============================================
-// LỚP XỬ LÝ IPA
-// =============================================
-ksqclass IPATool {
+class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
     downloadPath = downloadPath || '.';
 
@@ -107,24 +87,18 @@ ksqclass IPATool {
 
     console.log('📦 Fetching app info...');
     const app = await Store.download(APPID, appVerId, user);
-
     const songList0 = app?.songList?.[0];
 
     if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
-      // ✅ 1. Chưa nhập mã 2FA → yêu cầu nhập
       if (app?.failureType?.toLowerCase().includes('mfa')) {
         return {
           require2FA: true,
           message: app.customerMessage || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã để tiếp tục.'
         };
       }
-
-      // ✅ 2. Mã 2FA sai hoặc hết hạn
       if (app?.customerMessage?.toLowerCase().includes('verification')) {
         throw new Error('❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
       }
-
-      // ✅ 3. App ID không tồn tại
       throw new Error(app?.customerMessage || '❌ Không thể tải ứng dụng. Kiểm tra lại App ID hoặc tài khoản.');
     }
 
@@ -195,9 +169,6 @@ ksqclass IPATool {
   }
 }
 
-// =============================================
-// ROUTE DOWNLOAD
-// =============================================
 const ipaTool = new IPATool();
 
 app.post('/download', async (req, res) => {
@@ -205,38 +176,6 @@ app.post('/download', async (req, res) => {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString(16));
 
-    let user;
-    try {
-      // ✅ Cố gắng đăng nhập
-      user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-    } catch (err) {
-      const errMsg = (err.message || '').toLowerCase();
-
-      // ✅ Apple yêu cầu mã xác minh 2FA
-      if (errMsg.includes('2fa') || errMsg.includes('verification') || errMsg.includes('mfa')) {
-        return res.status(200).json({
-          success: false,
-          require2FA: true,
-          message: '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.'
-        });
-      }
-
-      // ❌ Lỗi đăng nhập khác
-      return res.status(401).json({
-        success: false,
-        error: err.message || '❌ Lỗi xác thực Apple ID'
-      });
-    }
-
-    // ✅ Nếu đăng nhập thất bại dù không có exception
-    if (!user || user._state !== 'success') {
-      return res.status(401).json({
-        success: false,
-        error: user?.customerMessage || '❌ Apple từ chối xác thực. Vui lòng kiểm tra tài khoản hoặc thử lại.'
-      });
-    }
-
-    // ✅ Tải IPA
     const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
       APPLE_ID,
@@ -250,11 +189,10 @@ app.post('/download', async (req, res) => {
       return res.status(200).json({
         success: false,
         require2FA: true,
-        message: result.message || '🔐 Apple yêu cầu mã xác minh 2FA.'
+        message: result.message
       });
     }
 
-    // ✅ Xoá file sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -265,18 +203,11 @@ app.post('/download', async (req, res) => {
       }
     }, 30 * 60 * 1000);
 
-    // ✅ Trả thông tin ứng dụng
     res.json({
       success: true,
       downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
       fileName: result.fileName,
-      appInfo: {
-        name: result.appInfo?.name || '',
-        artist: result.appInfo?.artist || '',
-        version: result.appInfo?.version || '',
-        bundleId: result.appInfo?.bundleId || '',
-        releaseDate: result.appInfo?.releaseDate || ''
-      }
+      appInfo: result.appInfo
     });
 
   } catch (error) {
@@ -288,31 +219,22 @@ app.post('/download', async (req, res) => {
   }
 });
 
-// =============================================
-// CẤU HÌNH SERVER
-// =============================================
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
-// Xử lý 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-// Xử lý lỗi
 app.use((err, req, res, next) => {
   console.error('🔥 Server error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// Khởi động server
 const server = app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`🔗 Health check: http://localhost:${port}/health`);
 });
 
-// =============================================
-// XỬ LÝ TÍN HIỆU DỪNG
-// =============================================
 const shutdown = () => {
   console.log('🛑 Received shutdown signal');
   server.close(() => {
