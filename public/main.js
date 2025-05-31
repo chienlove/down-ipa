@@ -38,15 +38,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
-      // ✅ Ưu tiên kiểm tra require2FA
+      // ✅ Nếu yêu cầu mã xác minh 2FA
       if (result.require2FA) {
-        showError(result.message || 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.');
+        const code = prompt(result.message || 'Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
+        if (code) {
+          localStorage.setItem('2FA_CODE', code);
+          form.VERIFICATION_CODE.value = code; // ✅ Cập nhật lại input
+          submitBtn.click(); // ✅ Gửi lại form bằng click
+        } else {
+          showError('Bạn cần nhập mã xác minh để tiếp tục.');
+        }
         return;
       }
 
       if (res.ok && result.downloadUrl) {
         if (CODE && !storedCode) {
-          localStorage.setItem('2FA_CODE', CODE); // Lưu mã 2FA lần đầu
+          localStorage.setItem('2FA_CODE', CODE); // Lưu 2FA nếu chưa có
         }
         displayResult(result);
       } else {
