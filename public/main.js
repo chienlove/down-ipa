@@ -40,20 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
-      if (res.ok && result.downloadUrl) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Tải thành công!',
-          text: 'IPA đang được tải xuống...',
-          timer: 2000,
-          showConfirmButton: false
-        });
-        setTimeout(() => {
-          window.location.href = result.downloadUrl;
-        }, 1500);
-        return;
-      }
-
+      // ✅ Nếu server yêu cầu mã xác minh 2FA
       if (result.require2FA) {
         const { value: code } = await Swal.fire({
           title: '🔐 Mã xác minh 2FA',
@@ -76,15 +63,44 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // ✅ Thành công → hiện liên kết tải
+      if (res.ok && result.downloadUrl) {
+        const fileName = result.fileName || 'Tập tin IPA';
+        const appName = result.appInfo?.name || 'Ứng dụng';
+        const version = result.appInfo?.version || 'phiên bản không rõ';
+
+        Swal.fire({
+          icon: 'success',
+          title: '📦 IPA đã sẵn sàng!',
+          html: `
+            <p><strong>${appName}</strong> (${version})</p>
+            <div class="mt-4 space-y-3">
+              <a href="${result.downloadUrl}" download class="block bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition">
+                📥 Nhấn để tải về
+              </a>
+              <button onclick="navigator.clipboard.writeText('${location.origin + result.downloadUrl}'); Swal.fire('✅ Đã sao chép!', '', 'success')" class="block w-full py-2 px-4 border border-gray-300 rounded hover:bg-gray-100">
+                📋 Sao chép liên kết
+              </button>
+              <a href="${result.downloadUrl}" target="_blank" class="block text-blue-600 underline">🌐 Mở trong tab mới</a>
+            </div>
+          `,
+          showConfirmButton: false
+        });
+        return;
+      }
+
+      // ❌ Lỗi – phân tích cụ thể
       const errMsg = result.error?.toLowerCase() || '';
       if (errMsg.includes('password') || errMsg.includes('incorrect')) {
         Swal.fire('Sai mật khẩu', 'Apple ID hoặc mật khẩu không đúng.', 'error');
       } else if (errMsg.includes('version')) {
         Swal.fire('ID phiên bản không hợp lệ', 'Để trống để tải bản mới nhất.', 'warning');
       } else if (errMsg.includes('not found') || errMsg.includes('app')) {
-        Swal.fire('App ID không đúng', 'Ứng dụng không tồn tại hoặc chưa mua bằng tài khoản này.', 'warning');
+        Swal.fire('App ID không đúng', 'Ứng dụng không tồn tại hoặc bạn chưa từng tải nó.', 'warning');
+      } else if (errMsg.includes('code') || errMsg.includes('2fa')) {
+        Swal.fire('Mã xác minh không đúng', 'Vui lòng kiểm tra lại mã 2FA.', 'error');
       } else {
-        Swal.fire('Lỗi không xác định', result.error || 'Đã xảy ra lỗi trong quá trình xử lý.', 'error');
+        Swal.fire('Lỗi không xác định', result.error || 'Đã xảy ra lỗi không rõ.', 'error');
       }
     };
 
