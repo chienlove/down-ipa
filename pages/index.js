@@ -24,7 +24,13 @@ export default function IPADownloader() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
-    
+
+    // Validate 2FA code length if required
+    if (requires2FA && twoFactorCode.length !== 6) {
+      setMessage('Mã xác thực phải đủ 6 chữ số');
+      return;
+    }
+
     try {
       if (requires2FA) {
         setTwoFALoading(true);
@@ -37,7 +43,10 @@ export default function IPADownloader() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          ...(requires2FA && { twoFactorCode, sessionId })
+          ...(requires2FA && { 
+            twoFactorCode,
+            sessionId 
+          })
         })
       });
 
@@ -47,7 +56,7 @@ export default function IPADownloader() {
         setRequires2FA(true);
         setSessionId(data.sessionId);
         setMessage(data.message);
-        setCountdown(120); // 2 minutes countdown
+        setCountdown(120);
         return;
       }
 
@@ -91,11 +100,6 @@ export default function IPADownloader() {
   const handleTwoFactorChange = (e) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6);
     setTwoFactorCode(value);
-    
-    if (value.length === 6 && requires2FA) {
-      setTwoFALoading(true);
-      setTimeout(() => handleSubmit(e), 300);
-    }
   };
 
   return (
@@ -280,12 +284,12 @@ export default function IPADownloader() {
             marginTop: '15px', 
             padding: '12px',
             background: message.includes('thành công') ? '#d4edda' : 
-                      message.includes('2FA') || message.includes('mã') ? '#d1ecf1' : '#f8d7da',
+                      message.includes('2FA') ? '#d1ecf1' : '#f8d7da',
             color: message.includes('thành công') ? '#155724' : 
-                  message.includes('2FA') || message.includes('mã') ? '#0c5460' : '#721c24',
+                  message.includes('2FA') ? '#0c5460' : '#721c24',
             borderRadius: '4px',
             borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' : 
-                                  message.includes('2FA') || message.includes('mã') ? '#17a2b8' : '#dc3545'}`,
+                                  message.includes('2FA') ? '#17a2b8' : '#dc3545'}`,
             fontSize: '0.9em'
           }}>
             {message}

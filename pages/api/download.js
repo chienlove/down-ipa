@@ -5,11 +5,11 @@ import fs from 'fs/promises';
 
 const activeSessions = new Map();
 
-// Cleanup sessions every 5 minutes
+// Cleanup expired sessions every 5 minutes
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of activeSessions.entries()) {
-    if (now - session.lastActive > 30 * 60 * 1000) {
+    if (now - session.lastActive > 30 * 60 * 1000) { // 30 minutes expiration
       activeSessions.delete(sessionId);
       console.log(`Cleaned expired session: ${sessionId}`);
     }
@@ -23,11 +23,19 @@ export default async function handler(req, res) {
 
   const { appleId, password, appId, twoFactorCode, sessionId } = req.body;
 
-  // Validate input
+  // Validate required fields
   if (!appleId || !password || !appId) {
     return res.status(400).json({
       error: 'MISSING_FIELDS',
       message: 'Vui lòng nhập đầy đủ Apple ID, mật khẩu và Bundle ID'
+    });
+  }
+
+  // Validate 2FA code format if provided
+  if (twoFactorCode && !/^\d{6}$/.test(twoFactorCode)) {
+    return res.status(400).json({
+      error: 'INVALID_2FA_CODE',
+      message: 'Mã xác thực phải chính xác 6 chữ số'
     });
   }
 
@@ -37,125 +45,116 @@ export default async function handler(req, res) {
     lastActive: Date.now()
   };
 
-  // Prepare temp directory
   const tempDir = path.join('/tmp', `ipa_${currentSessionId}`);
   await fs.mkdir(tempDir, { recursive: true });
 
-  // Start ipatool process with real-time streaming
-  const ipatool = spawn('/usr/local/bin/ipatool', [
-    'auth', 'login',
-    '--email', appleId,
-    '--password', password,
-    ...(twoFactorCode ? ['--auth-code', twoFactorCode] : []),
-    '--keychain-passphrase', '',
-    '--verbose'
-  ], {
-    env: {
-      ...process.env,
-      HOME: tempDir,
-      TMPDIR: tempDir
-    }
-  });
+  try {
+    const args = [
+      'auth', 'login',
+      '--email', appleId,
+      '--password', password,
+      ...(twoFactorCode ? ['--auth-code', twoFactorCode] : []),
+      '--keychain-passphrase', ''
+    ];
 
-  let output = '';
-  let is2FARequested = false;
+    const ipatool = spawn('/usr/local/bin/ipatool', args, {
+      env: {
+        ...process.env,
+        HOME: tempDir,
+        TMPDIR: tempDir
+      }
+    });
 
-  // Handle real-time output
-  const handleOutput = (data) => {
-    const dataStr = data.toString();
-    output += dataStr;
-    
-    // Immediate 2FA detection
-    if (!is2FARequested && /verification code|two-factor|2fa|security code/i.test(dataStr)) {
-      is2FARequested = true;
-      activeSessions.set(currentSessionId, { 
-        ...session, 
-        appleId, 
-        password, 
+    let output = '';
+    let is2FARequested = false;
+
+    const handleData = (data) => {
+      const dataStr = data.toString();
+      output += dataStr;
+      
+      if (!is2FARequested && /verification code|two-factor|2fa|security code|6-digit/i.test(dataStr)) {
+        is2FARequested = true;
+        ipatool.kill();
+      }
+    };
+
+    ipatool.stdout.on('data', handleData);
+    ipatool.stderr.on('data', handleData);
+
+    const exitCode = await new Promise((resolve) => {
+      ipatool.on('close', (code) => {
+        resolve(code);
+      });
+    });
+
+    if (is2FARequested && !twoFactorCode) {
+      activeSessions.set(currentSessionId, {
+        ...session,
+        appleId,
+        password,
         appId,
         lastActive: Date.now()
       });
-      
-      ipatool.kill(); // Stop the process as we need 2FA
-      
+
       return res.status(200).json({
         requiresTwoFactor: true,
         sessionId: currentSessionId,
-        message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 số) từ thiết bị Apple của bạn'
+        message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 số) từ thiết bị của bạn'
       });
     }
-  };
 
-  ipatool.stdout.on('data', handleOutput);
-  ipatool.stderr.on('data', handleOutput);
+    if (exitCode !== 0) {
+      throw new Error(output || 'Authentication failed');
+    }
 
-  ipatool.on('close', async (code) => {
-    if (is2FARequested) return; // Already handled
+    // Proceed with download after successful auth
+    const ipaPath = path.join(tempDir, `${appId}.ipa`);
+    const downloadProcess = spawn('/usr/local/bin/ipatool', [
+      'download',
+      '--bundle-identifier', appId,
+      '--output', ipaPath,
+      '--keychain-passphrase', ''
+    ], {
+      cwd: tempDir
+    });
+
+    const downloadExitCode = await new Promise((resolve) => {
+      downloadProcess.on('close', resolve);
+    });
+
+    if (downloadExitCode !== 0) {
+      throw new Error('Download failed');
+    }
+
+    const stats = await fs.stat(ipaPath);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
+    res.setHeader('Content-Length', stats.size);
     
-    if (code !== 0) {
-      await handleAuthError(output, currentSessionId, res);
-      return;
+    return fs.createReadStream(ipaPath).pipe(res);
+
+  } catch (error) {
+    console.error('Error:', error.message);
+
+    let statusCode = 500;
+    let errorType = 'SERVER_ERROR';
+    let errorMessage = 'Đã xảy ra lỗi hệ thống';
+
+    if (error.message.includes('verification code') || error.message.includes('two-factor')) {
+      statusCode = 200;
+      errorType = 'NEED_2FA';
+      errorMessage = 'Vui lòng nhập mã xác thực 2 yếu tố';
+    } else if (error.message.includes('invalid credentials')) {
+      statusCode = 401;
+      errorType = 'AUTH_FAILED';
+      errorMessage = 'Sai Apple ID hoặc mật khẩu';
     }
 
-    // Authentication success - proceed with download
-    try {
-      const ipaPath = path.join(tempDir, `${appId}.ipa`);
-      const downloadProcess = spawn('/usr/local/bin/ipatool', [
-        'download',
-        '--bundle-identifier', appId,
-        '--output', ipaPath
-      ], {
-        cwd: tempDir,
-        timeout: 300000 // 5 minutes timeout
-      });
-
-      downloadProcess.on('close', async (dlCode) => {
-        if (dlCode !== 0) {
-          return res.status(500).json({
-            error: 'DOWNLOAD_FAILED',
-            message: 'Không thể tải ứng dụng'
-          });
-        }
-
-        const stats = await fs.stat(ipaPath);
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
-        res.setHeader('Content-Length', stats.size);
-        
-        fs.createReadStream(ipaPath).pipe(res);
-      });
-    } catch (error) {
-      console.error('Download error:', error);
-      res.status(500).json({
-        error: 'SERVER_ERROR',
-        message: 'Lỗi hệ thống khi xử lý tải xuống'
-      });
-    }
-  });
-}
-
-async function handleAuthError(output, sessionId, res) {
-  const session = activeSessions.get(sessionId);
-  let errorMessage = 'Đăng nhập thất bại';
-  let statusCode = 401;
-
-  if (/invalid credentials|incorrect password/i.test(output)) {
-    errorMessage = 'Sai Apple ID hoặc mật khẩu';
-  } else if (/account locked/i.test(output)) {
-    errorMessage = 'Tài khoản bị khóa tạm thời';
-    statusCode = 403;
-  } else if (session?.attempts >= 2) {
-    errorMessage = 'Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau 30 phút';
-    statusCode = 429;
+    return res.status(statusCode).json({
+      error: errorType,
+      message: errorMessage
+    });
+  } finally {
+    setTimeout(() => fs.rm(tempDir, { recursive: true, force: true }), 5000);
   }
-
-  if (session) {
-    session.attempts += 1;
-    session.lastActive = Date.now();
-  }
-
-  res.status(statusCode).json({
-    error: 'AUTH_FAILED',
-    message: errorMessage
-  });
 }
