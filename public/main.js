@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const resultBox = document.getElementById('result');
   const errorBox = document.getElementById('error');
 
-  // Loading effect
+  // Hiệu ứng loading nút
   const originalText = submitBtn.textContent;
   const setLoading = (state) => {
     if (state) {
@@ -51,30 +51,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
-      // ✅ Ưu tiên kiểm tra yêu cầu mã 2FA
+      // ✅ Ưu tiên xử lý yêu cầu mã 2FA
       if (result.require2FA) {
         const code = prompt(result.message || '🔐 Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
         if (code) {
           localStorage.setItem('2FA_CODE', code);
           form.VERIFICATION_CODE.value = code;
-          submitBtn.click(); // Gửi lại
+          submitBtn.click();
         } else {
           showError('⚠️ Bạn cần nhập mã xác minh để tiếp tục.');
         }
         return;
       }
 
-      // ✅ Nếu tải thành công
+      // ✅ Thành công
       if (res.ok && result.downloadUrl) {
-        if (CODE && !storedCode) {
-          localStorage.setItem('2FA_CODE', CODE);
-        }
+        // Xoá mã 2FA sau khi dùng xong
+        localStorage.removeItem('2FA_CODE');
         displayResult(result);
         return;
       }
 
-      // ❌ Trường hợp còn lại (không phải 2FA, không thành công)
-      showError(result.error || 'Đã xảy ra lỗi không xác định.');
+      // ❌ Lỗi khác
+      if (result.error?.toLowerCase().includes('password')) {
+        showError('❌ Sai mật khẩu hoặc mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
+      } else {
+        showError(result.error || 'Đã xảy ra lỗi không xác định.');
+      }
+
     } catch (err) {
       console.error(err);
       showError('Lỗi kết nối máy chủ. Vui lòng thử lại sau.');
