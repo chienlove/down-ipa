@@ -31,6 +31,12 @@ export default function IPADownloader() {
       return;
     }
 
+    // Validate Bundle ID format
+    if (!requires2FA && !/^[a-zA-Z0-9.-]+\.[a-zA-Z0-9.-]+/.test(form.appId)) {
+      setMessage('Bundle ID không hợp lệ (ví dụ: com.example.app)');
+      return;
+    }
+
     try {
       if (requires2FA) {
         setTwoFALoading(true);
@@ -50,28 +56,45 @@ export default function IPADownloader() {
         })
       });
 
-      const data = await response.json();
+      // Check if response is a file download
+      const contentType = response.headers.get('content-type');
+      
+      if (response.ok && contentType?.includes('application/octet-stream')) {
+        const blob = await response.blob();
+        
+        // Validate blob size
+        if (blob.size === 0) {
+          throw new Error('Tệp tải xuống rỗng');
+        }
+        
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${form.appId}.ipa`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        setMessage('Tải xuống thành công!');
+        resetForm();
+        return;
+      }
+
+      // Parse JSON response for errors or 2FA requests
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error('Phản hồi từ server không hợp lệ');
+      }
 
       if (data.requiresTwoFactor) {
         setRequires2FA(true);
         setSessionId(data.sessionId);
         setMessage(data.message);
         setCountdown(120);
-        return;
-      }
-
-      if (response.ok && response.headers.get('content-type')?.includes('application/octet-stream')) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${form.appId}.ipa`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        setMessage('Tải xuống thành công!');
-        resetForm();
         return;
       }
 
@@ -83,7 +106,16 @@ export default function IPADownloader() {
       resetForm();
     } catch (error) {
       console.error('Request error:', error);
-      setMessage(error.message || 'Lỗi kết nối máy chủ');
+      
+      // Handle specific error types
+      let errorMessage = error.message;
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'Lỗi kết nối mạng, vui lòng kiểm tra internet';
+      } else if (error.message.includes('timeout')) {
+        errorMessage = 'Quá thời gian chờ, vui lòng thử lại';
+      }
+      
+      setMessage(errorMessage);
     } finally {
       setLoading(false);
       setTwoFALoading(false);
@@ -100,6 +132,11 @@ export default function IPADownloader() {
   const handleTwoFactorChange = (e) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6);
     setTwoFactorCode(value);
+  };
+
+  const handleCancel2FA = () => {
+    resetForm();
+    setMessage('');
   };
 
   return (
@@ -210,7 +247,7 @@ export default function IPADownloader() {
                 display: 'block',
                 marginTop: '5px'
               }}>
-                Ví dụ: com.apple.mobilecal
+                Ví dụ: com.apple.mobilecal, com.facebook.Facebook
               </small>
             </div>
           </>
@@ -258,38 +295,60 @@ export default function IPADownloader() {
           </div>
         )}
 
-        <button 
-          type="submit" 
-          disabled={loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)}
-          style={{ 
-            background: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? '#ccc' : '#007AFF', 
-            color: 'white', 
-            border: 'none', 
-            padding: '12px',
-            borderRadius: '4px',
-            cursor: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? 'not-allowed' : 'pointer',
-            width: '100%',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            transition: 'background 0.3s'
-          }}
-        >
-          {twoFALoading ? 'Đang xác thực...' : 
-           loading ? 'Đang xử lý...' : 
-           requires2FA ? 'Xác nhận mã 2FA' : 'Tải về'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            type="submit" 
+            disabled={loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)}
+            style={{ 
+              background: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? '#ccc' : '#007AFF', 
+              color: 'white', 
+              border: 'none', 
+              padding: '12px',
+              borderRadius: '4px',
+              cursor: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? 'not-allowed' : 'pointer',
+              flex: 1,
+              fontSize: '16px',
+              fontWeight: 'bold',
+              transition: 'background 0.3s'
+            }}
+          >
+            {twoFALoading ? 'Đang xác thực...' : 
+             loading ? 'Đang xử lý...' : 
+             requires2FA ? 'Xác nhận mã 2FA' : 'Tải về'}
+          </button>
+
+          {requires2FA && (
+            <button 
+              type="button"
+              onClick={handleCancel2FA}
+              disabled={twoFALoading}
+              style={{ 
+                background: '#6c757d', 
+                color: 'white', 
+                border: 'none', 
+                padding: '12px',
+                borderRadius: '4px',
+                cursor: twoFALoading ? 'not-allowed' : 'pointer',
+                fontSize: '16px',
+                minWidth: '80px'
+              }}
+            >
+              Hủy
+            </button>
+          )}
+        </div>
 
         {message && (
           <div style={{ 
             marginTop: '15px', 
             padding: '12px',
             background: message.includes('thành công') ? '#d4edda' : 
-                      message.includes('2FA') ? '#d1ecf1' : '#f8d7da',
+                      message.includes('2FA') || message.includes('xác thực') ? '#d1ecf1' : '#f8d7da',
             color: message.includes('thành công') ? '#155724' : 
-                  message.includes('2FA') ? '#0c5460' : '#721c24',
+                  message.includes('2FA') || message.includes('xác thực') ? '#0c5460' : '#721c24',
             borderRadius: '4px',
             borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' : 
-                                  message.includes('2FA') ? '#17a2b8' : '#dc3545'}`,
+                                  message.includes('2FA') || message.includes('xác thực') ? '#17a2b8' : '#dc3545'}`,
             fontSize: '0.9em'
           }}>
             {message}
@@ -315,6 +374,7 @@ export default function IPADownloader() {
           <li>Mã 2FA có hiệu lực trong 2 phút</li>
           <li>Nhập chính xác Bundle ID của ứng dụng</li>
           <li>Không chia sẻ thông tin tài khoản</li>
+          <li>Quá trình tải có thể mất vài phút tùy kích thước ứng dụng</li>
         </ul>
       </div>
     </div>
