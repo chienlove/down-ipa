@@ -191,6 +191,38 @@ app.post('/download', async (req, res) => {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString(16));
 
+    let user;
+    try {
+      // ✅ Cố gắng đăng nhập
+      user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    } catch (err) {
+      const errMsg = (err.message || '').toLowerCase();
+
+      // ✅ Apple yêu cầu mã xác minh 2FA
+      if (errMsg.includes('2fa') || errMsg.includes('verification') || errMsg.includes('mfa')) {
+        return res.status(200).json({
+          success: false,
+          require2FA: true,
+          message: '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.'
+        });
+      }
+
+      // ❌ Lỗi đăng nhập khác
+      return res.status(401).json({
+        success: false,
+        error: err.message || '❌ Lỗi xác thực Apple ID'
+      });
+    }
+
+    // ✅ Nếu đăng nhập thất bại dù không có exception
+    if (!user || user._state !== 'success') {
+      return res.status(401).json({
+        success: false,
+        error: user?.customerMessage || '❌ Apple từ chối xác thực. Vui lòng kiểm tra tài khoản hoặc thử lại.'
+      });
+    }
+
+    // ✅ Tải IPA
     const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
       APPLE_ID,
@@ -200,16 +232,15 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
-    // ✅ Nếu cần mã 2FA
     if (result.require2FA) {
       return res.status(200).json({
         success: false,
         require2FA: true,
-        message: result.message || 'Apple yêu cầu mã xác minh 2FA.'
+        message: result.message || '🔐 Apple yêu cầu mã xác minh 2FA.'
       });
     }
 
-    // ✅ Dọn dẹp sau 30 phút
+    // ✅ Xoá file sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -220,6 +251,7 @@ app.post('/download', async (req, res) => {
       }
     }, 30 * 60 * 1000);
 
+    // ✅ Trả thông tin ứng dụng
     res.json({
       success: true,
       downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
@@ -234,15 +266,6 @@ app.post('/download', async (req, res) => {
     });
 
   } catch (error) {
-    // 🛑 Nếu lỗi xác minh → vẫn cho client xử lý
-    if (error.message?.toLowerCase().includes('2fa') || error.message?.includes('mfa')) {
-      return res.status(200).json({
-        success: false,
-        require2FA: true,
-        message: 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.'
-      });
-    }
-
     console.error('❌ Download error:', error.stack || error.message || error);
     res.status(500).json({
       success: false,
