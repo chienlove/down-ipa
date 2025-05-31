@@ -185,15 +185,14 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
-    if (result?.require2FA) {
-  return res.status(200).json({
-    success: false,
-    require2FA: true,
-    message: result.message || '🔐 Vui lòng nhập mã xác minh 2FA đã gửi về thiết bị.'
-  });
-}
+    if (result.require2FA) {
+      return res.status(200).json({
+        success: false,
+        require2FA: true,
+        message: result.message
+      });
+    }
 
-    // Tự động xóa sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -212,45 +211,30 @@ app.post('/download', async (req, res) => {
     });
 
   } catch (error) {
-    const rawMsg = typeof error === 'string' ? error : (error?.message || '');
-    let friendly = '🚫 Đã xảy ra lỗi.';
-
-    if (rawMsg.toLowerCase().includes('apple id')) {
-      friendly = '❌ Apple ID không hợp lệ hoặc không tồn tại.';
-    } else if (rawMsg.toLowerCase().includes('password')) {
-      friendly = '❌ Mật khẩu sai hoặc Apple ID không hợp lệ.';
-    } else if (rawMsg.toLowerCase().includes('verification') || rawMsg.toLowerCase().includes('2fa')) {
-      friendly = '❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.';
-    } else if (rawMsg.toLowerCase().includes('app') && rawMsg.toLowerCase().includes('id')) {
-  friendly = '❗ App ID không hợp lệ hoặc không tìm thấy ứng dụng.';
-}
-
-    console.error('❌ Download error:', rawMsg);
-    res.status(400).json({ success: false, error: friendly });
+    console.error('❌ Download error:', error.stack || error.message || error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'An unknown error has occurred'
+    });
   }
 });
 
-// Trả file IPA đã lưu
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
-// ✅ 404 nếu không khớp route nào
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
-// ✅ Bắt lỗi server
 app.use((err, req, res, next) => {
   console.error('🔥 Server error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// ✅ Khởi động server
 const server = app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`🔗 Health check: http://localhost:${port}/health`);
 });
 
-// ✅ Xử lý tắt server an toàn
 const shutdown = () => {
   console.log('🛑 Received shutdown signal');
   server.close(() => {
