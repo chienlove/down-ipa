@@ -99,29 +99,45 @@ export default async function handler(req, res) {
         sessions.delete(tempSessionId);
         
       } catch (error) {
-        console.error('2FA Failed:', {
-          message: error.message,
-          stdout: error.stdout,
-          stderr: error.stderr
-        });
-
-        let userMessage = 'Xác thực 2FA thất bại';
-        const errorOutput = (error.stderr || error.stdout || '').toLowerCase();
         
-        if (errorOutput.includes('invalid verification code') || 
-            errorOutput.includes('incorrect verification code') ||
-            errorOutput.includes('wrong code')) {
-          userMessage = 'Mã 2FA không chính xác';
-        } else if (errorOutput.includes('expired') || errorOutput.includes('timeout')) {
-          userMessage = 'Mã 2FA đã hết hạn. Vui lòng yêu cầu mã mới';
-        } else if (errorOutput.includes('timeout')) {
-          userMessage = 'Quá thời gian chờ xác thực. Vui lòng thử lại';
-        }
+console.error('2FA Failed:', {
+  message: error.message,
+  stdout: error.stdout,
+  stderr: error.stderr
+});
 
-        return res.status(400).json({
-          error: 'TWO_FACTOR_FAILED',
-          message: userMessage
-        });
+let userMessage = 'Xác thực 2FA thất bại';
+const errorOutput = (error.stderr || error.stdout || '').toLowerCase();
+
+// Ghi lại log đầy đủ vào file (nếu muốn)
+const logPath = path.join(tempDir, '2fa_error.log');
+await fs.writeFile(logPath, `${error.message}
+${error.stdout}
+${error.stderr}`);
+
+// Phân tích lỗi để hiển thị cụ thể hơn cho người dùng
+if (errorOutput.includes('invalid verification code') || 
+    errorOutput.includes('incorrect verification code') ||
+    errorOutput.includes('wrong code')) {
+  userMessage = 'Mã 2FA không chính xác. Vui lòng kiểm tra lại mã bạn nhập';
+} else if (errorOutput.includes('expired') || errorOutput.includes('timeout')) {
+  userMessage = 'Mã 2FA đã hết hạn. Vui lòng yêu cầu mã mới bằng cách đăng nhập lại';
+} else if (errorOutput.includes('session expired') || errorOutput.includes('session not found')) {
+  userMessage = 'Phiên xác thực không hợp lệ. Vui lòng bắt đầu lại';
+} else {
+  userMessage += `: ${error.message}`;
+}
+
+return res.status(400).json({
+  error: 'TWO_FACTOR_FAILED',
+  message: userMessage,
+  debug: {
+    sessionId: tempSessionId,
+    error: error.message,
+    output: (error.stdout || '') + (error.stderr || '')
+  }
+});
+
       }
     } 
     // Handle initial login - Check for 2FA first
