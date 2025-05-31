@@ -4,6 +4,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const resultBox = document.getElementById('result');
   const errorBox = document.getElementById('error');
 
+  // Loading effect
+  const originalText = submitBtn.textContent;
+  const setLoading = (state) => {
+    if (state) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `<svg class="animate-spin mr-2 h-5 w-5 inline text-white" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg> Đang xử lý...`;
+    } else {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  };
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorBox.classList.add('hidden');
@@ -26,8 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
       CODE
     };
 
-    submitBtn.disabled = true;
-    submitBtn.textContent = '⏳ Đang xử lý...';
+    setLoading(true);
 
     try {
       const res = await fetch('/download', {
@@ -38,33 +51,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
-      // ✅ Nếu yêu cầu mã xác minh 2FA
+      // ✅ Ưu tiên kiểm tra yêu cầu mã 2FA
       if (result.require2FA) {
-        const code = prompt(result.message || 'Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
+        const code = prompt(result.message || '🔐 Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
         if (code) {
           localStorage.setItem('2FA_CODE', code);
-          form.VERIFICATION_CODE.value = code; // ✅ Cập nhật lại input
-          submitBtn.click(); // ✅ Gửi lại form bằng click
+          form.VERIFICATION_CODE.value = code;
+          submitBtn.click(); // Gửi lại
         } else {
-          showError('Bạn cần nhập mã xác minh để tiếp tục.');
+          showError('⚠️ Bạn cần nhập mã xác minh để tiếp tục.');
         }
         return;
       }
 
+      // ✅ Nếu tải thành công
       if (res.ok && result.downloadUrl) {
         if (CODE && !storedCode) {
-          localStorage.setItem('2FA_CODE', CODE); // Lưu 2FA nếu chưa có
+          localStorage.setItem('2FA_CODE', CODE);
         }
         displayResult(result);
-      } else {
-        showError(result.error || 'Đã xảy ra lỗi khi tải IPA.');
+        return;
       }
+
+      // ❌ Trường hợp còn lại (không phải 2FA, không thành công)
+      showError(result.error || 'Đã xảy ra lỗi không xác định.');
     } catch (err) {
       console.error(err);
       showError('Lỗi kết nối máy chủ. Vui lòng thử lại sau.');
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = '📥 Tải IPA';
+      setLoading(false);
     }
   });
 
