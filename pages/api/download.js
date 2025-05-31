@@ -81,7 +81,7 @@ export default async function handler(req, res) {
         const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
           [
-            'auth', 'complete',
+            'auth', 'login',
             '--email', existingSession.appleId,
             '--password', existingSession.password,
             '--keychain-passphrase', '',
@@ -108,9 +108,11 @@ export default async function handler(req, res) {
         let userMessage = 'Xác thực 2FA thất bại';
         const errorOutput = (error.stderr || error.stdout || '').toLowerCase();
         
-        if (errorOutput.includes('invalid verification code')) {
+        if (errorOutput.includes('invalid verification code') || 
+            errorOutput.includes('incorrect verification code') ||
+            errorOutput.includes('wrong code')) {
           userMessage = 'Mã 2FA không chính xác';
-        } else if (errorOutput.includes('expired')) {
+        } else if (errorOutput.includes('expired') || errorOutput.includes('timeout')) {
           userMessage = 'Mã 2FA đã hết hạn. Vui lòng yêu cầu mã mới';
         } else if (errorOutput.includes('timeout')) {
           userMessage = 'Quá thời gian chờ xác thực. Vui lòng thử lại';
@@ -122,10 +124,11 @@ export default async function handler(req, res) {
         });
       }
     } 
-    // Handle initial login
+    // Handle initial login - Check for 2FA first
     else {
       console.log('Initial login attempt for:', appleId);
       
+      // First try to detect if account has 2FA enabled by doing a quick check
       try {
         const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
@@ -135,10 +138,14 @@ export default async function handler(req, res) {
             '--password', password,
             '--keychain-passphrase', ''
           ],
-          { env, cwd: tempDir, timeout: 60000 }
+          { 
+            env, 
+            cwd: tempDir, 
+            timeout: 20000 // Reduced timeout to 20 seconds
+          }
         );
 
-        console.log('Login Success:', stdout);
+        console.log('Login Success without 2FA:', stdout);
         
       } catch (loginError) {
         console.log('Login Error Analysis:', {
@@ -153,7 +160,7 @@ export default async function handler(req, res) {
           loginError.message || ''
         ].join(' ').toLowerCase();
 
-        // Check for 2FA requirements
+        // Check for 2FA requirements with more comprehensive patterns
         const require2FAPatterns = [
           'verification code',
           'two-factor',
@@ -171,7 +178,11 @@ export default async function handler(req, res) {
           'complete authentication',
           '2fa',
           'verify',
-          'code'
+          'code required',
+          '6-digit',
+          'authenticate',
+          'sms code',
+          'please enter'
         ];
 
         const needs2FA = require2FAPatterns.some(pattern => 
@@ -200,7 +211,8 @@ export default async function handler(req, res) {
         
         if (allErrorOutput.includes('invalid credentials') || 
             allErrorOutput.includes('wrong password') || 
-            allErrorOutput.includes('incorrect')) {
+            allErrorOutput.includes('incorrect password') ||
+            allErrorOutput.includes('authentication failed')) {
           errorMessage = 'Sai Apple ID hoặc mật khẩu';
         } else if (allErrorOutput.includes('account locked') || 
                   allErrorOutput.includes('locked')) {

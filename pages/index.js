@@ -28,7 +28,7 @@ export default function IPADownloader() {
     setMessage('');
     
     if (!requires2FA) {
-      setCountdown(15); // Reduced from 30 to 15 seconds
+      setCountdown(20); // Reduced from 15 to 20 seconds for initial login
     } else {
       setTwoFALoading(true);
     }
@@ -84,6 +84,7 @@ export default function IPADownloader() {
       console.error('Request Error:', error);
       setMessage(error.message || 'Đã xảy ra lỗi kết nối');
       
+      // Don't reset form on 2FA errors to allow retry
       if (!error.message?.includes('2FA') && !requires2FA) {
         resetForm();
       }
@@ -104,6 +105,20 @@ export default function IPADownloader() {
     setForm({ appleId: '', password: '', appId: '' });
     resetForm();
     setMessage('');
+  };
+
+  const handleTwoFactorChange = (e) => {
+    const value = e.target.value.replace(/\D/g, '');
+    setTwoFactorCode(value.slice(0, 6));
+    
+    // Auto-submit when 6 digits are entered
+    if (value.length === 6) {
+      setTimeout(() => {
+        if (!twoFALoading) {
+          handleSubmit(e);
+        }
+      }, 500);
+    }
   };
 
   return (
@@ -193,10 +208,7 @@ export default function IPADownloader() {
               inputMode="numeric"
               pattern="[0-9]*"
               value={twoFactorCode}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '');
-                setTwoFactorCode(value.slice(0, 6));
-              }}
+              onChange={handleTwoFactorChange}
               placeholder="Nhập mã 6 số"
               required
               autoFocus
@@ -208,7 +220,7 @@ export default function IPADownloader() {
                 letterSpacing: '3px',
                 fontSize: '18px',
                 borderRadius: '4px',
-                border: '2px solid #007AFF'
+                border: twoFactorCode.length === 6 ? '2px solid #28a745' : '2px solid #007AFF'
               }}
             />
             <p style={{ 
@@ -242,14 +254,14 @@ export default function IPADownloader() {
 
         <button 
           type="submit" 
-          disabled={loading || twoFALoading || (countdown > 0 && !requires2FA)}
+          disabled={loading || twoFALoading || (countdown > 0 && !requires2FA) || (requires2FA && twoFactorCode.length !== 6)}
           style={{ 
-            background: loading || twoFALoading ? '#ccc' : '#007AFF', 
+            background: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? '#ccc' : '#007AFF', 
             color: 'white', 
             border: 'none', 
             padding: '12px',
             borderRadius: '4px',
-            cursor: loading || twoFALoading ? 'not-allowed' : 'pointer',
+            cursor: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? 'not-allowed' : 'pointer',
             width: '100%',
             fontSize: '16px',
             fontWeight: 'bold',
@@ -266,12 +278,12 @@ export default function IPADownloader() {
             marginTop: '15px', 
             padding: '12px',
             background: message.includes('thành công') ? '#d4edda' : 
-                      message.includes('2FA') ? '#d1ecf1' : '#f8d7da',
+                      message.includes('2FA') || message.includes('mã') ? '#d1ecf1' : '#f8d7da',
             color: message.includes('thành công') ? '#155724' : 
-                  message.includes('2FA') ? '#0c5460' : '#721c24',
+                  message.includes('2FA') || message.includes('mã') ? '#0c5460' : '#721c24',
             borderRadius: '4px',
             borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' : 
-                                  message.includes('2FA') ? '#17a2b8' : '#dc3545'}`,
+                                  message.includes('2FA') || message.includes('mã') ? '#17a2b8' : '#dc3545'}`,
             fontSize: '0.9em'
           }}>
             {message}
@@ -292,6 +304,7 @@ export default function IPADownloader() {
           <li>Mã 2FA có hiệu lực trong 2 phút</li>
           <li>Nhập chính xác Bundle ID của ứng dụng</li>
           <li>Không chia sẻ thông tin tài khoản</li>
+          <li>Mã 2FA sẽ tự động gửi khi nhập đủ 6 số</li>
         </ul>
       </div>
     </div>
