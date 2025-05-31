@@ -17,11 +17,23 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 export default async function handler(req, res) {
+  // Set JSON content type for all responses unless it's a file download
+  res.setHeader('Content-Type', 'application/json');
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const { appleId, password, appId, twoFactorCode, sessionId } = req.body;
+
+  console.log('=== REQUEST DEBUG ===');
+  console.log('Request body keys:', Object.keys(req.body));
+  console.log('Has appleId:', !!appleId);
+  console.log('Has password:', !!password);
+  console.log('Has appId:', !!appId);
+  console.log('Has twoFactorCode:', !!twoFactorCode);
+  console.log('Has sessionId:', !!sessionId);
+  console.log('====================');
 
   // Validate required fields
   if (!appleId || !password || !appId) {
@@ -238,6 +250,7 @@ export default async function handler(req, res) {
     // Read file and send as response
     const fileBuffer = await fs.readFile(ipaPath);
     
+    // Change content type for file download
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
     res.setHeader('Content-Length', fileBuffer.length);

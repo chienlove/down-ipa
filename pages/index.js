@@ -59,11 +59,17 @@ export default function IPADownloader() {
       console.log('Response status:', response.status);
       console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
+      // Get response text first to determine what type it is
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
+      console.log('Response text length:', responseText.length);
+
       // Check if response is a file download
       const contentType = response.headers.get('content-type');
       
       if (response.ok && contentType?.includes('application/octet-stream')) {
-        const blob = await response.blob();
+        // Convert text back to blob for file download
+        const blob = new Blob([responseText], { type: 'application/octet-stream' });
         
         // Validate blob size
         if (blob.size === 0) {
@@ -88,34 +94,24 @@ export default function IPADownloader() {
       // For non-file responses, parse as JSON
       let data;
       try {
-        const responseText = await response.text();
-        console.log('Raw response text:', responseText);
-        console.log('Response text length:', responseText.length);
-        
         if (!responseText.trim()) {
           throw new Error('Phản hồi từ server rỗng');
         }
 
-        // Check if response looks like JSON
-        if (!responseText.trim().startsWith('{') && !responseText.trim().startsWith('[')) {
-          console.error('Response is not JSON format:', responseText);
-          throw new Error('Server trả về định dạng không hợp lệ');
-        }
-
+        // Try parsing as JSON
         data = JSON.parse(responseText);
         console.log('Parsed response data:', data);
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
         console.error('Response status:', response.status);
         console.error('Response statusText:', response.statusText);
+        console.error('Response text that failed to parse:', responseText.substring(0, 500));
         
-        // More specific error handling
-        if (parseError instanceof SyntaxError) {
-          throw new Error('Phản hồi từ server không đúng định dạng JSON');
-        } else if (response.status >= 500) {
-          throw new Error('Lỗi server nội bộ, vui lòng thử lại sau');
+        // If it's not JSON but response is OK, might be HTML error page
+        if (response.status >= 200 && response.status < 300) {
+          throw new Error('Server trả về định dạng không mong đợi');
         } else {
-          throw new Error(`Lỗi xử lý phản hồi: ${parseError.message}`);
+          throw new Error(`Lỗi server (${response.status}): ${response.statusText}`);
         }
       }
 
