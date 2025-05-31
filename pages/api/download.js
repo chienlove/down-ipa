@@ -6,58 +6,18 @@ import { existsSync, createReadStream } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 const execFileAsync = promisify(execFile);
-const activeSessions = new Map();
+const sessions = new Map();
 
-// Session cleanup every 5 minutes
+// Session cleanup
 setInterval(() => {
   const now = Date.now();
-  for (const [sessionId, session] of activeSessions.entries()) {
-    if (now - session.lastActivity > 30 * 60 * 1000) { // 30 minutes inactivity
-      activeSessions.delete(sessionId);
+  for (const [sessionId, session] of sessions.entries()) {
+    if (now - session.timestamp > 30 * 60 * 1000) {
+      sessions.delete(sessionId);
       console.log(`Cleaned expired session: ${sessionId}`);
     }
   }
 }, 5 * 60 * 1000);
-
-async function authenticateWithApple(appleId, password, twoFactorCode = null, sessionId = null) {
-  const tempDir = path.join('/tmp', `ipa_auth_${sessionId || uuidv4()}`);
-  await fs.mkdir(tempDir, { recursive: true });
-  
-  const args = [
-    'auth', 'login',
-    '--email', appleId,
-    '--password', password,
-    '--keychain-passphrase', ''
-  ];
-
-  if (twoFactorCode) {
-    args.push('--auth-code', twoFactorCode);
-  }
-
-  try {
-    const { stdout } = await execFileAsync('/usr/local/bin/ipatool', args, {
-      env: {
-        ...process.env,
-        HOME: tempDir,
-        TMPDIR: tempDir
-      },
-      timeout: 120000 // 2 minutes timeout
-    });
-
-    return { success: true, message: stdout };
-  } catch (error) {
-    const errorOutput = [error.stdout, error.stderr, error.message].join(' ').toLowerCase();
-    return { 
-      success: false, 
-      requires2FA: /verification code|two-factor|2fa|security code|6-digit/.test(errorOutput),
-      error: errorOutput.includes('invalid credentials') ? 'Invalid credentials' : 
-            errorOutput.includes('account locked') ? 'Account locked' :
-            'Authentication failed'
-    };
-  } finally {
-    setTimeout(() => fs.rm(tempDir, { recursive: true, force: true }), 5000);
-  }
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -68,82 +28,148 @@ export default async function handler(req, res) {
 
   // Input validation
   if (!appleId || !password || !appId) {
-    return res.status(400).json({ 
-      error: 'MISSING_FIELDS', 
-      message: 'Vui lòng nhập đầy đủ Apple ID, mật khẩu và Bundle ID' 
+    return res.status(400).json({
+      error: 'MISSING_FIELDS',
+      message: 'Vui lòng điền đầy đủ Apple ID, mật khẩu và Bundle ID'
     });
   }
 
-  // Handle 2FA verification
-  if (twoFactorCode && sessionId) {
-    const session = activeSessions.get(sessionId);
-    if (!session) {
-      return res.status(400).json({ 
-        error: 'INVALID_SESSION', 
-        message: 'Phiên làm việc đã hết hạn. Vui lòng thử lại' 
+  const tempSessionId = sessionId || uuidv4();
+  const tempDir = path.join('/tmp', `ipa_${tempSessionId}`);
+  const keychainPath = path.join(tempDir, 'ipatool.keychain');
+
+  await fs.mkdir(tempDir, { recursive: true });
+  await fs.chmod(tempDir, 0o700);
+
+  const ipatoolPath = '/usr/local/bin/ipatool';
+  if (!existsSync(ipatoolPath)) {
+    return res.status(500).json({
+      error: 'TOOL_NOT_FOUND',
+      message: 'Không tìm thấy công cụ ipatool'
+    });
+  }
+
+  const env = {
+    ...process.env,
+    HOME: tempDir,
+    TMPDIR: tempDir,
+    KEYCHAIN_PATH: keychainPath
+  };
+
+  console.log('Starting authentication for:', appleId);
+
+  // Build auth command
+  const authArgs = [
+    'auth', 'login',
+    '--email', appleId,
+    '--password', password,
+    '--keychain-passphrase', ''
+  ];
+
+  if (twoFactorCode) {
+    authArgs.push('--auth-code', twoFactorCode);
+  }
+
+  try {
+    // First authentication attempt
+    const { stdout, stderr } = await execFileAsync(ipatoolPath, authArgs, {
+      env,
+      cwd: tempDir,
+      timeout: 120000
+    });
+
+    console.log('Auth success:', stdout);
+    sessions.delete(tempSessionId);
+
+  } catch (authError) {
+    const errorOutput = [
+      authError.stdout || '',
+      authError.stderr || '',
+      authError.message || ''
+    ].join(' ').toLowerCase();
+
+    console.log('Auth error output:', errorOutput);
+
+    // Check if 2FA is required
+    const needs2FA = [
+      'verification code',
+      'two-factor',
+      'authentication code',
+      'security code',
+      'trusted device',
+      '2fa',
+      '6-digit'
+    ].some(pattern => errorOutput.includes(pattern));
+
+    // Handle 2FA case
+    if (needs2FA && !twoFactorCode) {
+      sessions.set(tempSessionId, {
+        appleId,
+        password,
+        appId,
+        timestamp: Date.now(),
+        attempts: 0
+      });
+
+      return res.status(200).json({
+        requiresTwoFactor: true,
+        sessionId: tempSessionId,
+        message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 số) đã gửi đến thiết bị của bạn'
       });
     }
 
-    const authResult = await authenticateWithApple(appleId, password, twoFactorCode, sessionId);
-    
-    if (!authResult.success) {
-      session.attempts = (session.attempts || 0) + 1;
-      
-      if (session.attempts >= 3) {
-        activeSessions.delete(sessionId);
-        return res.status(403).json({ 
-          error: 'TOO_MANY_ATTEMPTS', 
-          message: 'Bạn đã nhập sai mã 2FA quá 3 lần. Vui lòng thử lại sau 30 phút' 
-        });
+    // Handle incorrect 2FA
+    if (twoFactorCode && needs2FA) {
+      const session = sessions.get(tempSessionId);
+      if (session) {
+        session.attempts += 1;
+        
+        if (session.attempts >= 3) {
+          sessions.delete(tempSessionId);
+          return res.status(403).json({
+            error: 'TOO_MANY_ATTEMPTS',
+            message: 'Bạn đã nhập sai mã 2FA quá 3 lần. Vui lòng thử lại sau 30 phút'
+          });
+        }
       }
 
-      return res.status(401).json({ 
-        error: 'INVALID_2FA', 
-        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại' 
+      return res.status(401).json({
+        error: 'INVALID_2FA_CODE',
+        message: 'Mã xác thực không đúng. Vui lòng kiểm tra lại'
       });
     }
-  } 
-  // Initial authentication
-  else {
-    const authResult = await authenticateWithApple(appleId, password);
-    
-    if (!authResult.success && authResult.requires2FA) {
-      const newSessionId = uuidv4();
-      activeSessions.set(newSessionId, { 
-        appleId, 
-        password, 
-        appId,
-        attempts: 0,
-        lastActivity: Date.now() 
-      });
 
-      return res.status(200).json({ 
-        requiresTwoFactor: true,
-        sessionId: newSessionId,
-        message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 chữ số) đã gửi đến thiết bị của bạn'
-      });
+    // Handle other errors
+    let errorMessage = 'Đăng nhập thất bại';
+    if (errorOutput.includes('invalid credentials')) {
+      errorMessage = 'Sai Apple ID hoặc mật khẩu';
+    } else if (errorOutput.includes('account locked')) {
+      errorMessage = 'Tài khoản bị khóa tạm thời';
     }
-    else if (!authResult.success) {
-      return res.status(401).json({ 
-        error: 'AUTH_FAILED', 
-        message: authResult.error || 'Đăng nhập thất bại' 
-      });
-    }
+
+    return res.status(401).json({
+      error: 'AUTH_FAILED',
+      message: errorMessage
+    });
   }
 
   // Proceed with download after successful auth
-  const tempDir = path.join('/tmp', `ipa_dl_${uuidv4()}`);
-  await fs.mkdir(tempDir, { recursive: true });
+  console.log('Starting download for:', appId);
+  const ipaPath = path.join(tempDir, `${appId}.ipa`);
 
   try {
-    const ipaPath = path.join(tempDir, `${appId}.ipa`);
-    
-    await execFileAsync('/usr/local/bin/ipatool', [
+    const { stdout } = await execFileAsync(ipatoolPath, [
       'download',
       '--bundle-identifier', appId,
       '--output', ipaPath,
       '--keychain-passphrase', ''
-    ], { timeout: 300000 }); // 5 minutes timeout
+    ], {
+      env,
+      cwd: tempDir,
+      timeout: 300000
+    });
+
+    console.log('Download success:', stdout);
 
     if (!existsSync(ipaPath)) {
       throw new Error('Không tạo được file IPA');
@@ -155,11 +181,22 @@ export default async function handler(req, res) {
     res.setHeader('Content-Length', stats.size);
 
     return createReadStream(ipaPath).pipe(res);
-  } catch (error) {
-    console.error('Download failed:', error);
-    return res.status(500).json({ 
-      error: 'DOWNLOAD_FAILED', 
-      message: 'Không thể tải ứng dụng. Vui lòng kiểm tra Bundle ID và thử lại' 
+
+  } catch (downloadError) {
+    console.error('Download failed:', downloadError);
+    
+    let errorMessage = 'Tải ứng dụng thất bại';
+    const errorOutput = (downloadError.stderr || '').toLowerCase();
+    
+    if (errorOutput.includes('not found')) {
+      errorMessage = 'Không tìm thấy ứng dụng với Bundle ID này';
+    } else if (errorOutput.includes('not purchased')) {
+      errorMessage = 'Tài khoản chưa mua ứng dụng này';
+    }
+
+    return res.status(400).json({
+      error: 'DOWNLOAD_FAILED',
+      message: errorMessage
     });
   } finally {
     setTimeout(() => fs.rm(tempDir, { recursive: true, force: true }), 5000);
