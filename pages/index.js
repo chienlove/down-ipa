@@ -13,6 +13,7 @@ export default function IPADownloader() {
   const [sessionId, setSessionId] = useState('');
   const [message, setMessage] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [isWaitingFor2FA, setIsWaitingFor2FA] = useState(false);
 
   // Countdown timer
   useEffect(() => {
@@ -22,9 +23,40 @@ export default function IPADownloader() {
     }
   }, [countdown]);
 
+  const resetForm = () => {
+    setRequires2FA(false);
+    setTwoFactorCode('');
+    setSessionId('');
+    setCountdown(0);
+    setIsWaitingFor2FA(false);
+  };
+
+  const handleReset = () => {
+    setForm({ appleId: '', password: '', appId: '' });
+    resetForm();
+    setMessage('');
+  };
+
+  const handleTwoFactorChange = (e) => {
+    const value = e.target.value.replace(/\D/g, '');
+    setTwoFactorCode(value.slice(0, 6));
+    
+    // Auto-submit when 6 digits are entered
+    if (value.length === 6 && requires2FA) {
+      setTwoFALoading(true);
+      setTimeout(() => {
+        handleSubmit(e);
+      }, 300);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    if (requires2FA) {
+      setTwoFALoading(true);
+    } else {
+      setLoading(true);
+    }
     setMessage('');
 
     const payload = {
@@ -36,7 +68,8 @@ export default function IPADownloader() {
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(120000) // 2 minutes timeout
       });
 
       if (res.ok && res.headers.get('content-type')?.includes('application/octet-stream')) {
@@ -61,6 +94,7 @@ export default function IPADownloader() {
         setSessionId(data.sessionId);
         setMessage(data.message || 'Tài khoản yêu cầu mã 2FA. Vui lòng nhập mã 6 số');
         setCountdown(120);
+        setIsWaitingFor2FA(true);
         return;
       }
 
@@ -73,36 +107,14 @@ export default function IPADownloader() {
 
     } catch (error) {
       console.error('Request Error:', error);
-      setMessage(error.message || 'Đã xảy ra lỗi kết nối');
+      if (error.name === 'AbortError') {
+        setMessage('Yêu cầu hết hạn. Vui lòng thử lại');
+      } else {
+        setMessage(error.message || 'Đã xảy ra lỗi kết nối');
+      }
     } finally {
       setLoading(false);
       setTwoFALoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setRequires2FA(false);
-    setTwoFactorCode('');
-    setSessionId('');
-    setCountdown(0);
-  };
-
-  const handleReset = () => {
-    setForm({ appleId: '', password: '', appId: '' });
-    resetForm();
-    setMessage('');
-  };
-
-  const handleTwoFactorChange = (e) => {
-    const value = e.target.value.replace(/\D/g, '');
-    setTwoFactorCode(value.slice(0, 6));
-    
-    // Auto-submit when 6 digits are entered
-    if (value.length === 6 && requires2FA) {
-      setTwoFALoading(true);
-      setTimeout(() => {
-        handleSubmit(e);
-      }, 500);
     }
   };
 
@@ -217,6 +229,17 @@ export default function IPADownloader() {
               Mã đã được gửi đến thiết bị đáng tin cậy
               {countdown > 0 && ` (${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')})`}
             </p>
+            {isWaitingFor2FA && (
+              <p style={{ 
+                fontSize: '0.9em', 
+                color: '#17a2b8', 
+                marginTop: '8px', 
+                textAlign: 'center',
+                fontStyle: 'italic'
+              }}>
+                Đang chờ xác thực 2FA...
+              </p>
+            )}
             <div style={{ textAlign: 'center', marginTop: '10px' }}>
               <button 
                 type="button"

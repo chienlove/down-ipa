@@ -12,7 +12,7 @@ const sessions = new Map();
 setInterval(() => {
   const now = Date.now();
   for (const [key, session] of sessions.entries()) {
-    if (now - session.timestamp > 10 * 60 * 1000) {
+    if (now - session.timestamp > 30 * 60 * 1000) { // 30 minutes
       sessions.delete(key);
       console.log(`Cleaned expired session: ${key}`);
     }
@@ -37,7 +37,6 @@ export default async function handler(req, res) {
   const tempDir = path.join('/tmp', `ipa_${tempSessionId}`);
   const keychainPath = path.join(tempDir, 'ipatool.keychain');
 
-  // Luôn tạo thư mục tạm
   await fs.mkdir(tempDir, { recursive: true });
   await fs.chmod(tempDir, 0o700);
 
@@ -64,15 +63,16 @@ export default async function handler(req, res) {
     '--password', password,
     '--keychain-passphrase', ''
   ];
+  
   if (twoFactorCode) {
     args.push('--auth-code', twoFactorCode);
   }
 
   try {
-    const { stdout } = await execFileAsync(ipatoolPath, args, {
+    const { stdout, stderr } = await execFileAsync(ipatoolPath, args, {
       env,
       cwd: tempDir,
-      timeout: 60000
+      timeout: 120000 // 2 minutes timeout
     });
 
     console.log('Login Success:', stdout);
@@ -83,6 +83,8 @@ export default async function handler(req, res) {
       loginError.stderr || '',
       loginError.message || ''
     ].join(' ').toLowerCase();
+
+    console.log('Login Error Output:', allErrorOutput);
 
     const require2FAPatterns = [
       'verification code',
@@ -99,11 +101,15 @@ export default async function handler(req, res) {
 
     const needs2FA = require2FAPatterns.some(p => allErrorOutput.includes(p));
 
-    // Nếu chưa gửi mã, trả về yêu cầu nhập mã
     if (needs2FA && !twoFactorCode) {
       sessions.set(tempSessionId, {
-        appleId, password, appId, timestamp: Date.now()
+        appleId, 
+        password, 
+        appId, 
+        timestamp: Date.now(),
+        attempts: 0
       });
+      
       return res.status(200).json({
         requiresTwoFactor: true,
         sessionId: tempSessionId,
@@ -111,23 +117,34 @@ export default async function handler(req, res) {
       });
     }
 
-    // Nếu gửi mã nhưng sai
     if (twoFactorCode && needs2FA) {
-      await fs.mkdir(tempDir, { recursive: true });
-      const logPath = path.join(tempDir, '2fa_error.log');
-      await fs.writeFile(logPath, `${loginError.message}\n${loginError.stdout}\n${loginError.stderr}`);
+      const session = sessions.get(tempSessionId);
+      if (session) {
+        session.attempts = (session.attempts || 0) + 1;
+        
+        if (session.attempts >= 3) {
+          sessions.delete(tempSessionId);
+          return res.status(400).json({
+            error: 'TOO_MANY_ATTEMPTS',
+            message: 'Quá nhiều lần nhập sai mã 2FA. Vui lòng thử lại sau'
+          });
+        }
+      }
+
       return res.status(400).json({
         error: 'TWO_FACTOR_FAILED',
-        message: 'Mã 2FA không chính xác hoặc đã hết hạn. Vui lòng thử lại'
+        message: 'Mã 2FA không chính xác. Vui lòng kiểm tra và thử lại'
       });
     }
 
-    // Đăng nhập lỗi khác
+    // Other authentication errors
     let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin';
     if (allErrorOutput.includes('invalid credentials') || allErrorOutput.includes('incorrect password')) {
       errorMessage = 'Sai Apple ID hoặc mật khẩu';
     } else if (allErrorOutput.includes('account locked')) {
-      errorMessage = 'Tài khoản bị khóa';
+      errorMessage = 'Tài khoản bị khóa tạm thời';
+    } else if (allErrorOutput.includes('network error')) {
+      errorMessage = 'Lỗi kết nối. Vui lòng thử lại sau';
     }
 
     return res.status(401).json({
@@ -136,7 +153,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // Tải IPA sau khi xác thực thành công
+  // Download IPA after successful authentication
   console.log('Starting download for:', appId);
   const ipaPath = path.join(tempDir, `${appId}.ipa`);
 
@@ -149,7 +166,7 @@ export default async function handler(req, res) {
     ], {
       env,
       cwd: tempDir,
-      timeout: 300000
+      timeout: 300000 // 5 minutes timeout for download
     });
 
     console.log('Download Success:', stdout);
@@ -180,6 +197,8 @@ export default async function handler(req, res) {
       errorMessage = 'Không tìm thấy ứng dụng với Bundle ID này';
     } else if (errorOutput.includes('not purchased')) {
       errorMessage = 'Ứng dụng chưa được mua hoặc không khả dụng';
+    } else if (errorOutput.includes('network error')) {
+      errorMessage = 'Lỗi kết nối khi tải xuống. Vui lòng thử lại';
     }
 
     return res.status(400).json({
