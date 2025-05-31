@@ -51,72 +51,68 @@ export default function IPADownloader() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (requires2FA) {
-      setTwoFALoading(true);
-    } else {
-      setLoading(true);
+  e.preventDefault();
+  setLoading(true);
+  setMessage('');
+  
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
+
+    const response = await fetch('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...form,
+        ...(requires2FA && { twoFactorCode, sessionId })
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    // Handle 2FA requirement
+    const data = await response.json();
+    if (data.requiresTwoFactor) {
+      setRequires2FA(true);
+      setSessionId(data.sessionId);
+      setMessage(data.message);
+      setCountdown(120); // 2 minutes countdown
+      return;
     }
-    setMessage('');
 
-    const payload = {
-      ...form,
-      ...(requires2FA ? { twoFactorCode, sessionId } : {})
-    };
+    // Handle file download
+    if (response.ok && response.headers.get('content-type')?.includes('application/octet-stream')) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${form.appId}.ipa`;
+      a.click();
+      setMessage('Tải xuống thành công!');
+      resetForm();
+      return;
+    }
 
-    try {
-      const res = await fetch('/api/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(120000) // 2 minutes timeout
-      });
-
-      if (res.ok && res.headers.get('content-type')?.includes('application/octet-stream')) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${form.appId}.ipa`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        setMessage('Tải xuống thành công!');
-        resetForm();
-        return;
-      }
-
-      const data = await res.json();
-
-      if (data.requiresTwoFactor) {
-        setRequires2FA(true);
-        setSessionId(data.sessionId);
-        setMessage(data.message || 'Tài khoản yêu cầu mã 2FA. Vui lòng nhập mã 6 số');
-        setCountdown(120);
-        setIsWaitingFor2FA(true);
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Lỗi không xác định');
-      }
-
+    // Handle other success cases
+    if (response.ok) {
       setMessage(data.message || 'Hoàn tất yêu cầu');
       resetForm();
-
-    } catch (error) {
-      console.error('Request Error:', error);
-      if (error.name === 'AbortError') {
-        setMessage('Yêu cầu hết hạn. Vui lòng thử lại');
-      } else {
-        setMessage(error.message || 'Đã xảy ra lỗi kết nối');
-      }
-    } finally {
-      setLoading(false);
-      setTwoFALoading(false);
+      return;
     }
-  };
+
+    // Handle errors
+    throw new Error(data.message || 'Lỗi không xác định');
+
+  } catch (error) {
+    console.error('Request failed:', error);
+    setMessage(error.name === 'AbortError' 
+      ? 'Yêu cầu hết hạn do không phản hồi' 
+      : error.message || 'Lỗi kết nối máy chủ');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div style={{ maxWidth: '500px', margin: '0 auto', padding: '20px' }}>
