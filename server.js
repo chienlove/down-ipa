@@ -198,15 +198,16 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
+    // ✅ Nếu yêu cầu 2FA → trả lại để client hiển thị nhập mã
     if (result.require2FA) {
       return res.json({
         success: false,
         require2FA: true,
-        message: result.message
+        message: result.message || 'Apple yêu cầu mã xác minh 2FA.'
       });
     }
 
-    // Tự động xóa file sau 30 phút
+    // ✅ Thiết lập xoá file sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -215,16 +216,32 @@ app.post('/download', async (req, res) => {
       } catch (err) {
         console.error('Cleanup error:', err.message);
       }
-    }, 30 * 60 * 1000);
+    }, 30 * 60 * 1000); // 30 phút
 
+    // ✅ Trả kết quả thành công
     res.json({
       success: true,
       downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
       fileName: result.fileName,
-      appInfo: result.appInfo
+      appInfo: {
+        name: result.appInfo?.name || '',
+        artist: result.appInfo?.artist || '',
+        version: result.appInfo?.version || '',
+        bundleId: result.appInfo?.bundleId || '',
+        releaseDate: result.appInfo?.releaseDate || ''
+      }
     });
 
   } catch (error) {
+    // 🛑 Trường hợp lỗi xác minh
+    if (error.message?.toLowerCase().includes('2fa') || error.message?.includes('mfa')) {
+      return res.status(200).json({
+        success: false,
+        require2FA: true,
+        message: 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.'
+      });
+    }
+
     console.error('❌ Download error:', error.stack || error.message || error);
     res.status(500).json({
       success: false,

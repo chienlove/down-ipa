@@ -3,17 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('submitBtn');
   const resultBox = document.getElementById('result');
   const errorBox = document.getElementById('error');
-  const twoFAContainer = document.getElementById('2fa-container');
-  const twoFAInput = document.getElementById('VERIFICATION_CODE');
 
-  // Modal 2FA elements
-  const twoFAModal = document.getElementById('2faModal');
-  const twoFAMessage = document.getElementById('2faMessage');
-  const twoFAInputModal = document.getElementById('2faCodeInput');
-  const submit2FA = document.getElementById('submit2FA');
-  const cancel2FA = document.getElementById('cancel2FA');
-
-  // Event submit
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorBox.classList.add('hidden');
@@ -25,11 +15,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const codeFromInput = form.VERIFICATION_CODE.value.trim();
+    const storedCode = localStorage.getItem('2FA_CODE');
+    const CODE = storedCode || codeFromInput;
+
     const data = {
       APPLE_ID: form.APPLE_ID.value.trim(),
       PASSWORD: form.PASSWORD.value,
       APPID,
-      CODE: twoFAInput.value || localStorage.getItem('2FA_CODE') || ''
+      CODE
     };
 
     submitBtn.disabled = true;
@@ -45,28 +39,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const result = await res.json();
 
       if (result.require2FA) {
-        // Hiển thị container 2FA nếu chưa hiển thị
-        if (twoFAContainer.classList.contains('hidden')) {
-          twoFAContainer.classList.remove('hidden');
-        }
-        
-        // Hiển thị modal 2FA
-        const code = await show2FAModal(result.message || 'Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
-        if (code) {
-          twoFAInput.value = code;
-          localStorage.setItem('2FA_CODE', code);
-          form.dispatchEvent(new Event('submit'));
-        } else {
-          showError('Bạn cần nhập mã xác minh để tiếp tục.');
-        }
+        showError('Cần mã xác minh 2FA. Vui lòng kiểm tra thiết bị của bạn và nhập mã ở ô bên trên.');
         return;
       }
 
       if (res.ok && result.downloadUrl) {
+        if (CODE && !storedCode) {
+          localStorage.setItem('2FA_CODE', CODE); // lưu 2FA lần đầu
+        }
         displayResult(result);
-        // Ẩn trường 2FA sau khi thành công
-        twoFAContainer.classList.add('hidden');
-        twoFAInput.value = '';
       } else {
         showError(result.error || 'Đã xảy ra lỗi khi tải IPA.');
       }
@@ -102,41 +83,5 @@ document.addEventListener('DOMContentLoaded', () => {
     link.download = result.fileName || 'app.ipa';
 
     resultBox.classList.remove('hidden');
-  }
-
-  function show2FAModal(message) {
-    return new Promise((resolve) => {
-      twoFAMessage.textContent = message;
-      twoFAModal.classList.remove('hidden');
-      twoFAInputModal.value = '';
-      twoFAInputModal.focus();
-
-      const handleSubmit = () => {
-        twoFAModal.classList.add('hidden');
-        resolve(twoFAInputModal.value);
-        cleanup();
-      };
-
-      const handleCancel = () => {
-        twoFAModal.classList.add('hidden');
-        resolve(null);
-        cleanup();
-      };
-
-      const handleKeyDown = (e) => {
-        if (e.key === 'Enter') handleSubmit();
-        if (e.key === 'Escape') handleCancel();
-      };
-
-      const cleanup = () => {
-        submit2FA.removeEventListener('click', handleSubmit);
-        cancel2FA.removeEventListener('click', handleCancel);
-        twoFAInputModal.removeEventListener('keydown', handleKeyDown);
-      };
-
-      submit2FA.addEventListener('click', handleSubmit);
-      cancel2FA.addEventListener('click', handleCancel);
-      twoFAInputModal.addEventListener('keydown', handleKeyDown);
-    });
   }
 });
