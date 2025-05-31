@@ -94,9 +94,18 @@ class IPATool {
 
     console.log('🔑 Authenticating with Apple ID...');
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Authentication failed');
-    }
+
+if (user._state !== 'success') {
+  if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
+    return res.status(200).json({
+      success: false,
+      require2FA: true,
+      message: 'Vui lòng nhập mã xác minh 2FA đã được gửi về thiết bị.'
+    });
+  }
+
+  throw new Error(user.customerMessage || 'Authentication failed');
+}
 
     console.log('📦 Fetching app info...');
     const app = await Store.download(APPID, appVerId, user);
