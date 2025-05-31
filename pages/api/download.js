@@ -8,12 +8,13 @@ import { v4 as uuidv4 } from 'uuid';
 const execFileAsync = promisify(execFile);
 const sessions = new Map();
 
-// Cleanup old sessions (older than 10 minutes)
+// Cleanup old sessions every minute
 setInterval(() => {
   const now = Date.now();
   for (const [key, session] of sessions.entries()) {
     if (now - session.timestamp > 10 * 60 * 1000) {
       sessions.delete(key);
+      console.log(`Cleaned up expired session: ${key}`);
     }
   }
 }, 60000);
@@ -37,9 +38,11 @@ export default async function handler(req, res) {
   const keychainPath = path.join(tempDir, 'ipatool.keychain');
 
   try {
+    // Create temp directory
     await fs.mkdir(tempDir, { recursive: true });
     await fs.chmod(tempDir, 0o700);
 
+    // Verify ipatool exists
     const ipatoolPath = '/usr/local/bin/ipatool';
     if (!existsSync(ipatoolPath)) {
       return res.status(500).json({
@@ -48,6 +51,7 @@ export default async function handler(req, res) {
       });
     }
 
+    // Prepare environment
     const env = {
       ...process.env,
       HOME: tempDir,
@@ -55,20 +59,24 @@ export default async function handler(req, res) {
       KEYCHAIN_PATH: keychainPath
     };
 
-    // Kiểm tra có phải là request 2FA không
     const is2FARequest = !!twoFactorCode;
     const existingSession = sessions.get(tempSessionId);
 
+    // Handle 2FA request
     if (is2FARequest) {
-      // Xử lý 2FA
       if (!existingSession) {
-        console.warn('Session ID không tồn tại hoặc đã hết hạn:', tempSessionId);
+        console.error('Invalid 2FA session:', {
+          requestedSession: tempSessionId,
+          activeSessions: Array.from(sessions.keys())
+        });
         return res.status(400).json({
           error: 'SESSION_EXPIRED',
-          message: 'Phiên xác thực đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.'
+          message: 'Phiên đã hết hạn. Vui lòng bắt đầu lại từ đầu'
         });
       }
 
+      console.log('Processing 2FA for session:', tempSessionId);
+      
       try {
         const { stdout, stderr } = await execFileAsync(
           ipatoolPath,
@@ -79,23 +87,43 @@ export default async function handler(req, res) {
             '--keychain-passphrase', '',
             '--auth-code', twoFactorCode
           ],
-          { env, cwd: tempDir, timeout: 30000 }
+          { 
+            env, 
+            cwd: tempDir, 
+            timeout: 60000,
+            maxBuffer: 1024 * 1024 * 5 // 5MB buffer
+          }
         );
 
-        console.log('2FA Complete stdout:', stdout);
-        console.log('2FA Complete stderr:', stderr);
-
+        console.log('2FA Success:', stdout);
         sessions.delete(tempSessionId);
-        // Tiếp tục với việc download sau khi 2FA thành công
+        
       } catch (error) {
-        console.error('2FA Error:', error);
+        console.error('2FA Failed:', {
+          message: error.message,
+          stdout: error.stdout,
+          stderr: error.stderr
+        });
+
+        let userMessage = 'Xác thực 2FA thất bại';
+        const errorOutput = (error.stderr || error.stdout || '').toLowerCase();
+        
+        if (errorOutput.includes('invalid verification code')) {
+          userMessage = 'Mã 2FA không chính xác';
+        } else if (errorOutput.includes('expired')) {
+          userMessage = 'Mã 2FA đã hết hạn. Vui lòng yêu cầu mã mới';
+        } else if (errorOutput.includes('timeout')) {
+          userMessage = 'Quá thời gian chờ xác thực. Vui lòng thử lại';
+        }
+
         return res.status(400).json({
           error: 'TWO_FACTOR_FAILED',
-          message: 'Mã 2FA không hợp lệ hoặc đã hết hạn'
+          message: userMessage
         });
       }
-    } else {
-      // Xử lý đăng nhập thông thường
+    } 
+    // Handle initial login
+    else {
       console.log('Initial login attempt for:', appleId);
       
       try {
@@ -107,31 +135,25 @@ export default async function handler(req, res) {
             '--password', password,
             '--keychain-passphrase', ''
           ],
-          { env, cwd: tempDir, timeout: 30000 }
+          { env, cwd: tempDir, timeout: 60000 }
         );
 
-        console.log('Direct login stdout:', stdout);
-        console.log('Direct login stderr:', stderr);
-        
-        // Nếu đến đây thì login thành công không cần 2FA
-        console.log('Login successful without 2FA');
+        console.log('Login Success:', stdout);
         
       } catch (loginError) {
-        console.log('Login failed, analyzing error...');
-        console.log('Error code:', loginError.code);
-        console.log('Error stdout:', loginError.stdout);
-        console.log('Error stderr:', loginError.stderr);
-        console.log('Error message:', loginError.message);
-        
+        console.log('Login Error Analysis:', {
+          code: loginError.code,
+          stdout: loginError.stdout,
+          stderr: loginError.stderr
+        });
+
         const allErrorOutput = [
           loginError.stdout || '',
           loginError.stderr || '',
           loginError.message || ''
         ].join(' ').toLowerCase();
-        
-        console.log('Combined error output:', allErrorOutput);
 
-        // Enhanced 2FA detection patterns
+        // Check for 2FA requirements
         const require2FAPatterns = [
           'verification code',
           'two-factor',
@@ -152,21 +174,18 @@ export default async function handler(req, res) {
           'code'
         ];
 
-        const needs2FA = require2FAPatterns.some(pattern => {
-          const found = allErrorOutput.includes(pattern);
-          if (found) {
-            console.log('2FA pattern found:', pattern);
-          }
-          return found;
-        });
+        const needs2FA = require2FAPatterns.some(pattern => 
+          allErrorOutput.includes(pattern)
+        );
 
         if (needs2FA) {
-          console.log('2FA required detected from error');
+          console.log('2FA required for:', appleId);
           sessions.set(tempSessionId, { 
             appleId, 
             password, 
             appId,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
           });
           
           return res.status(200).json({
@@ -176,7 +195,7 @@ export default async function handler(req, res) {
           });
         }
 
-        // Xử lý các lỗi khác
+        // Handle other errors
         let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin';
         
         if (allErrorOutput.includes('invalid credentials') || 
@@ -184,18 +203,14 @@ export default async function handler(req, res) {
             allErrorOutput.includes('incorrect')) {
           errorMessage = 'Sai Apple ID hoặc mật khẩu';
         } else if (allErrorOutput.includes('account locked') || 
-                   allErrorOutput.includes('locked')) {
+                  allErrorOutput.includes('locked')) {
           errorMessage = 'Tài khoản bị khóa. Vui lòng thử lại sau';
         } else if (allErrorOutput.includes('network') || 
-                   allErrorOutput.includes('connection') || 
-                   allErrorOutput.includes('timeout')) {
+                  allErrorOutput.includes('connection') || 
+                  allErrorOutput.includes('timeout')) {
           errorMessage = 'Lỗi kết nối mạng. Vui lòng thử lại';
-        } else if (allErrorOutput.includes('rate limit') || 
-                   allErrorOutput.includes('too many')) {
-          errorMessage = 'Quá nhiều lần thử. Vui lòng đợi và thử lại sau';
         }
 
-        console.log('Login failed with message:', errorMessage);
         return res.status(401).json({
           error: 'AUTH_FAILED',
           message: errorMessage
@@ -203,10 +218,11 @@ export default async function handler(req, res) {
       }
     }
 
-    // Tải IPA sau khi xác thực thành công
-    console.log('Starting IPA download for:', appId);
+    // Download IPA after successful auth
+    console.log('Starting download for:', appId);
+    const ipaPath = path.join(tempDir, `${appId}.ipa`);
+    
     try {
-      const ipaPath = path.join(tempDir, `${appId}.ipa`);
       const { stdout, stderr } = await execFileAsync(
         ipatoolPath,
         [
@@ -218,22 +234,18 @@ export default async function handler(req, res) {
         { env, cwd: tempDir, timeout: 300000 }
       );
 
-      console.log('Download stdout:', stdout);
-      console.log('Download stderr:', stderr);
+      console.log('Download Success:', stdout);
       
-      // Kiểm tra file có tồn tại không
       if (!existsSync(ipaPath)) {
         throw new Error('File IPA không được tạo thành công');
       }
       
       const fileStats = await fs.stat(ipaPath);
-      console.log('File size:', fileStats.size);
-      
       if (fileStats.size === 0) {
         throw new Error('File IPA rỗng');
       }
 
-      // Stream file về client
+      // Stream file to client
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
       res.setHeader('Content-Length', fileStats.size);
@@ -242,17 +254,15 @@ export default async function handler(req, res) {
       return stream.pipe(res);
 
     } catch (downloadError) {
-      console.error('Download Error:', downloadError);
+      console.error('Download Failed:', downloadError);
       
       let errorMessage = 'Không thể tải xuống ứng dụng';
-      const errorOutput = (downloadError.stdout || downloadError.stderr || downloadError.message || '').toLowerCase();
+      const errorOutput = (downloadError.stdout || downloadError.stderr || '').toLowerCase();
       
       if (errorOutput.includes('not found') || errorOutput.includes('does not exist')) {
         errorMessage = 'Không tìm thấy ứng dụng với Bundle ID này';
       } else if (errorOutput.includes('not purchased') || errorOutput.includes('not available')) {
         errorMessage = 'Ứng dụng chưa được mua hoặc không khả dụng cho tài khoản này';
-      } else if (errorOutput.includes('region') || errorOutput.includes('country')) {
-        errorMessage = 'Ứng dụng không khả dụng ở khu vực này';
       }
       
       return res.status(400).json({
@@ -268,11 +278,11 @@ export default async function handler(req, res) {
       message: error.message || 'Lỗi hệ thống'
     });
   } finally {
-    // Cleanup với delay để đảm bảo file đã được stream xong
+    // Cleanup with delay
     setTimeout(async () => {
       try {
         await fs.rm(tempDir, { recursive: true, force: true });
-        console.log('Cleaned up temp directory:', tempDir);
+        console.log('Cleaned up:', tempDir);
       } catch (error) {
         console.warn('Cleanup Error:', error);
       }
