@@ -13,17 +13,10 @@ export default function IPADownloader() {
   const [sessionId, setSessionId] = useState('');
   const [message, setMessage] = useState('');
   const [countdown, setCountdown] = useState(0);
-  const [abortController, setAbortController] = useState(new AbortController());
-
-  // Reset when unmount
-  useEffect(() => {
-    return () => abortController.abort();
-  }, [abortController]);
 
   // Countdown timer
   useEffect(() => {
     if (countdown <= 0) return;
-    
     const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
     return () => clearTimeout(timer);
   }, [countdown]);
@@ -31,9 +24,6 @@ export default function IPADownloader() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage('');
-    
-    const controller = new AbortController();
-    setAbortController(controller);
     
     try {
       if (requires2FA) {
@@ -48,13 +38,11 @@ export default function IPADownloader() {
         body: JSON.stringify({
           ...form,
           ...(requires2FA && { twoFactorCode, sessionId })
-        }),
-        signal: controller.signal
+        })
       });
 
       const data = await response.json();
 
-      // Handle 2FA requirement
       if (data.requiresTwoFactor) {
         setRequires2FA(true);
         setSessionId(data.sessionId);
@@ -63,35 +51,30 @@ export default function IPADownloader() {
         return;
       }
 
-      // Handle download
       if (response.ok && response.headers.get('content-type')?.includes('application/octet-stream')) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `${form.appId}.ipa`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
         setMessage('Tải xuống thành công!');
         resetForm();
         return;
       }
 
-      // Handle other responses
-      if (response.ok) {
-        setMessage(data.message || 'Thành công');
-        resetForm();
-        return;
+      if (!response.ok) {
+        throw new Error(data.message || 'Lỗi không xác định');
       }
 
-      throw new Error(data.message || 'Lỗi không xác định');
-
+      setMessage(data.message || 'Thành công');
+      resetForm();
     } catch (error) {
-      if (error.name === 'AbortError') {
-        setMessage('Yêu cầu đã bị hủy');
-      } else {
-        console.error('Request failed:', error);
-        setMessage(error.message || 'Lỗi kết nối máy chủ');
-      }
+      console.error('Request error:', error);
+      setMessage(error.message || 'Lỗi kết nối máy chủ');
     } finally {
       setLoading(false);
       setTwoFALoading(false);
@@ -109,7 +92,6 @@ export default function IPADownloader() {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6);
     setTwoFactorCode(value);
     
-    // Auto-submit on 6 digits
     if (value.length === 6 && requires2FA) {
       setTwoFALoading(true);
       setTimeout(() => handleSubmit(e), 300);
@@ -117,62 +99,157 @@ export default function IPADownloader() {
   };
 
   return (
-    <div className="container">
-      <h1>Tải ứng dụng IPA</h1>
+    <div style={{ 
+      maxWidth: '500px', 
+      margin: '0 auto', 
+      padding: '20px',
+      background: '#f5f5f5',
+      borderRadius: '8px',
+      fontFamily: 'Arial, sans-serif'
+    }}>
+      <h1 style={{ 
+        textAlign: 'center', 
+        marginBottom: '20px',
+        color: '#333'
+      }}>Tải ứng dụng IPA</h1>
       
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} style={{ 
+        background: 'white', 
+        padding: '20px', 
+        borderRadius: '8px',
+        marginBottom: '20px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+      }}>
         {!requires2FA ? (
           <>
-            <div className="form-group">
-              <label>Apple ID:</label>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '5px', 
+                fontWeight: 'bold',
+                color: '#555'
+              }}>
+                Apple ID:
+              </label>
               <input
                 type="email"
                 value={form.appleId}
                 onChange={(e) => setForm({...form, appleId: e.target.value})}
                 required
                 disabled={loading}
+                style={{ 
+                  width: '100%', 
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="example@icloud.com"
               />
             </div>
 
-            <div className="form-group">
-              <label>Mật khẩu:</label>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '5px', 
+                fontWeight: 'bold',
+                color: '#555'
+              }}>
+                Mật khẩu:
+              </label>
               <input
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({...form, password: e.target.value})}
                 required
                 disabled={loading}
+                style={{ 
+                  width: '100%', 
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+                placeholder="Mật khẩu Apple ID"
               />
             </div>
 
-            <div className="form-group">
-              <label>Bundle ID:</label>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ 
+                display: 'block', 
+                marginBottom: '5px', 
+                fontWeight: 'bold',
+                color: '#555'
+              }}>
+                Bundle ID:
+              </label>
               <input
                 value={form.appId}
                 onChange={(e) => setForm({...form, appId: e.target.value})}
                 required
                 disabled={loading}
+                style={{ 
+                  width: '100%', 
+                  padding: '10px',
+                  borderRadius: '4px',
+                  border: '1px solid #ddd',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
                 placeholder="com.example.app"
               />
-              <small>Ví dụ: com.apple.mobilecal</small>
+              <small style={{ 
+                color: '#666', 
+                fontSize: '0.8em',
+                display: 'block',
+                marginTop: '5px'
+              }}>
+                Ví dụ: com.apple.mobilecal
+              </small>
             </div>
           </>
         ) : (
-          <div className="form-group">
-            <label>Mã xác thực 2 yếu tố:</label>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ 
+              display: 'block', 
+              marginBottom: '10px', 
+              fontWeight: 'bold',
+              color: '#555',
+              textAlign: 'center'
+            }}>
+              Mã xác thực 2 yếu tố:
+            </label>
             <input
               type="text"
               inputMode="numeric"
+              pattern="[0-9]*"
               value={twoFactorCode}
               onChange={handleTwoFactorChange}
               placeholder="Nhập mã 6 số"
               required
               autoFocus
               disabled={twoFALoading}
-              className={twoFactorCode.length === 6 ? 'valid' : ''}
+              style={{ 
+                width: '100%', 
+                padding: '12px',
+                textAlign: 'center',
+                letterSpacing: '3px',
+                fontSize: '18px',
+                borderRadius: '4px',
+                border: twoFactorCode.length === 6 ? '2px solid #28a745' : '2px solid #007AFF',
+                boxSizing: 'border-box'
+              }}
             />
-            <p>Mã đã được gửi đến thiết bị của bạn {countdown > 0 && 
-              `(${Math.floor(countdown/60)}:${String(countdown%60).padStart(2,'0')})`}
+            <p style={{ 
+              fontSize: '0.9em', 
+              color: '#666', 
+              marginTop: '8px', 
+              textAlign: 'center' 
+            }}>
+              Mã đã được gửi đến thiết bị đáng tin cậy
+              {countdown > 0 && ` (${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')})`}
             </p>
           </div>
         )}
@@ -180,7 +257,18 @@ export default function IPADownloader() {
         <button 
           type="submit" 
           disabled={loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)}
-          className={loading || twoFALoading ? 'loading' : ''}
+          style={{ 
+            background: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? '#ccc' : '#007AFF', 
+            color: 'white', 
+            border: 'none', 
+            padding: '12px',
+            borderRadius: '4px',
+            cursor: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? 'not-allowed' : 'pointer',
+            width: '100%',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            transition: 'background 0.3s'
+          }}
         >
           {twoFALoading ? 'Đang xác thực...' : 
            loading ? 'Đang xử lý...' : 
@@ -188,12 +276,43 @@ export default function IPADownloader() {
         </button>
 
         {message && (
-          <div className={`alert ${message.includes('thành công') ? 'success' : 
-                          message.includes('2FA') ? 'info' : 'error'}`}>
+          <div style={{ 
+            marginTop: '15px', 
+            padding: '12px',
+            background: message.includes('thành công') ? '#d4edda' : 
+                      message.includes('2FA') || message.includes('mã') ? '#d1ecf1' : '#f8d7da',
+            color: message.includes('thành công') ? '#155724' : 
+                  message.includes('2FA') || message.includes('mã') ? '#0c5460' : '#721c24',
+            borderRadius: '4px',
+            borderLeft: `4px solid ${message.includes('thành công') ? '#28a745' : 
+                                  message.includes('2FA') || message.includes('mã') ? '#17a2b8' : '#dc3545'}`,
+            fontSize: '0.9em'
+          }}>
             {message}
           </div>
         )}
       </form>
+
+      <div style={{ 
+        background: '#fff3cd', 
+        padding: '15px', 
+        borderRadius: '4px',
+        fontSize: '0.9em',
+        borderLeft: '4px solid #ffc107'
+      }}>
+        <h3 style={{ marginTop: 0, color: '#856404' }}>Lưu ý quan trọng:</h3>
+        <ul style={{ 
+          marginBottom: 0, 
+          color: '#856404', 
+          paddingLeft: '20px',
+          lineHeight: '1.5'
+        }}>
+          <li>Đảm bảo Apple ID đã mua ứng dụng trước đó</li>
+          <li>Mã 2FA có hiệu lực trong 2 phút</li>
+          <li>Nhập chính xác Bundle ID của ứng dụng</li>
+          <li>Không chia sẻ thông tin tài khoản</li>
+        </ul>
+      </div>
     </div>
   );
 }
