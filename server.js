@@ -184,7 +184,6 @@ class IPATool {
     fileName: outputFileName,
     filePath: outputFilePath
   };
-}
 
 // =============================================
 // ROUTE DOWNLOAD
