@@ -77,7 +77,7 @@ async function clearCache(cacheDir) {
     const files = await fsPromises.readdir(cacheDir);
     await Promise.all(files.map(file => 
       fsPromises.unlink(path.join(cacheDir, file))
-    );
+    ));
   } catch (error) {
     if (error.code !== 'ENOENT') {
       console.error(`Cache clearance error: ${error.message}`);
