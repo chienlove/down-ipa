@@ -17,23 +17,11 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 export default async function handler(req, res) {
-  // Set JSON content type for all responses unless it's a file download
-  res.setHeader('Content-Type', 'application/json');
-  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   const { appleId, password, appId, twoFactorCode, sessionId } = req.body;
-
-  console.log('=== REQUEST DEBUG ===');
-  console.log('Request body keys:', Object.keys(req.body));
-  console.log('Has appleId:', !!appleId);
-  console.log('Has password:', !!password);
-  console.log('Has appId:', !!appId);
-  console.log('Has twoFactorCode:', !!twoFactorCode);
-  console.log('Has sessionId:', !!sessionId);
-  console.log('====================');
 
   // Validate required fields
   if (!appleId || !password || !appId) {
@@ -61,7 +49,6 @@ export default async function handler(req, res) {
 
   const currentSessionId = sessionId || uuidv4();
   let session = activeSessions.get(currentSessionId);
-  let output = '';
   
   // Debug session info
   console.log('=== SESSION DEBUG ===');
@@ -105,109 +92,75 @@ export default async function handler(req, res) {
   try {
     await fs.mkdir(tempDir, { recursive: true });
 
-    // CRITICAL FIX: Skip authentication and go directly to download
-    // Authentication with 2FA in headless environment is problematic
-    // Instead, use credentials directly in download command
-    
-    console.log('=== DIRECT DOWNLOAD APPROACH ===');
-    console.log('Skipping separate auth step, using direct download with credentials');
-    console.log('Working directory:', tempDir);
-    console.log('===============================');
-
-    const ipaPath = path.join(tempDir, `${appId}.ipa`);
-    
-    // Build download arguments with authentication
-    const downloadArgs = [
-      'download',
-      '--bundle-identifier', appId,
+    const args = [
+      'auth', 'login',
       '--email', appleId,
       '--password', password,
-      '--output', ipaPath,
-      '--non-interactive',  // Disable interactive prompts
-      '--keychain-passphrase', '',  // Empty keychain passphrase
-      ...(twoFactorCode ? ['--auth-code', twoFactorCode] : [])
+      ...(twoFactorCode ? ['--auth-code', twoFactorCode] : []),
+      '--keychain-passphrase', ''
     ];
 
-    console.log('=== IPATOOL DOWNLOAD ===');
-    console.log('Command args (passwords hidden):', downloadArgs.map(arg => 
-      downloadArgs.indexOf(arg) === downloadArgs.indexOf(password) ? '[PASSWORD]' : 
-      downloadArgs.indexOf(arg) === downloadArgs.indexOf(twoFactorCode) ? '[2FA_CODE]' : arg
+    console.log('=== IPATOOL EXECUTION ===');
+    console.log('Command args (passwords hidden):', args.map(arg => 
+      args.indexOf(arg) === args.indexOf(password) ? '[PASSWORD]' : 
+      args.indexOf(arg) === args.indexOf(twoFactorCode) ? '[2FA_CODE]' : arg
     ));
-    console.log('=======================');
+    console.log('Working directory:', tempDir);
+    console.log('========================');
 
-    const downloadProcess = spawn('/usr/local/bin/ipatool', downloadArgs, {
+    const ipatool = spawn('/usr/local/bin/ipatool', args, {
       env: {
         ...process.env,
         HOME: tempDir,
-        TMPDIR: tempDir,
-        // Disable keychain prompts
-        IPATOOL_KEYCHAIN_PASSPHRASE: '',
-        // Force non-interactive mode
-        CI: 'true',
-        TERM: 'dumb'
-      },
-      stdio: ['pipe', 'pipe', 'pipe']  // Explicitly set stdio
+        TMPDIR: tempDir
+      }
     });
 
-    let downloadOutput = '';
+    let output = '';
     let is2FARequested = false;
 
     const handleData = (data) => {
       const dataStr = data.toString();
-      downloadOutput += dataStr;
+      output += dataStr;
       console.log('ipatool output:', dataStr.trim());
       
-      // Check for 2FA requirement
       if (!is2FARequested && /verification code|two-factor|2fa|security code|6-digit/i.test(dataStr)) {
         console.log('2FA detected in output');
         is2FARequested = true;
+        ipatool.kill('SIGTERM');
       }
     };
 
-    downloadProcess.stdout.on('data', handleData);
-    downloadProcess.stderr.on('data', handleData);
+    ipatool.stdout.on('data', handleData);
+    ipatool.stderr.on('data', handleData);
 
-    // Handle keychain prompts by sending empty response
-    downloadProcess.stdin.on('error', () => {
-      // Ignore stdin errors
-    });
-
-    const downloadExitCode = await new Promise((resolve, reject) => {
+    const exitCode = await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        console.log('Download timeout, killing process');
-        downloadProcess.kill('SIGKILL');
-        reject(new Error('Download timeout'));
-      }, 300000); // 5 minute timeout
+        console.log('Authentication timeout, killing process');
+        ipatool.kill('SIGKILL');
+        reject(new Error('Authentication timeout'));
+      }, 60000); // 60 second timeout
 
-      downloadProcess.on('close', (code) => {
+      ipatool.on('close', (code) => {
         clearTimeout(timeout);
-        console.log('ipatool download process closed with code:', code);
+        console.log('ipatool auth process closed with code:', code);
         resolve(code);
       });
 
-      downloadProcess.on('error', (error) => {
+      ipatool.on('error', (error) => {
         clearTimeout(timeout);
-        console.error('ipatool download process error:', error);
+        console.error('ipatool auth process error:', error);
         reject(error);
       });
-
-      // Send empty line to handle any prompts
-      try {
-        downloadProcess.stdin.write('\n');
-        downloadProcess.stdin.end();
-      } catch (stdinError) {
-        console.log('stdin write error (expected):', stdinError.message);
-      }
     });
 
-    console.log('=== DOWNLOAD RESULT ===');
-    console.log('Exit code:', downloadExitCode);
+    console.log('=== AUTH RESULT ===');
+    console.log('Exit code:', exitCode);
     console.log('2FA requested:', is2FARequested);
     console.log('Has 2FA code:', !!twoFactorCode);
-    console.log('Output length:', downloadOutput.length);
-    console.log('======================');
+    console.log('Output length:', output.length);
+    console.log('==================');
 
-    // If 2FA is requested and we don't have code, ask for it
     if (is2FARequested && !twoFactorCode) {
       activeSessions.set(currentSessionId, {
         ...session,
@@ -224,6 +177,50 @@ export default async function handler(req, res) {
       });
     }
 
+    if (exitCode !== 0) {
+      throw new Error(output || 'Authentication failed');
+    }
+
+    // Proceed with download after successful auth
+    const ipaPath = path.join(tempDir, `${appId}.ipa`);
+    const downloadProcess = spawn('/usr/local/bin/ipatool', [
+      'download',
+      '--bundle-identifier', appId,
+      '--output', ipaPath,
+      '--keychain-passphrase', ''
+    ], {
+      cwd: tempDir
+    });
+
+    let downloadOutput = '';
+    downloadProcess.stdout.on('data', (data) => {
+      const dataStr = data.toString();
+      downloadOutput += dataStr;
+      console.log('Download stdout:', dataStr.trim());
+    });
+    downloadProcess.stderr.on('data', (data) => {
+      const dataStr = data.toString();
+      downloadOutput += dataStr;
+      console.log('Download stderr:', dataStr.trim());
+    });
+
+    const downloadExitCode = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        downloadProcess.kill('SIGKILL');
+        reject(new Error('Download timeout'));
+      }, 300000); // 5 minute timeout for download
+
+      downloadProcess.on('close', (code) => {
+        clearTimeout(timeout);
+        resolve(code);
+      });
+
+      downloadProcess.on('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+    });
+
     if (downloadExitCode !== 0) {
       throw new Error(`Download failed: ${downloadOutput}`);
     }
@@ -234,7 +231,6 @@ export default async function handler(req, res) {
       if (stats.size === 0) {
         throw new Error('Downloaded file is empty');
       }
-      console.log('File downloaded successfully, size:', stats.size, 'bytes');
     } catch (error) {
       throw new Error('Downloaded file not found or invalid');
     }
@@ -242,7 +238,6 @@ export default async function handler(req, res) {
     // Read file and send as response
     const fileBuffer = await fs.readFile(ipaPath);
     
-    // Change content type for file download
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${appId}.ipa"`);
     res.setHeader('Content-Length', fileBuffer.length);
@@ -257,6 +252,7 @@ export default async function handler(req, res) {
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     console.error('Session ID:', currentSessionId);
+    console.error('Requires 2FA:', requires2FA);
     console.error('Has 2FA code:', !!twoFactorCode);
     console.error('Output:', output);
     console.error('=====================');
@@ -266,33 +262,12 @@ export default async function handler(req, res) {
     let errorMessage = 'Đã xảy ra lỗi hệ thống';
 
     // More detailed error checking
-    const errorLower = (error.message || '').toLowerCase();
-    const outputLower = (output || '').toLowerCase();
+    const errorLower = error.message.toLowerCase();
     
-    if (errorLower.includes('verification code') || errorLower.includes('two-factor') || errorLower.includes('2fa') ||
-        outputLower.includes('verification code') || outputLower.includes('two-factor') || outputLower.includes('2fa')) {
-      
-      // If we don't have a 2FA code but it's required, request it
-      if (!twoFactorCode) {
-        activeSessions.set(currentSessionId, {
-          ...session,
-          appleId,
-          password,
-          appId,
-          lastActive: Date.now()
-        });
-
-        return res.status(200).json({
-          requiresTwoFactor: true,
-          sessionId: currentSessionId,
-          message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 số) từ thiết bị của bạn'
-        });
-      } else {
-        // 2FA code was provided but failed
-        statusCode = 401;
-        errorType = 'AUTH_FAILED';
-        errorMessage = 'Mã 2FA không đúng hoặc đã hết hạn';
-      }
+    if (errorLower.includes('verification code') || errorLower.includes('two-factor') || errorLower.includes('2fa')) {
+      statusCode = 200;
+      errorType = 'NEED_2FA';
+      errorMessage = 'Vui lòng nhập mã xác thực 2 yếu tố';
     } else if (errorLower.includes('invalid credentials') || errorLower.includes('authentication failed') || errorLower.includes('sign in failed')) {
       statusCode = 401;
       errorType = 'AUTH_FAILED';
@@ -309,10 +284,6 @@ export default async function handler(req, res) {
       statusCode = 500;
       errorType = 'DOWNLOAD_FAILED';
       errorMessage = 'Tải xuống thất bại, vui lòng thử lại';
-    } else if (errorLower.includes('keychain') || errorLower.includes('inappropriate ioctl')) {
-      statusCode = 500;
-      errorType = 'KEYCHAIN_ERROR';
-      errorMessage = 'Lỗi hệ thống keychain, đang thử phương thức khác';
     }
 
     return res.status(statusCode).json({
