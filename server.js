@@ -205,13 +205,12 @@ app.post('/download', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Download error:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
+  console.error('❌ Download error:', error.stack || error.message || error);
+  res.status(500).json({
+    success: false,
+    error: error.message || 'An unknown error has occurred'
+  });
   }
-});
 
 // =============================================
 // CẤU HÌNH SERVER
