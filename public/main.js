@@ -17,7 +17,7 @@ document.getElementById('download-form').addEventListener('submit', async functi
     });
 
     const result = await res.json();
-    if (result.url) {
+    if (result.downloadUrl) {
       window.location.href = result.url;
     } else {
       alert('Tải thất bại: ' + (result.error || 'Không rõ nguyên nhân'));
