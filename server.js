@@ -185,13 +185,13 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
-    if (result.require2FA) {
-      return res.status(200).json({
-        success: false,
-        require2FA: true,
-        message: result.message
-      });
-    }
+    if (result?.require2FA) {
+  return res.status(200).json({
+    success: false,
+    require2FA: true,
+    message: result.message || '🔐 Vui lòng nhập mã xác minh 2FA đã gửi về thiết bị.'
+  });
+}
 
     // Tự động xóa sau 30 phút
     setTimeout(async () => {
@@ -221,9 +221,9 @@ app.post('/download', async (req, res) => {
       friendly = '❌ Mật khẩu sai hoặc Apple ID không hợp lệ.';
     } else if (rawMsg.toLowerCase().includes('verification') || rawMsg.toLowerCase().includes('2fa')) {
       friendly = '❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.';
-    } else if (rawMsg.toLowerCase().includes('app')) {
-      friendly = '❗ Không thể tải ứng dụng. Kiểm tra lại App ID.';
-    }
+    } else if (rawMsg.toLowerCase().includes('app') && rawMsg.toLowerCase().includes('id')) {
+  friendly = '❗ App ID không hợp lệ hoặc không tìm thấy ứng dụng.';
+}
 
     console.error('❌ Download error:', rawMsg);
     res.status(400).json({ success: false, error: friendly });
