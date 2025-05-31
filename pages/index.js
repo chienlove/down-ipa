@@ -99,8 +99,8 @@ export default function IPADownloader() {
         const data = await response.json();
         console.log('Parsed JSON data:', data);
 
-        // Handle 2FA requirement
-        if (data.requiresTwoFactor) {
+        // Handle 2FA requirement (only for successful responses)
+        if (response.ok && data.requiresTwoFactor) {
           setRequires2FA(true);
           setSessionId(data.sessionId);
           setMessage(data.message);
@@ -108,12 +108,45 @@ export default function IPADownloader() {
           return;
         }
 
-        // Handle error responses
-        if (!response.ok) {
+        // Handle error responses (status 4xx, 5xx OR has error field)
+        if (!response.ok || data.error) {
           if (data.debug) {
             console.error('Debug info:', data.debug);
           }
-          throw new Error(data.message || `Server error: ${response.status}`);
+          
+          // Specific error handling based on error type
+          switch (data.error) {
+            case 'AUTH_FAILED':
+              if (requires2FA) {
+                setMessage('Mã 2FA không đúng hoặc đã hết hạn. Vui lòng thử lại.');
+              } else {
+                setMessage('Sai Apple ID hoặc mật khẩu. Vui lòng kiểm tra lại.');
+              }
+              break;
+            case 'SESSION_EXPIRED':
+              setMessage('Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.');
+              resetForm();
+              break;
+            case 'APP_NOT_FOUND':
+              setMessage('Không tìm thấy ứng dụng hoặc bạn chưa mua ứng dụng này.');
+              break;
+            case 'TIMEOUT':
+              setMessage('Quá thời gian chờ. Vui lòng thử lại.');
+              break;
+            case 'INVALID_2FA_CODE':
+              setMessage('Mã 2FA không hợp lệ. Vui lòng nhập lại.');
+              break;
+            case 'INVALID_BUNDLE_ID':
+              setMessage('Bundle ID không hợp lệ. Vui lòng kiểm tra định dạng.');
+              break;
+            case 'MISSING_FIELDS':
+              setMessage('Vui lòng nhập đầy đủ thông tin.');
+              break;
+            case 'SERVER_ERROR':
+            default:
+              setMessage(data.message || 'Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.');
+          }
+          return;
         }
 
         // Handle other successful JSON responses
