@@ -208,10 +208,18 @@ app.post('/download', async (req, res) => {
       }
     }, 30 * 60 * 1000);
 
-    res.json({ 
-      success: true,
-      downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${fileName}`
-    });
+    res.json({
+  success: true,
+  downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${fileName}`,
+  fileName,
+  appInfo: {
+    name: metadata.itemName || '',
+    artist: metadata.artistName || '',
+    version: metadata.bundleShortVersionString || '',
+    bundleId: metadata.softwareVersionBundleId || '',
+    releaseDate: metadata.releaseDate || ''
+  }
+});
 
   } catch (error) {
     console.error('❌ Download error:', error.stack || error.message || error);

@@ -4,70 +4,59 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TTJB IPA Downloader</title>
-
-  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- SweetAlert2 for beautiful dialogs -->
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4 overflow-x-hidden">
+<body class="bg-gray-100 min-h-screen p-4">
+  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-md p-6 space-y-6">
 
-  <div class="bg-white shadow-lg rounded-xl p-6 sm:p-8 w-full max-w-md border border-gray-200">
-    <h1 class="text-2xl font-extrabold text-center text-blue-600 mb-6">🔐 TTJB IPA Downloader</h1>
+    <h1 class="text-2xl font-bold text-center text-blue-600">🔐 TTJB IPA Downloader</h1>
 
-    <form id="download-form" class="space-y-5">
-
+    <form id="download-form" class="space-y-4">
       <div>
-        <label for="APPLE_ID" class="block text-sm font-medium text-gray-700 mb-1">Apple ID</label>
-        <input id="APPLE_ID" name="APPLE_ID" type="email" required
-          placeholder="example@icloud.com"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-        <p class="text-xs text-gray-500 mt-1">Tài khoản Apple đã mua ứng dụng.</p>
+        <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
+        <input id="APPLE_ID" name="APPLE_ID" required type="email"
+          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
 
       <div>
-        <label for="PASSWORD" class="block text-sm font-medium text-gray-700 mb-1">Mật khẩu Apple ID</label>
-        <input id="PASSWORD" name="PASSWORD" type="password" required
-          placeholder="••••••••"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+        <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
+        <input id="PASSWORD" name="PASSWORD" required type="password"
+          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
 
       <div>
-        <label for="APPID" class="block text-sm font-medium text-gray-700 mb-1">App ID</label>
-        <input id="APPID" name="APPID" type="text" required
-          placeholder="Ví dụ: 123456789"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-        <p class="text-xs text-gray-500 mt-1">App ID từ App Store (số sau chữ "id").</p>
-      </div>
-
-      <div>
-        <label for="appVerId" class="block text-sm font-medium text-gray-700 mb-1">ID Phiên bản (tùy chọn)</label>
-        <input id="appVerId" name="appVerId" type="text"
-          placeholder="Để trống nếu muốn tải bản mới nhất"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-      </div>
-
-      <div>
-        <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700 mb-1">Mã xác minh 2FA</label>
-        <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" type="text"
-          placeholder="Chỉ cần nhập nếu được yêu cầu"
-          class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+        <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL App Store</label>
+        <input id="APPID" name="APPID" required
+          placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789"
+          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
 
       <button type="submit" id="submitBtn"
-        class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 flex items-center justify-center gap-2 font-medium">
-        <svg id="spinner" class="hidden animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-        </svg>
-        <span id="submitText">Tải IPA</span>
+        class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition font-semibold">
+        📥 Tải IPA
       </button>
-
     </form>
+
+    <!-- Hiển thị kết quả -->
+    <div id="result" class="hidden border-t pt-6 space-y-3">
+      <h2 class="text-lg font-bold text-gray-700">📦 Thông tin IPA</h2>
+      <p><strong>Tên ứng dụng:</strong> <span id="appName"></span></p>
+      <p><strong>Tác giả:</strong> <span id="appAuthor"></span></p>
+      <p><strong>Phiên bản:</strong> <span id="appVersion"></span></p>
+      <p><strong>Bundle ID:</strong> <span id="appBundleId"></span></p>
+      <p><strong>Ngày phát hành:</strong> <span id="appDate"></span></p>
+      <a id="downloadLink"
+         class="inline-block bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+         target="_blank"
+         download>
+        📥 Nhấn để tải IPA
+      </a>
+    </div>
+
+    <!-- Thông báo lỗi -->
+    <div id="error" class="hidden text-red-600 text-sm font-medium"></div>
   </div>
 
-  <!-- JavaScript -->
   <script src="/main.js"></script>
 </body>
 </html>
