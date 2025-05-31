@@ -87,8 +87,11 @@ export default function IPADownloader() {
       try {
         data = await response.json();
       } catch (parseError) {
+        console.error('JSON parse error:', parseError);
         throw new Error('Phản hồi từ server không hợp lệ');
       }
+
+      console.log('Response data:', data);
 
       if (data.requiresTwoFactor) {
         setRequires2FA(true);
@@ -99,6 +102,10 @@ export default function IPADownloader() {
       }
 
       if (!response.ok) {
+        // Log debug info if available
+        if (data.debug) {
+          console.error('Debug info:', data.debug);
+        }
         throw new Error(data.message || 'Lỗi không xác định');
       }
 
