@@ -95,17 +95,15 @@ class IPATool {
     console.log('🔑 Authenticating with Apple ID...');
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
-if (user._state !== 'success') {
-  if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
-    return res.status(200).json({
-      success: false,
-      require2FA: true,
-      message: 'Vui lòng nhập mã xác minh 2FA đã được gửi về thiết bị.'
-    });
-  }
-
-  throw new Error(user.customerMessage || 'Authentication failed');
-}
+    if (user._state !== 'success') {
+      if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
+        return { 
+          require2FA: true,
+          message: 'Vui lòng nhập mã xác minh 2FA đã được gửi về thiết bị.'
+        };
+      }
+      throw new Error(user.customerMessage || 'Authentication failed');
+    }
 
     console.log('📦 Fetching app info...');
     const app = await Store.download(APPID, appVerId, user);
@@ -116,7 +114,10 @@ if (user._state !== 'success') {
     const songList0 = app.songList[0];
     const appInfo = {
       name: songList0.metadata.bundleDisplayName,
-      version: songList0.metadata.bundleShortVersionString
+      artist: songList0.metadata.artistName,
+      version: songList0.metadata.bundleShortVersionString,
+      bundleId: songList0.metadata.softwareVersionBundleId,
+      releaseDate: songList0.metadata.releaseDate
     };
 
     await fsPromises.mkdir(downloadPath, { recursive: true });
@@ -188,7 +189,7 @@ app.post('/download', async (req, res) => {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString(16));
 
-    const { fileName, filePath } = await ipaTool.downipa({
+    const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
       APPLE_ID,
       PASSWORD,
@@ -197,29 +198,31 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
+    if (result.require2FA) {
+      return res.json({
+        success: false,
+        require2FA: true,
+        message: result.message
+      });
+    }
+
     // Tự động xóa file sau 30 phút
     setTimeout(async () => {
       try {
-        await fsPromises.unlink(filePath);
+        await fsPromises.unlink(result.filePath);
         await fsPromises.rm(uniqueDownloadPath, { recursive: true, force: true });
-        console.log(`🧹 Cleaned up: ${filePath}`);
+        console.log(`🧹 Cleaned up: ${result.filePath}`);
       } catch (err) {
         console.error('Cleanup error:', err.message);
       }
     }, 30 * 60 * 1000);
 
     res.json({
-  success: true,
-  downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${fileName}`,
-  fileName,
-  appInfo: {
-    name: metadata.itemName || '',
-    artist: metadata.artistName || '',
-    version: metadata.bundleShortVersionString || '',
-    bundleId: metadata.softwareVersionBundleId || '',
-    releaseDate: metadata.releaseDate || ''
-  }
-});
+      success: true,
+      downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
+      fileName: result.fileName,
+      appInfo: result.appInfo
+    });
 
   } catch (error) {
     console.error('❌ Download error:', error.stack || error.message || error);
