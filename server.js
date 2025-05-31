@@ -90,101 +90,109 @@ async function clearCache(cacheDir) {
 // =============================================
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
-  downloadPath = downloadPath || '.';
+    downloadPath = downloadPath || '.';
 
-  console.log('🔑 Authenticating with Apple ID...');
-  const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    console.log('🔑 Authenticating with Apple ID...');
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
-  if (user._state !== 'success') {
-    if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
-      return {
-        require2FA: true,
-        message: user.customerMessage || 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã.'
-      };
+    if (user._state !== 'success') {
+      if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
+        return {
+          require2FA: true,
+          message: user.customerMessage || 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã.'
+        };
+      }
+      throw new Error(user.customerMessage || 'Đăng nhập Apple ID thất bại.');
     }
-    throw new Error(user.customerMessage || 'Authentication failed');
-  }
 
-  console.log('📦 Fetching app info...');
-  const app = await Store.download(APPID, appVerId, user);
+    console.log('📦 Fetching app info...');
+    const app = await Store.download(APPID, appVerId, user);
 
-  // ✅ Kiểm tra lỗi từ server trả về
-  if (!app || app._state !== 'success' || !Array.isArray(app.songList) || !app.songList[0]?.metadata) {
-    if (app?.failureType?.toLowerCase().includes('mfa')) {
-      return {
-        require2FA: true,
-        message: app.customerMessage || 'Apple yêu cầu mã xác minh 2FA.'
-      };
+    // ✅ Phân biệt lỗi
+    if (!app || app._state !== 'success') {
+      // 1. Apple yêu cầu mã xác minh
+      if (app?.failureType?.toLowerCase().includes('mfa')) {
+        return {
+          require2FA: true,
+          message: app.customerMessage || 'Apple yêu cầu mã xác minh 2FA.'
+        };
+      }
+
+      // 2. Mã xác minh sai hoặc hết hạn
+      if (app?.customerMessage?.toLowerCase().includes('verification')) {
+        throw new Error('❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
+      }
+
+      // 3. App ID sai hoặc app không còn trên Store
+      throw new Error(app.customerMessage || '❌ Không thể tải ứng dụng. Kiểm tra lại App ID hoặc xác thực.');
     }
-    throw new Error(app?.customerMessage || 'Không thể lấy thông tin ứng dụng. Vui lòng kiểm tra App ID hoặc xác thực.');
-  }
 
-  const songList0 = app.songList[0];
-  const appInfo = {
-    name: songList0.metadata.bundleDisplayName,
-    artist: songList0.metadata.artistName,
-    version: songList0.metadata.bundleShortVersionString,
-    bundleId: songList0.metadata.softwareVersionBundleId,
-    releaseDate: songList0.metadata.releaseDate
-  };
+    const songList0 = app.songList[0];
+    const appInfo = {
+      name: songList0.metadata.bundleDisplayName,
+      artist: songList0.metadata.artistName,
+      version: songList0.metadata.bundleShortVersionString,
+      bundleId: songList0.metadata.softwareVersionBundleId,
+      releaseDate: songList0.metadata.releaseDate
+    };
 
-  await fsPromises.mkdir(downloadPath, { recursive: true });
-  const uniqueString = uuidv4();
-  const outputFileName = `${appInfo.name}_${appInfo.version}_${uniqueString}.ipa`;
-  const outputFilePath = path.join(downloadPath, outputFileName);
-  const cacheDir = path.join(downloadPath, 'cache');
+    await fsPromises.mkdir(downloadPath, { recursive: true });
+    const uniqueString = uuidv4();
+    const outputFileName = `${appInfo.name}_${appInfo.version}_${uniqueString}.ipa`;
+    const outputFilePath = path.join(downloadPath, outputFileName);
+    const cacheDir = path.join(downloadPath, 'cache');
 
-  await fsPromises.mkdir(cacheDir, { recursive: true });
-  await clearCache(cacheDir);
+    await fsPromises.mkdir(cacheDir, { recursive: true });
+    await clearCache(cacheDir);
 
-  const resp = await fetch(songList0.URL);
-  if (!resp.ok) throw new Error(`Failed to fetch IPA: ${resp.statusText}`);
+    const resp = await fetch(songList0.URL);
+    if (!resp.ok) throw new Error(`Failed to fetch IPA: ${resp.statusText}`);
 
-  const fileSize = Number(resp.headers.get('content-length'));
-  const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
+    const fileSize = Number(resp.headers.get('content-length'));
+    const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
-  console.log(`📥 Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
+    console.log(`📥 Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
-  const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
-    const tempOutput = path.join(cacheDir, `part${i}`);
-    return () => downloadChunk({ url: songList0.URL, start, end, output: tempOutput });
-  });
-
-  for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
-    await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
-  }
-
-  console.log('🔗 Merging chunks...');
-  const finalFile = createWriteStream(outputFilePath);
-  for (let i = 0; i < numChunks; i++) {
-    const tempOutput = path.join(cacheDir, `part${i}`);
-    const tempStream = createReadStream(tempOutput);
-    await new Promise(resolve => {
-      tempStream.pipe(finalFile, { end: false });
-      tempStream.on('end', () => {
-        fsPromises.unlink(tempOutput).then(resolve);
-      });
+    const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
+      const start = i * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+      const tempOutput = path.join(cacheDir, `part${i}`);
+      return () => downloadChunk({ url: songList0.URL, start, end, output: tempOutput });
     });
+
+    for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
+      await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
+    }
+
+    console.log('🔗 Merging chunks...');
+    const finalFile = createWriteStream(outputFilePath);
+    for (let i = 0; i < numChunks; i++) {
+      const tempOutput = path.join(cacheDir, `part${i}`);
+      const tempStream = createReadStream(tempOutput);
+      await new Promise(resolve => {
+        tempStream.pipe(finalFile, { end: false });
+        tempStream.on('end', () => {
+          fsPromises.unlink(tempOutput).then(resolve);
+        });
+      });
+    }
+    finalFile.end();
+
+    console.log('🖊️ Signing IPA...');
+    const sigClient = new SignatureClient(songList0, APPLE_ID);
+    await sigClient.loadFile(outputFilePath);
+    await sigClient.appendMetadata().appendSignature();
+    await sigClient.write();
+
+    await fsPromises.rm(cacheDir, { recursive: true, force: true });
+    console.log('✅ Download completed successfully!');
+
+    return {
+      appInfo,
+      fileName: outputFileName,
+      filePath: outputFilePath
+    };
   }
-  finalFile.end();
-
-  console.log('🖊️ Signing IPA...');
-  const sigClient = new SignatureClient(songList0, APPLE_ID);
-  await sigClient.loadFile(outputFilePath);
-  await sigClient.appendMetadata().appendSignature();
-  await sigClient.write();
-
-  await fsPromises.rm(cacheDir, { recursive: true, force: true });
-  console.log('✅ Download completed successfully!');
-
-  return {
-    appInfo,
-    fileName: outputFileName,
-    filePath: outputFilePath
-  };
- }
 }
 
 // =============================================
