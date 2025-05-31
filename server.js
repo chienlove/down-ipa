@@ -18,13 +18,14 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// Các hằng số cấu hình
+// Các hằng số
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_CONCURRENT_DOWNLOADS = 5;
+const MAX_CONCURRENT_DOWNLOADS = 3;
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 5000;
-const DOWNLOAD_TIMEOUT = 30000; // 30 seconds
-const FILE_CLEANUP_DELAY = 30 * 60 * 1000; // 30 minutes
+const RETRY_DELAY = 3000;
+const DOWNLOAD_TIMEOUT = 30000; // 30s
+const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 phút
+const FILE_CLEANUP_DELAY = 30 * 60 * 1000; // 30 phút
 
 // Helper functions
 function generateRandomString(length = 16) {
@@ -38,14 +39,8 @@ async function downloadChunk({ url, start, end, output, attempt = 1 }) {
   const timeoutId = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT);
 
   try {
-    const response = await fetch(url, { 
-      headers,
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
+    const response = await fetch(url, { headers, signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
     const fileStream = createWriteStream(output, { flags: 'a' });
     await new Promise((resolve, reject) => {
@@ -53,14 +48,9 @@ async function downloadChunk({ url, start, end, output, attempt = 1 }) {
       response.body.on('error', reject);
       fileStream.on('finish', resolve);
     });
-
     return true;
   } catch (error) {
-    if (attempt >= MAX_RETRIES) {
-      throw new Error(`Failed after ${MAX_RETRIES} attempts: ${error.message}`);
-    }
-    
-    console.warn(`Attempt ${attempt} failed, retrying in ${RETRY_DELAY}ms...`);
+    if (attempt >= MAX_RETRIES) throw error;
     await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     return downloadChunk({ url, start, end, output, attempt: attempt + 1 });
   } finally {
@@ -68,198 +58,200 @@ async function downloadChunk({ url, start, end, output, attempt = 1 }) {
   }
 }
 
-async function clearCache(cacheDir) {
-  try {
-    const files = await fsPromises.readdir(cacheDir);
-    await Promise.all(files.map(file => 
-      fsPromises.unlink(path.join(cacheDir, file)).catch(() => {})
-    ));
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      console.error(`Cache clearance error: ${error.message}`);
-    }
-  }
-}
-
 class IPATool {
   constructor() {
     this.activeDownloads = new Set();
+    this.authSessions = new Map();
   }
 
-  async validateCredentials(APPLE_ID, PASSWORD) {
-    if (!APPLE_ID || !PASSWORD) {
-      throw new Error('Apple ID và mật khẩu là bắt buộc');
+  async validateInput({ APPLE_ID, PASSWORD, APPID }) {
+    if (!APPLE_ID || !PASSWORD || !APPID) {
+      throw new Error('Thiếu thông tin bắt buộc: Apple ID, mật khẩu hoặc App ID');
     }
     
-    if (PASSWORD.length < 8) {
-      throw new Error('Mật khẩu phải có ít nhất 8 ký tự');
-    }
-  }
-
-  async validateAppID(APPID) {
-    if (!APPID) {
-      throw new Error('App ID là bắt buộc');
-    }
-    
-    if (typeof APPID !== 'string' || !/^\d+$/.test(APPID)) {
+    if (!/^\d+$/.test(APPID)) {
       throw new Error('App ID phải là chuỗi số');
     }
   }
 
-  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
+  getErrorMessage(error) {
+    const errorMessages = {
+      'invalid_credentials': 'Sai Apple ID hoặc mật khẩu',
+      'account_locked': 'Tài khoản đã bị khóa',
+      'invalid_code': 'Mã 2FA không đúng',
+      'expired_code': 'Mã 2FA đã hết hạn',
+      'app_not_found': 'Không tìm thấy ứng dụng',
+      'not_purchased': 'Bạn chưa mua ứng dụng này',
+      'rate_limit': 'Thử lại sau ít phút',
+      'network_error': 'Lỗi kết nối, kiểm tra mạng'
+    };
+
+    return errorMessages[error.code] || 
+           error.customerMessage || 
+           error.message || 
+           'Lỗi không xác định';
+  }
+
+  async handle2FA(response, downloadId) {
+    if (response.failureType?.includes('MFA') || 
+        response.customerMessage?.includes('verification')) {
+      
+      this.authSessions.set(downloadId, {
+        APPLE_ID: response.APPLE_ID,
+        PASSWORD: response.PASSWORD,
+        authToken: response.authToken,
+        expires: Date.now() + SESSION_TIMEOUT
+      });
+
+      const message = response.customerMessage.includes('text') ? 
+        'Nhập mã 6 số từ SMS' :
+        'Nhập mã từ thiết bị tin cậy';
+      
+      return {
+        require2FA: true,
+        message: `🔐 ${message}`,
+        downloadId
+      };
+    }
+    return null;
+  }
+
+  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, downloadId = `dl_${uuidv4().slice(0, 8)}` }) {
+    this.activeDownloads.add(downloadId);
+    
     try {
-      // Validate input
-      await this.validateCredentials(APPLE_ID, PASSWORD);
-      await this.validateAppID(APPID);
-
+      await this.validateInput({ APPLE_ID, PASSWORD, APPID });
       downloadPath = downloadPath || '.';
-      const downloadId = uuidv4();
-      this.activeDownloads.add(downloadId);
 
-      console.log(`[${downloadId}] 🔑 Authenticating with Apple ID...`);
+      // Kiểm tra session 2FA nếu có
+      if (CODE && this.authSessions.has(downloadId)) {
+        const session = this.authSessions.get(downloadId);
+        if (session.expires < Date.now()) {
+          throw new Error('Phiên làm việc hết hạn');
+        }
+        APPLE_ID = session.APPLE_ID;
+        PASSWORD = session.PASSWORD;
+      }
+
+      // Xác thực
+      console.log(`[${downloadId}] 🔑 Đang xác thực...`);
       let user;
       try {
         user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-        console.log(`[${downloadId}] Auth response:`, JSON.stringify({
-          state: user._state,
-          account: user.accountInfo?.appleId,
-          failureType: user.failureType
-        }, null, 2));
-      } catch (authError) {
-        console.error(`[${downloadId}] Authentication error:`, authError);
-        throw new Error(`Lỗi xác thực: ${authError.message}`);
-      }
+        
+        const twoFAResult = await this.handle2FA(user, downloadId);
+        if (twoFAResult) return twoFAResult;
 
-      if (user._state !== 'success') {
-        if (user.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: user.customerMessage || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã để tiếp tục.'
+        if (user._state !== 'success') {
+          throw {
+            code: user.failureType,
+            customerMessage: user.customerMessage
           };
         }
-        throw new Error(user.customerMessage || `❌ Đăng nhập thất bại. Chi tiết: ${JSON.stringify({
-          state: user._state,
-          failureType: user.failureType
-        })}`);
+      } catch (error) {
+        throw new Error(this.getErrorMessage(error));
       }
 
-      console.log(`[${downloadId}] 📦 Fetching app info for ${APPID}...`);
+      // Tải app
+      console.log(`[${downloadId}] 📦 Đang tải thông tin ứng dụng...`);
       let app;
       try {
         app = await Store.download(APPID, appVerId, user);
-        console.log(`[${downloadId}] App info response:`, JSON.stringify({
-          state: app._state,
-          bundleId: app.songList?.[0]?.metadata?.softwareVersionBundleId,
-          failureType: app.failureType
-        }, null, 2));
-      } catch (appError) {
-        console.error(`[${downloadId}] App info error:`, appError);
-        throw new Error(`Lỗi khi lấy thông tin ứng dụng: ${appError.message}`);
-      }
+        
+        const appTwoFAResult = await this.handle2FA(app, downloadId);
+        if (appTwoFAResult) return appTwoFAResult;
 
-      const songList0 = app?.songList?.[0];
-
-      if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
-        console.error(`[${downloadId}] Invalid app response:`, app);
-        if (app?.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: app.customerMessage || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã để tiếp tục.'
+        if (app._state !== 'success' || !app.songList?.[0]?.metadata) {
+          throw {
+            code: app.failureType,
+            customerMessage: app.customerMessage
           };
         }
-        if (app?.customerMessage?.toLowerCase().includes('verification')) {
-          throw new Error('❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
-        }
-        throw new Error(app?.customerMessage || `❌ Không thể tải ứng dụng. Chi tiết: ${JSON.stringify({
-          state: app._state,
-          failureType: app.failureType
-        })}`);
+      } catch (error) {
+        throw new Error(this.getErrorMessage(error));
       }
 
+      // Tải file IPA
+      const song = app.songList[0];
       const appInfo = {
-        name: songList0.metadata.bundleDisplayName,
-        artist: songList0.metadata.artistName,
-        version: songList0.metadata.bundleShortVersionString,
-        bundleId: songList0.metadata.softwareVersionBundleId,
-        releaseDate: songList0.metadata.releaseDate
+        name: song.metadata.bundleDisplayName,
+        version: song.metadata.bundleShortVersionString,
+        bundleId: song.metadata.softwareVersionBundleId
       };
 
-      await fsPromises.mkdir(downloadPath, { recursive: true });
-      const safeAppName = appInfo.name.replace(/[^a-zA-Z0-9_\-]/g, '_');
-      const outputFileName = `${safeAppName}_v${appInfo.version}_${uuidv4().slice(0, 8)}.ipa`;
-      const outputFilePath = path.join(downloadPath, outputFileName);
-      const cacheDir = path.join(downloadPath, 'cache_' + uuidv4().slice(0, 8));
+      const outputDir = path.join(downloadPath, generateRandomString());
+      await fsPromises.mkdir(outputDir, { recursive: true });
 
-      await fsPromises.mkdir(cacheDir, { recursive: true });
-      await clearCache(cacheDir);
-
-      console.log(`[${downloadId}] 🌐 Starting download from: ${songList0.URL}`);
-      const resp = await fetch(songList0.URL, { method: 'HEAD' });
-      if (!resp.ok) throw new Error(`❌ Không thể tải IPA: ${resp.statusText}`);
-
-      const fileSize = Number(resp.headers.get('content-length'));
-      if (!fileSize || fileSize <= 0) {
-        throw new Error('❌ Kích thước file không hợp lệ');
-      }
-
-      const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
-      console.log(`[${downloadId}] 📥 Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
-
-      const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
-        const tempOutput = path.join(cacheDir, `part_${i}`);
-        return () => downloadChunk({ 
-          url: songList0.URL, 
-          start, 
-          end, 
-          output: tempOutput 
-        });
-      });
-
-      // Download chunks in batches
-      for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
-        const batch = downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
-        await Promise.all(batch.map(fn => fn()));
-        console.log(`[${downloadId}] ✔️ Downloaded chunks ${i}-${Math.min(i + MAX_CONCURRENT_DOWNLOADS - 1, numChunks - 1)}/${numChunks - 1}`);
-      }
-
-      console.log(`[${downloadId}] 🔗 Merging ${numChunks} chunks...`);
-      const finalFile = createWriteStream(outputFilePath);
-      for (let i = 0; i < numChunks; i++) {
-        const tempOutput = path.join(cacheDir, `part_${i}`);
-        const tempStream = createReadStream(tempOutput);
-        await new Promise(resolve => {
-          tempStream.pipe(finalFile, { end: false });
-          tempStream.on('end', () => {
-            fsPromises.unlink(tempOutput).catch(() => {}).finally(resolve);
-          });
-        });
-      }
-      finalFile.end();
-
-      console.log(`[${downloadId}] 🖊️ Signing IPA...`);
-      const sigClient = new SignatureClient(songList0, APPLE_ID);
-      await sigClient.loadFile(outputFilePath);
-      await sigClient.appendMetadata().appendSignature();
-      await sigClient.write();
-
-      console.log(`[${downloadId}] 🧹 Cleaning up cache...`);
-      await fsPromises.rm(cacheDir, { recursive: true, force: true }).catch(() => {});
+      const outputFile = path.join(outputDir, `${appInfo.name.replace(/[^\w]/g, '_')}_${appInfo.version}.ipa`);
       
-      console.log(`[${downloadId}] ✅ Download completed successfully!`);
-      this.activeDownloads.delete(downloadId);
+      console.log(`[${downloadId}] 📥 Đang tải IPA...`);
+      try {
+        const headRes = await fetch(song.URL, { method: 'HEAD' });
+        if (!headRes.ok) throw new Error('Không thể tải ứng dụng');
+        
+        const fileSize = parseInt(headRes.headers.get('content-length'));
+        const chunks = Math.ceil(fileSize / CHUNK_SIZE);
+        
+        // Tải từng phần
+        for (let i = 0; i < chunks; i += MAX_CONCURRENT_DOWNLOADS) {
+          const chunkPromises = [];
+          for (let j = 0; j < MAX_CONCURRENT_DOWNLOADS && i + j < chunks; j++) {
+            const start = (i + j) * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+            const tempFile = path.join(outputDir, `chunk_${i + j}`);
+            
+            chunkPromises.push(
+              downloadChunk({
+                url: song.URL,
+                start,
+                end,
+                output: tempFile
+              })
+            );
+          }
+          await Promise.all(chunkPromises);
+        }
+        
+        // Ghép file
+        const outputStream = createWriteStream(outputFile);
+        for (let i = 0; i < chunks; i++) {
+          const chunkFile = path.join(outputDir, `chunk_${i}`);
+          await new Promise((resolve) => {
+            createReadStream(chunkFile)
+              .pipe(outputStream, { end: false })
+              .on('end', () => fsPromises.unlink(chunkFile).then(resolve).catch(resolve));
+          });
+        }
+        outputStream.end();
+        
+        // Ký file
+        console.log(`[${downloadId}] 🖊️ Đang ký IPA...`);
+        const sigClient = new SignatureClient(song, APPLE_ID);
+        await sigClient.loadFile(outputFile);
+        await sigClient.appendMetadata().appendSignature();
+        await sigClient.write();
 
-      return {
-        success: true,
-        appInfo,
-        fileName: outputFileName,
-        filePath: outputFilePath,
-        fileSize,
-        downloadId
-      };
+        // Dọn dẹp
+        await fsPromises.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+        this.authSessions.delete(downloadId);
+
+        return {
+          success: true,
+          downloadUrl: `/files/${path.basename(outputDir)}/${path.basename(outputFile)}`,
+          fileName: path.basename(outputFile),
+          appInfo,
+          downloadId
+        };
+
+      } catch (error) {
+        await fsPromises.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+        throw new Error(`Lỗi khi tải ứng dụng: ${error.message}`);
+      }
+
     } catch (error) {
-      console.error(`❌ Download failed:`, error);
+      this.authSessions.delete(downloadId);
+      this.activeDownloads.delete(downloadId);
+      console.error(`[${downloadId}] ❌ Lỗi:`, error.message);
       throw error;
     }
   }
@@ -269,121 +261,81 @@ const ipaTool = new IPATool();
 
 // Routes
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
+  res.status(200).json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
-    activeDownloads: ipaTool.activeDownloads.size
+    activeDownloads: ipaTool.activeDownloads.size,
+    activeSessions: ipaTool.authSessions.size
   });
 });
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 app.post('/download', async (req, res) => {
-  const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
-  const downloadId = `dl_${uuidv4().slice(0, 8)}`;
-  
-  console.log(`[${downloadId}] 📨 New download request for app: ${APPID}`);
+  const { APPLE_ID, PASSWORD, CODE, APPID, appVerId, downloadId } = req.body;
   
   try {
-    const uniqueDownloadPath = path.join(__dirname, 'downloads', generateRandomString());
-    await fsPromises.mkdir(uniqueDownloadPath, { recursive: true });
-
     const result = await ipaTool.downipa({
-      path: uniqueDownloadPath,
+      path: path.join(__dirname, 'downloads'),
       APPLE_ID,
       PASSWORD,
       CODE,
       APPID,
-      appVerId
+      appVerId,
+      downloadId
     });
 
     if (result.require2FA) {
-      return res.status(200).json({
-        success: false,
-        require2FA: true,
-        message: result.message
-      });
+      return res.status(200).json(result);
     }
 
-    // Schedule cleanup
+    // Lên lịch dọn dẹp
     setTimeout(async () => {
       try {
-        await fsPromises.unlink(result.filePath).catch(() => {});
-        await fsPromises.rm(uniqueDownloadPath, { recursive: true, force: true }).catch(() => {});
-        console.log(`[${downloadId}] 🧹 Cleaned up: ${result.filePath}`);
+        const filePath = path.join(__dirname, 'downloads', path.dirname(result.downloadUrl.split('/files/')[1]));
+        await fsPromises.rm(filePath, { recursive: true, force: true });
+        console.log(`[${result.downloadId}] 🧹 Đã dọn dẹp file`);
       } catch (err) {
-        console.error(`[${downloadId}] Cleanup error:`, err.message);
+        console.error(`[${result.downloadId}] Lỗi dọn dẹp:`, err.message);
       }
     }, FILE_CLEANUP_DELAY);
 
-    res.json({
-      success: true,
-      downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
-      fileName: result.fileName,
-      appInfo: result.appInfo,
-      downloadId
-    });
+    res.json(result);
 
   } catch (error) {
-    console.error(`[${downloadId}] ❌ Download error:`, error.message);
     res.status(500).json({
       success: false,
-      error: error.message || 'An unknown error occurred',
-      downloadId
+      error: error.message,
+      downloadId: downloadId || 'unknown'
     });
   }
 });
 
 app.use('/files', express.static(path.join(__dirname, 'downloads')));
 
-// Error handlers
+// Xử lý lỗi
 app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Not Found',
-    timestamp: new Date().toISOString()
-  });
+  res.status(404).json({ error: 'Không tìm thấy' });
 });
 
 app.use((err, req, res, next) => {
-  console.error('🔥 Server error:', err);
-  res.status(500).json({ 
-    error: 'Internal Server Error',
-    message: err.message,
-    timestamp: new Date().toISOString()
+  console.error('🔥 Lỗi server:', err);
+  res.status(500).json({ error: 'Lỗi server' });
+});
+
+// Khởi động server
+const server = app.listen(port, () => {
+  console.log(`🚀 Server đang chạy trên port ${port}`);
+});
+
+// Tắt server đúng cách
+process.on('SIGTERM', () => {
+  console.log('🛑 Nhận tín hiệu tắt server');
+  server.close(() => {
+    console.log('🔴 Server đã tắt');
+    process.exit(0);
   });
 });
 
-// Server startup
-const server = app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-  console.log(`🔗 Health check: http://localhost:${port}/health`);
-});
-
-// Graceful shutdown
-const shutdown = async () => {
-  console.log('🛑 Received shutdown signal');
-  
-  try {
-    // Clean up active downloads
-    if (ipaTool.activeDownloads.size > 0) {
-      console.log(`⚠️ There are ${ipaTool.activeDownloads.size} active downloads - allowing 10 seconds to complete`);
-      await new Promise(resolve => setTimeout(resolve, 10000));
-    }
-    
-    server.close(() => {
-      console.log('🔴 Server closed');
-      process.exit(0);
-    });
-  } catch (err) {
-    console.error('Shutdown error:', err);
-    process.exit(1);
-  }
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection:', err);
+process.on('SIGINT', () => {
+  server.close(() => {
+    process.exit(0);
+  });
 });
