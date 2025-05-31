@@ -3,9 +3,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('submitBtn');
   const resultBox = document.getElementById('result');
   const errorBox = document.getElementById('error');
+  const verifyBox = document.getElementById('verifyBox'); // ô thông báo mã 2FA
 
-  // Hiệu ứng loading nút
   const originalText = submitBtn.textContent;
+
   const setLoading = (state) => {
     if (state) {
       submitBtn.disabled = true;
@@ -22,22 +23,21 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     errorBox.classList.add('hidden');
     resultBox.classList.add('hidden');
+    verifyBox.classList.add('hidden');
 
     const APPID = extractAppId(form.APPID.value.trim());
     if (!APPID) {
-      showError('App ID không hợp lệ. Hãy nhập đúng ID hoặc URL App Store.');
+      showError('❗ App ID không hợp lệ. Hãy nhập đúng ID hoặc URL App Store.');
       return;
     }
 
-    const codeFromInput = form.VERIFICATION_CODE.value.trim();
-    const storedCode = localStorage.getItem('2FA_CODE');
-    const CODE = storedCode || codeFromInput;
+    const code = form.VERIFICATION_CODE.value.trim();
 
     const data = {
       APPLE_ID: form.APPLE_ID.value.trim(),
       PASSWORD: form.PASSWORD.value,
       APPID,
-      CODE
+      CODE: code
     };
 
     setLoading(true);
@@ -51,37 +51,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
-      // ✅ Ưu tiên xử lý yêu cầu mã 2FA
+      // ✅ Nếu yêu cầu mã xác minh
       if (result.require2FA) {
-        const code = prompt(result.message || '🔐 Nhập mã xác minh 2FA đã gửi đến thiết bị Apple của bạn:');
-        if (code) {
-          localStorage.setItem('2FA_CODE', code);
-          form.VERIFICATION_CODE.value = code;
-          submitBtn.click();
-        } else {
-          showError('⚠️ Bạn cần nhập mã xác minh để tiếp tục.');
-        }
+        verifyBox.textContent = result.message || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã ở ô bên dưới và nhấn Tải IPA lại.';
+        verifyBox.classList.remove('hidden');
         return;
       }
 
-      // ✅ Thành công
       if (res.ok && result.downloadUrl) {
-        // Xoá mã 2FA sau khi dùng xong
-        localStorage.removeItem('2FA_CODE');
         displayResult(result);
         return;
       }
 
-      // ❌ Lỗi khác
       if (result.error?.toLowerCase().includes('password')) {
-        showError('❌ Sai mật khẩu hoặc mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
+        showError('❌ Sai mật khẩu hoặc mã xác minh không hợp lệ hoặc đã hết hạn.');
       } else {
-        showError(result.error || 'Đã xảy ra lỗi không xác định.');
+        showError(result.error || '⚠️ Đã xảy ra lỗi không xác định.');
       }
-
     } catch (err) {
       console.error(err);
-      showError('Lỗi kết nối máy chủ. Vui lòng thử lại sau.');
+      showError('⚠️ Lỗi kết nối máy chủ. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
