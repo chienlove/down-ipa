@@ -88,7 +88,7 @@ async function clearCache(cacheDir) {
 // =============================================
 // LỚP XỬ LÝ IPA
 // =============================================
-class IPATool {
+ksqclass IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
     downloadPath = downloadPath || '.';
 
@@ -96,38 +96,38 @@ class IPATool {
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
-      if (user.failureType && user.failureType.toLowerCase().includes('mfa')) {
+      if (user.failureType?.toLowerCase().includes('mfa')) {
         return {
           require2FA: true,
-          message: user.customerMessage || 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã.'
+          message: user.customerMessage || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã để tiếp tục.'
         };
       }
-      throw new Error(user.customerMessage || 'Đăng nhập Apple ID thất bại.');
+      throw new Error(user.customerMessage || '❌ Đăng nhập thất bại. Kiểm tra Apple ID hoặc mật khẩu.');
     }
 
     console.log('📦 Fetching app info...');
     const app = await Store.download(APPID, appVerId, user);
 
-    // ✅ Phân biệt lỗi
-    if (!app || app._state !== 'success') {
-      // 1. Apple yêu cầu mã xác minh
+    const songList0 = app?.songList?.[0];
+
+    if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
+      // ✅ 1. Chưa nhập mã 2FA → yêu cầu nhập
       if (app?.failureType?.toLowerCase().includes('mfa')) {
         return {
           require2FA: true,
-          message: app.customerMessage || 'Apple yêu cầu mã xác minh 2FA.'
+          message: app.customerMessage || '🔐 Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã để tiếp tục.'
         };
       }
 
-      // 2. Mã xác minh sai hoặc hết hạn
+      // ✅ 2. Mã 2FA sai hoặc hết hạn
       if (app?.customerMessage?.toLowerCase().includes('verification')) {
         throw new Error('❌ Mã xác minh 2FA không hợp lệ hoặc đã hết hạn.');
       }
 
-      // 3. App ID sai hoặc app không còn trên Store
-      throw new Error(app.customerMessage || '❌ Không thể tải ứng dụng. Kiểm tra lại App ID hoặc xác thực.');
+      // ✅ 3. App ID không tồn tại
+      throw new Error(app?.customerMessage || '❌ Không thể tải ứng dụng. Kiểm tra lại App ID hoặc tài khoản.');
     }
 
-    const songList0 = app.songList[0];
     const appInfo = {
       name: songList0.metadata.bundleDisplayName,
       artist: songList0.metadata.artistName,
@@ -146,12 +146,12 @@ class IPATool {
     await clearCache(cacheDir);
 
     const resp = await fetch(songList0.URL);
-    if (!resp.ok) throw new Error(`Failed to fetch IPA: ${resp.statusText}`);
+    if (!resp.ok) throw new Error(`❌ Không thể tải IPA: ${resp.statusText}`);
 
     const fileSize = Number(resp.headers.get('content-length'));
     const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
-    console.log(`📥 Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
+    console.log(`📥 Đang tải ${(fileSize / 1024 / 1024).toFixed(2)}MB trong ${numChunks} phần...`);
 
     const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
       const start = i * CHUNK_SIZE;
@@ -164,7 +164,7 @@ class IPATool {
       await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
     }
 
-    console.log('🔗 Merging chunks...');
+    console.log('🔗 Đang ghép các phần...');
     const finalFile = createWriteStream(outputFilePath);
     for (let i = 0; i < numChunks; i++) {
       const tempOutput = path.join(cacheDir, `part${i}`);
@@ -178,14 +178,14 @@ class IPATool {
     }
     finalFile.end();
 
-    console.log('🖊️ Signing IPA...');
+    console.log('🖊️ Đang ký IPA...');
     const sigClient = new SignatureClient(songList0, APPLE_ID);
     await sigClient.loadFile(outputFilePath);
     await sigClient.appendMetadata().appendSignature();
     await sigClient.write();
 
     await fsPromises.rm(cacheDir, { recursive: true, force: true });
-    console.log('✅ Download completed successfully!');
+    console.log('✅ Tải thành công!');
 
     return {
       appInfo,
