@@ -22,7 +22,6 @@ export default function IPADownloader() {
     }
   }, [countdown]);
 
-  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -81,62 +80,6 @@ export default function IPADownloader() {
     }
   };
 
-
-      const res = await fetch('/api/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      // Handle file download
-      if (res.ok && res.headers.get('content-type')?.includes('application/octet-stream')) {
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${form.appId}.ipa`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        setMessage('Tải xuống thành công!');
-        resetForm();
-        return;
-      }
-
-      const data = await res.json();
-
-      // Handle 2FA requirement
-      if (data.requiresTwoFactor) {
-        setRequires2FA(true);
-        setSessionId(data.sessionId);
-        setMessage(data.message || 'Vui lòng nhập mã 2FA từ thiết bị của bạn');
-        setCountdown(120); // 2 minutes for 2FA
-        return;
-      }
-
-      // Handle errors
-      if (!res.ok) {
-        throw new Error(data.message || `Lỗi: ${res.status}`);
-      }
-
-      setMessage(data.message || 'Yêu cầu hoàn thành');
-
-    } catch (error) {
-      console.error('Request Error:', error);
-      setMessage(error.message || 'Đã xảy ra lỗi kết nối');
-      
-      // Don't reset form on 2FA errors to allow retry
-      if (!error.message?.includes('2FA') && !requires2FA) {
-        resetForm();
-      }
-    } finally {
-      setLoading(false);
-      setTwoFALoading(false);
-    }
-  };
-
   const resetForm = () => {
     setRequires2FA(false);
     setTwoFactorCode('');
@@ -155,11 +98,10 @@ export default function IPADownloader() {
     setTwoFactorCode(value.slice(0, 6));
     
     // Auto-submit when 6 digits are entered
-    if (value.length === 6) {
+    if (value.length === 6 && requires2FA) {
+      setTwoFALoading(true);
       setTimeout(() => {
-        if (!twoFALoading) {
-          handleSubmit(e);
-        }
+        handleSubmit(e);
       }, 500);
     }
   };
@@ -297,7 +239,7 @@ export default function IPADownloader() {
 
         <button 
           type="submit" 
-          disabled={loading || twoFALoading || (countdown > 0 && !requires2FA) || (requires2FA && twoFactorCode.length !== 6)}
+          disabled={loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)}
           style={{ 
             background: (loading || twoFALoading || (requires2FA && twoFactorCode.length !== 6)) ? '#ccc' : '#007AFF', 
             color: 'white', 
