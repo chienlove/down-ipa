@@ -49,6 +49,7 @@ export default async function handler(req, res) {
 
   const currentSessionId = sessionId || uuidv4();
   let session = activeSessions.get(currentSessionId);
+  let output = '';
   
   // Debug session info
   console.log('=== SESSION DEBUG ===');
@@ -116,7 +117,6 @@ export default async function handler(req, res) {
       }
     });
 
-    let output = '';
     let is2FARequested = false;
 
     const handleData = (data) => {
@@ -252,7 +252,6 @@ export default async function handler(req, res) {
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     console.error('Session ID:', currentSessionId);
-    console.error('Requires 2FA:', requires2FA);
     console.error('Has 2FA code:', !!twoFactorCode);
     console.error('Output:', output);
     console.error('=====================');
@@ -262,12 +261,33 @@ export default async function handler(req, res) {
     let errorMessage = 'Đã xảy ra lỗi hệ thống';
 
     // More detailed error checking
-    const errorLower = error.message.toLowerCase();
+    const errorLower = (error.message || '').toLowerCase();
+    const outputLower = (output || '').toLowerCase();
     
-    if (errorLower.includes('verification code') || errorLower.includes('two-factor') || errorLower.includes('2fa')) {
-      statusCode = 200;
-      errorType = 'NEED_2FA';
-      errorMessage = 'Vui lòng nhập mã xác thực 2 yếu tố';
+    if (errorLower.includes('verification code') || errorLower.includes('two-factor') || errorLower.includes('2fa') ||
+        outputLower.includes('verification code') || outputLower.includes('two-factor') || outputLower.includes('2fa')) {
+      
+      // If we don't have a 2FA code but it's required, request it
+      if (!twoFactorCode) {
+        activeSessions.set(currentSessionId, {
+          ...session,
+          appleId,
+          password,
+          appId,
+          lastActive: Date.now()
+        });
+
+        return res.status(200).json({
+          requiresTwoFactor: true,
+          sessionId: currentSessionId,
+          message: 'Vui lòng nhập mã xác thực 2 yếu tố (6 số) từ thiết bị của bạn'
+        });
+      } else {
+        // 2FA code was provided but failed
+        statusCode = 401;
+        errorType = 'AUTH_FAILED';
+        errorMessage = 'Mã 2FA không đúng hoặc đã hết hạn';
+      }
     } else if (errorLower.includes('invalid credentials') || errorLower.includes('authentication failed') || errorLower.includes('sign in failed')) {
       statusCode = 401;
       errorType = 'AUTH_FAILED';
