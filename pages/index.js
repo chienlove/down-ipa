@@ -22,22 +22,65 @@ export default function IPADownloader() {
     }
   }, [countdown]);
 
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
-    
-    if (!requires2FA) {
-      setCountdown(20); // Reduced from 15 to 20 seconds for initial login
-    } else {
-      setTwoFALoading(true);
-    }
+
+    const payload = {
+      ...form,
+      ...(requires2FA ? { twoFactorCode, sessionId } : {})
+    };
 
     try {
-      const payload = {
-        ...form,
-        ...(requires2FA && { twoFactorCode, sessionId })
-      };
+      const res = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok && res.headers.get('content-type')?.includes('application/octet-stream')) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${form.appId}.ipa`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        setMessage('Tải xuống thành công!');
+        resetForm();
+        return;
+      }
+
+      const data = await res.json();
+
+      if (data.requiresTwoFactor) {
+        setRequires2FA(true);
+        setSessionId(data.sessionId);
+        setMessage(data.message || 'Tài khoản yêu cầu mã 2FA. Vui lòng nhập mã 6 số');
+        setCountdown(120);
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Lỗi không xác định');
+      }
+
+      setMessage(data.message || 'Hoàn tất yêu cầu');
+      resetForm();
+
+    } catch (error) {
+      console.error('Request Error:', error);
+      setMessage(error.message || 'Đã xảy ra lỗi kết nối');
+    } finally {
+      setLoading(false);
+      setTwoFALoading(false);
+    }
+  };
+
 
       const res = await fetch('/api/download', {
         method: 'POST',

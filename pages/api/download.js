@@ -62,113 +62,97 @@ export default async function handler(req, res) {
     const is2FARequest = !!twoFactorCode;
     const existingSession = sessions.get(tempSessionId);
 
-    // Handle 2FA request
-    if (is2FARequest) {
-      if (!existingSession) {
-        console.error('Invalid 2FA session:', {
-          requestedSession: tempSessionId,
-          activeSessions: Array.from(sessions.keys())
+    
+    // Unified login with or without 2FA
+    console.log('Starting login process for:', appleId);
+
+    const args = [
+      'auth', 'login',
+      '--email', appleId,
+      '--password', password,
+      '--keychain-passphrase', ''
+    ];
+
+    if (twoFactorCode) {
+      args.push('--auth-code', twoFactorCode);
+    }
+
+    try {
+      const { stdout, stderr } = await execFileAsync(
+        ipatoolPath,
+        args,
+        {
+          env,
+          cwd: tempDir,
+          timeout: 60000
+        }
+      );
+
+      console.log('Login Success:', stdout);
+      // Nếu có session thì xóa đi
+      sessions.delete(tempSessionId);
+
+    } catch (loginError) {
+      const allErrorOutput = [
+        loginError.stdout || '',
+        loginError.stderr || '',
+        loginError.message || ''
+      ].join(' ').toLowerCase();
+
+      const require2FAPatterns = [
+        'verification code',
+        'two-factor',
+        'enter the verification code',
+        'authentication code',
+        'security code',
+        'two factor authentication',
+        'trusted device',
+        'verify your identity',
+        '2fa',
+        'code required',
+        '6-digit'
+      ];
+
+      const needs2FA = require2FAPatterns.some(pattern => allErrorOutput.includes(pattern));
+
+      if (needs2FA && !twoFactorCode) {
+        console.log('2FA required for:', appleId);
+        sessions.set(tempSessionId, {
+          appleId,
+          password,
+          appId,
+          timestamp: Date.now()
         });
+
+        return res.status(200).json({
+          requiresTwoFactor: true,
+          sessionId: tempSessionId,
+          message: 'Tài khoản yêu cầu mã 2FA. Vui lòng nhập mã 6 chữ số từ thiết bị của bạn'
+        });
+      }
+
+      // Nếu gửi mã nhưng mã sai
+      if (twoFactorCode && needs2FA) {
         return res.status(400).json({
-          error: 'SESSION_EXPIRED',
-          message: 'Phiên đã hết hạn. Vui lòng bắt đầu lại từ đầu'
+          error: 'TWO_FACTOR_FAILED',
+          message: 'Mã 2FA không chính xác hoặc đã hết hạn. Vui lòng thử lại'
         });
       }
 
-      console.log('Processing 2FA for session:', tempSessionId);
-      
-      try {
-        const { stdout, stderr } = await execFileAsync(
-          ipatoolPath,
-          [
-            'auth', 'login',
-            '--email', existingSession.appleId,
-            '--password', existingSession.password,
-            '--keychain-passphrase', '',
-            '--auth-code', twoFactorCode
-          ],
-          { 
-            env, 
-            cwd: tempDir, 
-            timeout: 60000,
-            maxBuffer: 1024 * 1024 * 5 // 5MB buffer
-          }
-        );
-
-        console.log('2FA Success:', stdout);
-        sessions.delete(tempSessionId);
-        
-      } catch (error) {
-        
-console.error('2FA Failed:', {
-  message: error.message,
-  stdout: error.stdout,
-  stderr: error.stderr
-});
-
-let userMessage = 'Xác thực 2FA thất bại';
-const errorOutput = (error.stderr || error.stdout || '').toLowerCase();
-
-// Ghi lại log đầy đủ vào file (nếu muốn)
-const logPath = path.join(tempDir, '2fa_error.log');
-await fs.writeFile(logPath, `${error.message}
-${error.stdout}
-${error.stderr}`);
-
-// Phân tích lỗi để hiển thị cụ thể hơn cho người dùng
-if (errorOutput.includes('invalid verification code') || 
-    errorOutput.includes('incorrect verification code') ||
-    errorOutput.includes('wrong code')) {
-  userMessage = 'Mã 2FA không chính xác. Vui lòng kiểm tra lại mã bạn nhập';
-} else if (errorOutput.includes('expired') || errorOutput.includes('timeout')) {
-  userMessage = 'Mã 2FA đã hết hạn. Vui lòng yêu cầu mã mới bằng cách đăng nhập lại';
-} else if (errorOutput.includes('session expired') || errorOutput.includes('session not found')) {
-  userMessage = 'Phiên xác thực không hợp lệ. Vui lòng bắt đầu lại';
-} else {
-  userMessage += `: ${error.message}`;
-}
-
-return res.status(400).json({
-  error: 'TWO_FACTOR_FAILED',
-  message: userMessage,
-  debug: {
-    sessionId: tempSessionId,
-    error: error.message,
-    output: (error.stdout || '') + (error.stderr || '')
-  }
-});
-
+      // Lỗi đăng nhập khác
+      let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại Apple ID hoặc mật khẩu';
+      if (allErrorOutput.includes('invalid credentials') || allErrorOutput.includes('incorrect password')) {
+        errorMessage = 'Sai Apple ID hoặc mật khẩu';
+      } else if (allErrorOutput.includes('account locked')) {
+        errorMessage = 'Tài khoản đã bị khóa';
       }
-    } 
-    // Handle initial login - Check for 2FA first
-    else {
-      console.log('Initial login attempt for:', appleId);
-      
-      // First try to detect if account has 2FA enabled by doing a quick check
-      try {
-        const { stdout, stderr } = await execFileAsync(
-          ipatoolPath,
-          [
-            'auth', 'login',
-            '--email', appleId,
-            '--password', password,
-            '--keychain-passphrase', ''
-          ],
-          { 
-            env, 
-            cwd: tempDir, 
-            timeout: 20000 // Reduced timeout to 20 seconds
-          }
-        );
 
-        console.log('Login Success without 2FA:', stdout);
-        
-      } catch (loginError) {
-        console.log('Login Error Analysis:', {
-          code: loginError.code,
-          stdout: loginError.stdout,
-          stderr: loginError.stderr
-        });
+      return res.status(401).json({
+        error: 'AUTH_FAILED',
+        message: errorMessage
+      });
+    }
+);
 
         const allErrorOutput = [
           loginError.stdout || '',
