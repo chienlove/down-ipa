@@ -107,11 +107,13 @@ class IPATool {
 
     console.log('📦 Fetching app info...');
     const app = await Store.download(APPID, appVerId, user);
-    if (app._state !== 'success') {
-      throw new Error(app.customerMessage || 'App download failed');
+
+    // ✅ Kiểm tra dữ liệu trước khi truy cập metadata
+    const songList0 = app?.songList?.[0];
+    if (!songList0 || !songList0.metadata) {
+      throw new Error(app.customerMessage || 'Không thể lấy thông tin ứng dụng. Có thể mã 2FA không hợp lệ hoặc hết hạn.');
     }
 
-    const songList0 = app.songList[0];
     const appInfo = {
       name: songList0.metadata.bundleDisplayName,
       artist: songList0.metadata.artistName,

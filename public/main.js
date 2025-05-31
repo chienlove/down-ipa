@@ -38,14 +38,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const result = await res.json();
 
+      // ✅ Ưu tiên kiểm tra require2FA
       if (result.require2FA) {
-        showError('Cần mã xác minh 2FA. Vui lòng kiểm tra thiết bị của bạn và nhập mã ở ô bên trên.');
+        showError(result.message || 'Apple yêu cầu mã xác minh 2FA. Vui lòng nhập mã và thử lại.');
         return;
       }
 
       if (res.ok && result.downloadUrl) {
         if (CODE && !storedCode) {
-          localStorage.setItem('2FA_CODE', CODE); // lưu 2FA lần đầu
+          localStorage.setItem('2FA_CODE', CODE); // Lưu mã 2FA lần đầu
         }
         displayResult(result);
       } else {
