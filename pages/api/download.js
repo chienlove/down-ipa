@@ -69,7 +69,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync(ipatoolPath, args, {
+    // First try without 2FA code
+    const { stdout } = await execFileAsync(ipatoolPath, args, {
       env,
       cwd: tempDir,
       timeout: 120000 // 2 minutes timeout
@@ -101,6 +102,7 @@ export default async function handler(req, res) {
 
     const needs2FA = require2FAPatterns.some(p => allErrorOutput.includes(p));
 
+    // If 2FA required but no code provided
     if (needs2FA && !twoFactorCode) {
       sessions.set(tempSessionId, {
         appleId, 
@@ -113,10 +115,11 @@ export default async function handler(req, res) {
       return res.status(200).json({
         requiresTwoFactor: true,
         sessionId: tempSessionId,
-        message: 'Tài khoản yêu cầu mã 2FA. Vui lòng nhập mã 6 số từ thiết bị của bạn'
+        message: 'Mã xác thực 2 yếu tố đã được gửi đến thiết bị của bạn. Vui lòng nhập mã 6 số'
       });
     }
 
+    // If 2FA code provided but incorrect
     if (twoFactorCode && needs2FA) {
       const session = sessions.get(tempSessionId);
       if (session) {
@@ -126,25 +129,25 @@ export default async function handler(req, res) {
           sessions.delete(tempSessionId);
           return res.status(400).json({
             error: 'TOO_MANY_ATTEMPTS',
-            message: 'Quá nhiều lần nhập sai mã 2FA. Vui lòng thử lại sau'
+            message: 'Bạn đã nhập sai mã quá 3 lần. Vui lòng thử lại sau 30 phút'
           });
         }
       }
 
       return res.status(400).json({
         error: 'TWO_FACTOR_FAILED',
-        message: 'Mã 2FA không chính xác. Vui lòng kiểm tra và thử lại'
+        message: 'Mã xác thực không đúng. Vui lòng kiểm tra và nhập lại'
       });
     }
 
     // Other authentication errors
-    let errorMessage = 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin';
+    let errorMessage = 'Đăng nhập thất bại';
     if (allErrorOutput.includes('invalid credentials') || allErrorOutput.includes('incorrect password')) {
       errorMessage = 'Sai Apple ID hoặc mật khẩu';
     } else if (allErrorOutput.includes('account locked')) {
-      errorMessage = 'Tài khoản bị khóa tạm thời';
+      errorMessage = 'Tài khoản bị khóa tạm thời do nhập sai nhiều lần';
     } else if (allErrorOutput.includes('network error')) {
-      errorMessage = 'Lỗi kết nối. Vui lòng thử lại sau';
+      errorMessage = 'Lỗi kết nối với Apple. Vui lòng thử lại sau';
     }
 
     return res.status(401).json({
@@ -153,7 +156,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // Download IPA after successful authentication
+  // Continue with download if authentication succeeds
   console.log('Starting download for:', appId);
   const ipaPath = path.join(tempDir, `${appId}.ipa`);
 
@@ -172,12 +175,12 @@ export default async function handler(req, res) {
     console.log('Download Success:', stdout);
 
     if (!existsSync(ipaPath)) {
-      throw new Error('File IPA không được tạo thành công');
+      throw new Error('Không thể tạo file IPA');
     }
 
     const fileStats = await fs.stat(ipaPath);
     if (fileStats.size === 0) {
-      throw new Error('File IPA rỗng');
+      throw new Error('File IPA bị lỗi (kích thước = 0)');
     }
 
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -194,11 +197,9 @@ export default async function handler(req, res) {
     const errorOutput = (downloadError.stdout || downloadError.stderr || '').toLowerCase();
 
     if (errorOutput.includes('not found')) {
-      errorMessage = 'Không tìm thấy ứng dụng với Bundle ID này';
+      errorMessage = 'Không tìm thấy ứng dụng với Bundle ID này trên App Store';
     } else if (errorOutput.includes('not purchased')) {
-      errorMessage = 'Ứng dụng chưa được mua hoặc không khả dụng';
-    } else if (errorOutput.includes('network error')) {
-      errorMessage = 'Lỗi kết nối khi tải xuống. Vui lòng thử lại';
+      errorMessage = 'Tài khoản chưa mua ứng dụng này';
     }
 
     return res.status(400).json({
