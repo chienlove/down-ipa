@@ -241,8 +241,8 @@ elements.loginBtn.addEventListener('click', async (e) => {
   e.preventDefault();
   if (isLoading) return;
 
-  hideError();
   setLoading(true);
+  hideError();
 
   try {
     const response = await fetch('/auth', {
@@ -255,26 +255,32 @@ elements.loginBtn.addEventListener('click', async (e) => {
     });
 
     const data = await response.json();
-    console.log('Auth Response:', data);
+    console.log('Server Response:', data);
 
-    // Xử lý 2FA
-    if (data.requires2FA) {
-      handle2FARedirect(data);
-      return;
+    // Xử lý theo state
+    switch (data._state) {
+      case 'requires_2fa':
+        handle2FARedirect(data);
+        break;
+        
+      case 'invalid_credentials':
+        showError(data.error);
+        break;
+        
+      case 'network_error':
+        showError('Lỗi kết nối. Vui lòng thử lại');
+        break;
+        
+      case 'success':
+        transitionToStep3(data.dsid);
+        break;
+        
+      default:
+        showError('Lỗi không xác định');
     }
-
-    // Xử lý thành công
-    if (data.success) {
-      state.dsid = data.dsid;
-      transition(elements.step1, elements.step3);
-      return;
-    }
-
-    // Xử lý lỗi
-    showError(data.error || 'Đăng nhập thất bại');
 
   } catch (error) {
-    showError('Lỗi kết nối đến server');
+    showError('Lỗi hệ thống');
   } finally {
     setLoading(false);
   }
