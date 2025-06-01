@@ -219,23 +219,20 @@ app.post('/auth', async (req, res) => {
 
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const failure = (user.failureType || '').toLowerCase();
-    const customerMsg = (user.customerMessage || '').toLowerCase();
-
     const has2FA =
       Array.isArray(user.authOptions) && user.authOptions.length > 0 ||
       Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0;
 
-    // ✅ Chỉ trả require2FA khi thật sự có thiết bị xác minh
+    // ✅ Nếu thực sự cần mã xác minh
     if (has2FA) {
       return res.status(200).json({
         require2FA: true,
-        message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
+        message: 'Tài khoản yêu cầu mã xác minh 2FA',
         dsid: user.dsPersonId
       });
     }
 
-    // ❌ Nếu sai tài khoản hoặc không thành công
+    // ❌ Nếu xác thực thất bại, báo lỗi
     if (user._state !== 'success') {
       return res.status(401).json({
         success: false,
@@ -243,11 +240,12 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Thành công không cần xác minh
+    // ✅ Nếu đăng nhập thành công không cần mã xác minh
     return res.status(200).json({
       success: true,
       dsid: user.dsPersonId
     });
+
   } catch (error) {
     console.error('Auth error:', error);
     res.status(500).json({
