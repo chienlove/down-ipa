@@ -218,6 +218,8 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
+    const customerMsg = user.customerMessage?.toLowerCase() || '';
+    const failure = user.failureType?.toLowerCase() || '';
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -226,38 +228,37 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const customerMsg = user.customerMessage?.toLowerCase() || '';
-    const failure = user.failureType?.toLowerCase() || '';
-
-    // ⚠️ KHÔNG còn coi "configurator_message" là sai mật khẩu nữa
+    // ❌ KHÔNG còn dùng configurator_message làm dấu hiệu đăng nhập sai
     const isBadLogin = (
       customerMsg.includes('mật khẩu không đúng') ||
       customerMsg.includes('apple id không đúng') ||
       customerMsg.includes('badlogin') ||
-      failure.includes('invalid')
+      failure.includes('invalid') // ví dụ "invalid_credentials"
     );
 
+    // ✅ Dấu hiệu cần 2FA
     const needs2FA = (
       customerMsg.includes('mã xác minh') ||
       customerMsg.includes('two-factor') ||
       customerMsg.includes('code') ||
-      customerMsg.includes('configurator_message') || // 👈 chuyển qua 2FA thay vì báo lỗi
+      customerMsg.includes('configurator_message') || // dùng để cho phép 2FA
       failure.includes('mfa')
     );
 
-    if (isBadLogin) {
-      return res.status(401).json({
-        success: false,
-        error: 'Apple ID hoặc mật khẩu không đúng.',
-        debug: debugLog
-      });
-    }
-
+    // Xử lý theo thứ tự ưu tiên
     if (needs2FA) {
       return res.json({
         require2FA: true,
         message: 'Tài khoản yêu cầu mã xác minh 2FA',
         dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    if (isBadLogin) {
+      return res.status(401).json({
+        success: false,
+        error: 'Apple ID hoặc mật khẩu không đúng.',
         debug: debugLog
       });
     }
@@ -270,6 +271,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // fallback
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
