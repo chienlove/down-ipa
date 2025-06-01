@@ -88,7 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
       transition(el.step1, el.step2);
       setProgress(2);
     } else if (data.success) {
-      state.verified2FA = true;
       transition(el.step1, el.step3);
       setProgress(3);
     } else {
@@ -142,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const data = await res.json();
     if (data.require2FA) {
-      state.verified2FA = false;  // ⚠️ Reset lại
+      state.verified2FA = false;
       el.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
       transition(el.step3, el.step2);
       setProgress(2);
