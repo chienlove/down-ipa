@@ -259,7 +259,8 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
 } finally {
   setLoading(false);
 }
-
+  });
+  
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
