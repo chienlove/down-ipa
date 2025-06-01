@@ -218,7 +218,6 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Ghi log để debug nếu cần
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -227,17 +226,19 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Nếu đăng nhập thất bại do sai mật khẩu hoặc Apple ID
-    const isInvalidLogin =
-      user._state !== 'success' &&
-      (
-        user.customerMessage?.toLowerCase().includes('mật khẩu') ||
-        user.customerMessage?.toLowerCase().includes('apple id') ||
-        user.customerMessage?.toLowerCase().includes('badlogin') ||
-        user.failureType?.toLowerCase().includes('invalid')
-      );
+    const customerMsg = user.customerMessage?.toLowerCase() || '';
+    const failure = user.failureType?.toLowerCase() || '';
 
-    if (isInvalidLogin) {
+    // ❌ Không còn coi 'configurator_message' là 2FA nữa
+    const isBadLogin = (
+      customerMsg.includes('badlogin') ||
+      customerMsg.includes('configurator_message') ||
+      customerMsg.includes('mật khẩu') ||
+      customerMsg.includes('apple id') ||
+      failure.includes('invalid')
+    );
+
+    if (isBadLogin) {
       return res.status(401).json({
         success: false,
         error: 'Apple ID hoặc mật khẩu không đúng.',
@@ -245,11 +246,13 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu cần xác minh 2FA
-    const needs2FA =
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.includes('Configurator_message') ||
-      user.failureType?.toLowerCase().includes('mfa');
+    // ✅ Chỉ coi là 2FA nếu có dấu hiệu rõ ràng
+    const needs2FA = (
+      customerMsg.includes('mã xác minh') ||
+      customerMsg.includes('two-factor') ||
+      customerMsg.includes('code') ||
+      failure.includes('mfa')
+    );
 
     if (needs2FA) {
       return res.json({
@@ -260,7 +263,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu login thành công không cần 2FA
+    // Thành công
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -269,7 +272,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu lỗi khác
+    // Lỗi không xác định
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
