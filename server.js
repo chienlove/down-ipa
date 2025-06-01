@@ -238,33 +238,27 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    if (!APPLE_ID || !PASSWORD) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Vui lòng nhập Apple ID và mật khẩu' 
-      });
-    }
-
-    // Gọi Apple API để xác thực
     const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Kết quả từ Apple:', authResult); // Log để debug
+    console.log('Auth Result:', authResult);
 
-    // Kiểm tra kết quả CHÍNH XÁC
-    if (!authResult || authResult._state !== 'success') {
+    // 🔴 Kiểm tra CHUẨN theo Apple API
+    if (authResult._state !== 'success' || !authResult.dsPersonId) {
       return res.status(401).json({
         success: false,
-        error: authResult?.customerMessage || 'Sai Apple ID hoặc mật khẩu'
+        error: authResult.customerMessage || 'Sai Apple ID hoặc mật khẩu',
+        debug: {
+          appleStatus: authResult._rawStatus,
+          appleFailure: authResult._rawFailure
+        }
       });
     }
 
-    // Chỉ trả về success:true khi THỰC SỰ thành công
-    res.json({
+    res.json({ 
       success: true,
-      dsid: authResult.dsPersonId
+      dsid: authResult.dsPersonId 
     });
 
   } catch (error) {
-    console.error('Lỗi xác thực:', error);
     res.status(500).json({
       success: false,
       error: 'Lỗi hệ thống'
