@@ -216,51 +216,69 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Apple ID và mật khẩu là bắt buộc'
+      });
+    }
+
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
+    console.log('Authentication response:', JSON.stringify(user, null, 2)); // Log phản hồi từ Apple
 
-    // Debug log để kiểm tra phản hồi
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId
-    };
-
-    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
+      user.failureType?.toLowerCase().includes('mfa')
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (needs2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
-        debug: debugLog
+        debug: {
+          _state: user._state,
+          failureType: user.failureType,
+          customerMessage: user.customerMessage,
+          authOptions: user.authOptions
+        }
       });
     }
 
-    // Đăng nhập hoàn toàn thành công
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
+    if (user._state !== 'success') {
+      return res.status(401).json({
+        success: false,
+        error: user.customerMessage || 'Đăng nhập thất bại',
+        debug: {
+          _state: user._state,
+          failureType: user.failureType,
+          customerMessage: user.customerMessage
+        }
       });
     }
 
-    // Trường hợp thất bại không rõ nguyên nhân
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    res.json({
+      success: true,
+      dsid: user.dsPersonId,
+      debug: {
+        _state: user._state,
+        dsid: user.dsPersonId
+      }
+    });
 
   } catch (error) {
+    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID'
+      error: error.message || 'Lỗi xác thực Apple ID',
+      debug: {
+        rawError: error.toString(),
+        stack: error.stack
+      }
     });
   }
 });

