@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM fully loaded and parsed');
+  
   // DOM Elements
   const elements = {
     step1: document.getElementById('step1'),
@@ -107,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ========== CORE FUNCTIONS ========== */
 
   const showToast = (message, type = 'success') => {
+    console.log(`Showing toast: ${message} (${type})`);
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
@@ -124,6 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showError = (msg) => {
+    console.error('Showing error:', msg);
     elements.errorMessage.textContent = msg;
     elements.errorBox.classList.remove('hidden');
     setTimeout(() => {
@@ -132,11 +136,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const hideError = () => {
+    console.log('Hiding error message');
     elements.errorBox.classList.add('hidden');
     elements.errorBox.classList.remove('animate__fadeIn');
   };
 
   const transition = (from, to) => {
+    console.log(`Transitioning from ${from.id} to ${to.id}`);
     from.classList.add('animate__fadeOut');
     setTimeout(() => {
       from.classList.add('hidden');
@@ -148,11 +154,13 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setProgress = (step) => {
+    console.log(`Setting progress to step ${step}`);
     const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
     elements.progressBar.style.width = map[step] || '0%';
   };
 
   const setLoading = (loading) => {
+    console.log(`Setting loading state: ${loading}`);
     isLoading = loading;
     if (loading) {
       elements.progressBar.classList.add('progress-loading');
@@ -170,20 +178,20 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const handle2FARedirect = (responseData) => {
+    console.log('Handling 2FA redirect with data:', responseData);
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
-    // Friendly error mapping
-let message = responseData.message || '';
-if (message.includes('MZFinance.BadLogin.Configurator_message')) {
-  message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
-} else if (message.toLowerCase().includes('code')) {
-  message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
-}
-
-elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     
-    // Force show step2
+    let message = responseData.message || '';
+    if (message.includes('MZFinance.BadLogin.Configurator_message')) {
+      message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
+    } else if (message.toLowerCase().includes('code')) {
+      message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
+    }
+
+    elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
+    
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
     
@@ -202,111 +210,208 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
   });
 
-    // Step 1: Login
+  // Enhanced fetch with timeout and retry
+  const enhancedFetch = async (url, options, timeout = 10000, retries = 3) => {
+    console.log(`Fetching ${url} with ${retries} retries remaining`);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      options.signal = controller.signal;
+      const response = await fetch(url, options);
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+      
+      return response;
+    } catch (error) {
+      console.error(`Fetch error (${retries} retries left):`, error);
+      if (retries <= 0) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return enhancedFetch(url, options, timeout, retries - 1);
+    }
+  };
+
+  // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
-  e.preventDefault();
-  if (isLoading) return;
+    e.preventDefault();
+    console.log('Login button clicked');
+    
+    if (isLoading) {
+      console.log('Already loading, ignoring click');
+      return;
+    }
 
-  hideError();
-  setLoading(true);
+    hideError();
+    setLoading(true);
 
-  const APPLE_ID = elements.appleIdInput.value.trim();
-  const PASSWORD = elements.passwordInput.value;
+    const APPLE_ID = elements.appleIdInput.value.trim();
+    const PASSWORD = elements.passwordInput.value;
+    console.log('Attempting login with Apple ID:', APPLE_ID);
 
-  if (!APPLE_ID || !PASSWORD) {
-    showError('Vui lòng nhập Apple ID và mật khẩu.');
-    setLoading(false);
-    return;
-  }
-
-  state.APPLE_ID = APPLE_ID;
-  state.PASSWORD = PASSWORD;
-  setProgress(1);
-
-  try {
-    const response = await fetch('/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ APPLE_ID, PASSWORD })
-    });
-
-    const data = await response.json();
-    console.log('Auth response:', JSON.stringify(data, null, 2)); // Thêm log chi tiết
-
-    if (!response.ok) {
-      // Xử lý lỗi từ server
-      const errorMessage = data.error || 
-                         data.message || 
-                         (data.debug ? data.debug.customerMessage : null) || 
-                         'Đăng nhập thất bại';
-      showError(errorMessage);
+    if (!APPLE_ID || !PASSWORD) {
+      console.log('Validation failed: empty credentials');
+      showError('Vui lòng nhập Apple ID và mật khẩu.');
       setLoading(false);
       return;
     }
 
-    // Xử lý thành công hoặc yêu cầu 2FA
-    if (data.require2FA === true) {
-      handle2FARedirect(data);
-    } else if (data.success === true) {
-      state.requires2FA = false;
-      state.verified2FA = true;
-      state.dsid = data.dsid || null;
-      showToast('Đăng nhập thành công!');
-      transition(elements.step1, elements.step3);
-      setProgress(3);
-    } else {
+    state.APPLE_ID = APPLE_ID;
+    state.PASSWORD = PASSWORD;
+    setProgress(1);
+
+    try {
+      console.log('Sending auth request to server');
+      const response = await enhancedFetch('/auth', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ APPLE_ID, PASSWORD })
+      });
+
+      console.log('Received auth response, status:', response.status);
+      const data = await response.json();
+      console.log('Auth response data:', data);
+
+      if (data.require2FA === true) {
+        console.log('2FA required, redirecting');
+        handle2FARedirect(data);
+        return;
+      }
+
+      if (data.success === true) {
+        console.log('Login successful');
+        state.requires2FA = false;
+        state.verified2FA = true;
+        state.dsid = data.dsid || null;
+        showToast('Đăng nhập thành công!');
+        transition(elements.step1, elements.step3);
+        setProgress(3);
+        return;
+      }
+
+      console.log('Login failed with unknown response');
       showError(data.error || 'Đăng nhập thất bại');
+    } catch (error) {
+      console.error('Login error:', error);
+      showError(`Lỗi đăng nhập: ${error.message || 'Không thể kết nối tới máy chủ'}`);
+    } finally {
+      console.log('Login process completed');
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Auth error:', error);
-    showError('Không thể kết nối tới máy chủ: ' + error.message);
-  } finally {
-    setLoading(false);
-  }
-});
+  });
+  
+  // Step 2: Verify 2FA
+  elements.verifyBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    console.log('Verify button clicked');
+    
+    if (isLoading) {
+      console.log('Already loading, ignoring click');
+      return;
+    }
+    
+    hideError();
+    setLoading(true);
 
-  // Ẩn step2 hoàn toàn
-  elements.step2.classList.add('hidden');
-  elements.step2.style.display = 'none';
-  elements.verificationCodeInput.value = '';
-  elements.verifyMessage.textContent = '';
+    const CODE = elements.verificationCodeInput.value.trim();
+    console.log('Verification code entered:', CODE);
 
-  transition(elements.step2, elements.step3);
-  setProgress(3);
-} else {
+    if (CODE.length !== 6) {
+      console.log('Invalid verification code length');
+      showError('Mã xác minh phải có 6 chữ số.');
+      setLoading(false);
+      return;
+    }
+
+    setProgress(2);
+
+    try {
+      console.log('Sending verification request');
+      const response = await enhancedFetch('/verify', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ 
+          APPLE_ID: state.APPLE_ID, 
+          PASSWORD: state.PASSWORD, 
+          CODE,
+          dsid: state.dsid 
+        })
+      });
+
+      console.log('Received verify response, status:', response.status);
+      const data = await response.json();
+      console.log('Verify response data:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Xác minh thất bại');
+      }
+
+      if (data.success) {
+        console.log('2FA verification successful');
+        state.CODE = CODE;
+        state.verified2FA = true;
+        state.dsid = data.dsid || state.dsid;
+        showToast('Xác thực 2FA thành công!');
+
+        elements.step2.classList.add('hidden');
+        elements.step2.style.display = 'none';
+        elements.verificationCodeInput.value = '';
+        elements.verifyMessage.textContent = '';
+
+        transition(elements.step2, elements.step3);
+        setProgress(3);
+      } else {
+        console.log('2FA verification failed');
         showError(data.error || 'Mã xác minh không đúng.');
       }
     } catch (error) {
       console.error('Verify error:', error);
-      showError('Không thể kết nối tới máy chủ.');
+      showError(`Lỗi xác minh: ${error.message || 'Không thể kết nối tới máy chủ'}`);
     } finally {
+      console.log('Verify process completed');
       setLoading(false);
     }
   });
 
-  // Step 3: Download - With strict 2FA check
+  // Step 3: Download
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
-    if (isLoading) return;
+    console.log('Download button clicked');
+    
+    if (isLoading) {
+      console.log('Already loading, ignoring click');
+      return;
+    }
     
     hideError();
     setLoading(true);
 
     const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
     const appVerId = elements.appVerInput.value.trim();
+    console.log(`Download requested for app: ${APPID}, version: ${appVerId}`);
 
     if (!APPID) {
+      console.log('Invalid App ID format');
       showError('Vui lòng nhập App ID hợp lệ.');
       setLoading(false);
       return;
     }
 
-    // Strict 2FA verification check
     if (state.requires2FA && !state.verified2FA) {
+      console.log('2FA required but not verified');
       showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
       setLoading(false);
       
-      // Auto-redirect to 2FA step
       elements.step2.style.display = 'block';
       elements.step2.classList.remove('hidden');
       transition(elements.step3, elements.step2);
@@ -316,9 +421,13 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     setProgress(3);
 
     try {
-      const response = await fetch('/download', {
+      console.log('Sending download request');
+      const response = await enhancedFetch('/download', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
         body: JSON.stringify({ 
           APPLE_ID: state.APPLE_ID,
           PASSWORD: state.PASSWORD,
@@ -329,13 +438,15 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
         })
       });
 
+      console.log('Received download response, status:', response.status);
       const data = await response.json();
-      console.log('Download response:', data);
+      console.log('Download response data:', data);
 
       if (data.require2FA) {
+        console.log('2FA required during download');
         handle2FARedirect(data);
       } else if (data.success) {
-        // Display download result
+        console.log('Download successful, displaying result');
         document.getElementById('appName').textContent = data.appInfo.name;
         document.getElementById('appAuthor').textContent = data.appInfo.artist;
         document.getElementById('appVersion').textContent = data.appInfo.version;
@@ -347,13 +458,26 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
         transition(elements.step3, elements.result);
         setProgress(4);
       } else {
+        console.log('Download failed');
         showError(data.error || 'Tải ứng dụng thất bại.');
       }
     } catch (error) {
       console.error('Download error:', error);
-      showError('Không thể kết nối tới máy chủ.');
+      showError(`Lỗi tải xuống: ${error.message || 'Không thể kết nối tới máy chủ'}`);
     } finally {
+      console.log('Download process completed');
       setLoading(false);
     }
+  });
+
+  // Global error handler
+  window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    showError(`Lỗi hệ thống: ${event.message}`);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled rejection:', event.reason);
+    showError(`Lỗi hệ thống: ${event.reason.message || event.reason}`);
   });
 });
