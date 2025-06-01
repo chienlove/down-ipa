@@ -232,28 +232,24 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Nếu có authOptions/trustedDevices → thực sự là 2FA
-    const has2FAIndicators = (
-      Array.isArray(user.authOptions) && user.authOptions.length > 0
-    ) || (
-      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0
-    );
+    // Có dấu hiệu yêu cầu mã xác minh
+    const has2FAIndicators =
+      (Array.isArray(user.authOptions) && user.authOptions.length > 0) ||
+      (Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0);
 
-    // Mặc định: nếu thất bại
-    const isLoginFailed = (
-      _state !== 'success' ||
-      (!has2FAIndicators && customerMsg.includes('badlogin'))
-    );
+    const isConfigurator2FA = customerMsg.includes('badlogin.configurator_message');
 
-    if (isLoginFailed) {
-      return res.status(401).json({
-        success: false,
-        error: 'Apple ID hoặc mật khẩu không đúng.',
-        debug: debugLog
-      });
-    }
+    const needs2FA =
+      failure.includes('mfa') ||
+      customerMsg.includes('verification code') ||
+      customerMsg.includes('two-factor') ||
+      customerMsg.includes('mã xác minh') ||
+      customerMsg.includes('configurator') ||
+      isConfigurator2FA ||
+      has2FAIndicators;
 
-    if (has2FAIndicators) {
+    // ✅ Nếu có dấu hiệu 2FA → yêu cầu mã xác minh
+    if (needs2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
@@ -262,7 +258,22 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Thành công không cần 2FA
+    // ❌ Nếu thực sự là sai tài khoản
+    const isWrongLogin = (
+      failure.includes('badlogin') ||
+      failure.includes('invalid_credentials') ||
+      failure.includes('invalid')
+    );
+
+    if (_state !== 'success' || isWrongLogin) {
+      return res.status(401).json({
+        success: false,
+        error: 'Apple ID hoặc mật khẩu không đúng.',
+        debug: debugLog
+      });
+    }
+
+    // ✅ Thành công, không cần 2FA
     return res.json({
       success: true,
       dsid: user.dsPersonId,
