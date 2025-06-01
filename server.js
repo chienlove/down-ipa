@@ -221,7 +221,6 @@ app.post('/auth', async (req, res) => {
 
     const customerMsg = (user.customerMessage || '').toLowerCase();
     const failure = (user.failureType || '').toLowerCase();
-    const _state = user._state || '';
 
     const debugLog = {
       _state: user._state,
@@ -232,25 +231,18 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Có dấu hiệu yêu cầu mã xác minh
-    const has2FAIndicators =
-      (Array.isArray(user.authOptions) && user.authOptions.length > 0) ||
-      (Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0);
+    const has2FA = (
+      Array.isArray(user.authOptions) && user.authOptions.length > 0
+    ) || (
+      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0
+    );
 
-    const isConfigurator2FA = customerMsg.includes('badlogin.configurator_message');
+    const isConfigurator = customerMsg.includes('badlogin.configurator_message');
 
-    const needs2FA =
-      failure.includes('mfa') ||
-      customerMsg.includes('verification code') ||
-      customerMsg.includes('two-factor') ||
-      customerMsg.includes('mã xác minh') ||
-      customerMsg.includes('configurator') ||
-      isConfigurator2FA ||
-      has2FAIndicators;
+    const needs2FA = has2FA || isConfigurator || customerMsg.includes('verification') || customerMsg.includes('two-factor');
 
-    // ✅ Nếu có dấu hiệu 2FA → yêu cầu mã xác minh
     if (needs2FA) {
-      return res.json({
+      return res.status(200).json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
         dsid: user.dsPersonId,
@@ -258,14 +250,15 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ❌ Nếu thực sự là sai tài khoản
     const isWrongLogin = (
       failure.includes('badlogin') ||
-      failure.includes('invalid_credentials') ||
-      failure.includes('invalid')
+      failure.includes('invalid') ||
+      customerMsg.includes('incorrect') ||
+      customerMsg.includes('invalid') ||
+      customerMsg.includes('apple id hoặc mật khẩu không đúng')
     );
 
-    if (_state !== 'success' || isWrongLogin) {
+    if (isWrongLogin || user._state !== 'success') {
       return res.status(401).json({
         success: false,
         error: 'Apple ID hoặc mật khẩu không đúng.',
@@ -273,14 +266,13 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Thành công, không cần 2FA
-    return res.json({
+    return res.status(200).json({
       success: true,
       dsid: user.dsPersonId,
       debug: debugLog
     });
   } catch (error) {
-    console.error('Auth endpoint error:', error);
+    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
