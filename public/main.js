@@ -46,10 +46,19 @@ document.addEventListener('DOMContentLoaded', () => {
     el.progressBar.style.width = map[step] || '0%';
   };
 
-  // Toggle password visibility
+  // Toggle password visibility with icon switch
   el.togglePassword.addEventListener('click', () => {
     const isPassword = el.passwordInput.type === 'password';
     el.passwordInput.type = isPassword ? 'text' : 'password';
+    el.eyeIcon.innerHTML = isPassword
+      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5
+          c4.478 0 8.268 2.943 9.542 7a9.972 9.972 0 01-1.731 2.885M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`
+      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M2.458 12C3.732 7.943 7.523 5 12 5
+          c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7
+          -4.477 0-8.268-2.943-9.542-7z"/>`;
   });
 
   // Step 1: Login
@@ -133,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const data = await res.json();
     if (data.require2FA) {
+      state.verified2FA = false;  // ⚠️ Reset lại
       el.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
       transition(el.step3, el.step2);
       setProgress(2);
