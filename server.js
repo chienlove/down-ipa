@@ -229,15 +229,23 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // ✅ Kiểm tra đúng 2FA nếu thực sự có danh sách thiết bị hoặc authOptions liên quan
-    const needs2FA = (
-      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0
-    ) || (
-      Array.isArray(user.authOptions) && user.authOptions.join(',').includes('mfa')
+    // ❌ Dấu hiệu rõ ràng sai tài khoản
+    const isWrongLogin = (
+      customerMsg.includes('badlogin') ||
+      customerMsg.includes('mật khẩu') ||
+      customerMsg.includes('apple id') ||
+      failure.includes('invalid')
     );
 
-    // ❌ Nếu không có trustedDevices và authOptions → sai mật khẩu
-    if (!needs2FA) {
+    // ✅ Dấu hiệu rõ ràng cần 2FA
+    const needs2FA = (
+      customerMsg.includes('mã xác minh') ||
+      customerMsg.includes('two-factor') ||
+      customerMsg.includes('verification code') ||
+      failure.includes('mfa')
+    );
+
+    if (isWrongLogin) {
       return res.status(401).json({
         success: false,
         error: 'Apple ID hoặc mật khẩu không đúng.',
@@ -245,14 +253,25 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Có yêu cầu 2FA thật
-    return res.json({
-      require2FA: true,
-      message: 'Tài khoản yêu cầu mã xác minh 2FA',
-      dsid: user.dsPersonId,
-      debug: debugLog
-    });
+    if (needs2FA) {
+      return res.json({
+        require2FA: true,
+        message: 'Tài khoản yêu cầu mã xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
 
+    // ✅ Nếu đăng nhập thẳng thành công (không cần 2FA)
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
       success: false,
