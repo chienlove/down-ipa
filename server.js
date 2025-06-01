@@ -227,12 +227,12 @@ app.post('/auth', async (req, res) => {
     console.log(`Đăng nhập Apple ID: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Trường hợp Apple gửi mã 2FA nhưng vẫn trả "success" => cần xử lý đúng
+    // Kiểm tra nếu Apple yêu cầu xác minh mã 2FA
     if (
       user._state !== 'success' ||
-      user.authOptions?.containsMfa || // dấu hiệu 2FA được yêu cầu
-      user.needsTwoFactorAuth === true || // một số version dùng flag này
-      user.customerMessage?.toLowerCase().includes('verification code')
+      user.authOptions?.containsMfa ||                 // Trường hợp phổ biến
+      user.needsTwoFactorAuth === true ||              // Một số version khác
+      user.customerMessage?.toLowerCase().includes('verification code') // Có thông điệp xác minh
     ) {
       return res.json({
         require2FA: true,
@@ -240,7 +240,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu không yêu cầu 2FA thì mới trả thành công
+    // Thành công thật sự (không yêu cầu 2FA)
     return res.json({
       success: true,
       dsid: user.dsPersonId
