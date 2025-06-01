@@ -238,12 +238,14 @@ app.post('/auth', async (req, res) => {
       customerMsg.includes('configurator')
     );
 
-    // ❌ Chỉ coi là sai đăng nhập nếu failure rõ ràng là badlogin hoặc invalid_credentials
-    const isWrongLogin = (
-      failure.includes('badlogin') ||
-      failure.includes('invalid_credentials') ||
-      failure.includes('invalid')
-    );
+    const customerMsg = (user.customerMessage || '').toLowerCase();
+
+const isWrongLogin = (
+  failure.includes('badlogin') ||
+  failure.includes('invalid_credentials') ||
+  failure.includes('invalid') ||
+  customerMsg.includes('badlogin.configurator_message') // catch dạng thông báo đặc biệt
+);
 
     if (isWrongLogin) {
       return res.status(401).json({
