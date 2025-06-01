@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const elements = {
+  const el = {
     step1: document.getElementById('step1'),
     step2: document.getElementById('step2'),
     step3: document.getElementById('step3'),
@@ -13,10 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressBar: document.getElementById('progressBar'),
     togglePassword: document.getElementById('togglePassword'),
     passwordInput: document.getElementById('PASSWORD'),
-    eyeIcon: document.getElementById('eyeIcon'),
-    appleIdInput: document.getElementById('APPLE_ID'),
-    passwordInput: document.getElementById('PASSWORD'),
-    verificationCodeInput: document.getElementById('VERIFICATION_CODE')
+    eyeIcon: document.getElementById('eyeIcon')
   };
 
   const state = {
@@ -24,22 +21,17 @@ document.addEventListener('DOMContentLoaded', () => {
     PASSWORD: '',
     CODE: '',
     verified2FA: false,
-    dsid: null,
-    authType: null // '2fa' hoặc 'password'
+    dsid: null
   };
 
   let isLoading = false;
 
-  // Tạo toast container nếu chưa có
-  let toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toast-container';
-    toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
-    document.body.appendChild(toastContainer);
-  }
+  // Thêm toast container
+  const toastContainer = document.createElement('div');
+  toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
+  document.body.appendChild(toastContainer);
 
-  // Thêm CSS
+  // Thêm style
   const style = document.createElement('style');
   style.textContent = `
     .progress-loading {
@@ -66,13 +58,11 @@ document.addEventListener('DOMContentLoaded', () => {
     .toast {
       padding: 12px 16px;
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       color: white;
       display: flex;
       align-items: center;
       animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
-      transform: translateX(100%);
-      opacity: 0;
     }
     .toast-success {
       background-color: #10B981;
@@ -81,25 +71,23 @@ document.addEventListener('DOMContentLoaded', () => {
       background-color: #EF4444;
     }
     .toast-icon {
-      margin-right: 12px;
-      font-size: 20px;
+      margin-right: 8px;
+      font-size: 18px;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
     @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
     }
     @keyframes fadeOut {
       to { opacity: 0; }
     }
-    #step2 {
-      display: none;
-    }
   `;
   document.head.appendChild(style);
 
-  // Hiển thị toast thông báo
+  // Hàm hiển thị toast
   const showToast = (message, type = 'success') => {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -108,30 +96,22 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     toastContainer.appendChild(toast);
-    
-    // Kích hoạt animation
-    setTimeout(() => {
-      toast.style.transform = 'translateX(0)';
-      toast.style.opacity = '1';
-    }, 10);
-
-    // Tự động xóa sau 3 giây
     setTimeout(() => {
       toast.remove();
     }, 3000);
   };
 
   const showError = (msg) => {
-    elements.errorMessage.textContent = msg;
-    elements.errorBox.classList.remove('hidden');
+    el.errorMessage.textContent = msg;
+    el.errorBox.classList.remove('hidden');
     setTimeout(() => {
-      elements.errorBox.classList.add('animate__fadeIn');
+      el.errorBox.classList.add('animate__fadeIn');
     }, 10);
   };
 
   const hideError = () => {
-    elements.errorBox.classList.add('hidden');
-    elements.errorBox.classList.remove('animate__fadeIn');
+    el.errorBox.classList.add('hidden');
+    el.errorBox.classList.remove('animate__fadeIn');
   };
 
   const transition = (from, to) => {
@@ -147,19 +127,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const setProgress = (step) => {
     const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
-    elements.progressBar.style.width = map[step] || '0%';
+    el.progressBar.style.width = map[step] || '0%';
   };
 
   const setLoading = (loading) => {
     isLoading = loading;
     if (loading) {
-      elements.progressBar.classList.add('progress-loading');
+      el.progressBar.classList.add('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.add('button-loading');
         btn.disabled = true;
       });
     } else {
-      elements.progressBar.classList.remove('progress-loading');
+      el.progressBar.classList.remove('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.remove('button-loading');
         btn.disabled = false;
@@ -167,32 +147,60 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const navigateBasedOnState = (currentStep, data) => {
+    if (data.require2FA) {
+      state.verified2FA = false;
+      state.dsid = data.dsid || state.dsid;
+      el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 6 chữ số';
+      transition(currentStep, el.step2);
+      setProgress(2);
+    } else if (data.success) {
+      state.verified2FA = true;
+      state.dsid = data.dsid || state.dsid;
+      if (currentStep === el.step1) {
+        showToast('Đăng nhập thành công!');
+        transition(el.step1, el.step3);
+        setProgress(3);
+      } else if (currentStep === el.step2) {
+        showToast('Xác thực 2FA thành công!');
+        transition(el.step2, el.step3);
+        setProgress(3);
+      } else if (currentStep === el.step3) {
+        document.getElementById('appName').textContent = data.appInfo.name;
+        document.getElementById('appAuthor').textContent = data.appInfo.artist;
+        document.getElementById('appVersion').textContent = data.appInfo.version;
+        document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
+        document.getElementById('appDate').textContent = data.appInfo.releaseDate;
+        const downloadLink = document.getElementById('downloadLink');
+        downloadLink.href = data.downloadUrl;
+        downloadLink.download = data.fileName;
+        transition(el.step3, el.result);
+        setProgress(4);
+      }
+    } else {
+      showError(data.error || 'Thao tác thất bại.');
+    }
+  };
+
   // Toggle password visibility
-  elements.togglePassword.addEventListener('click', () => {
-    const isPassword = elements.passwordInput.type === 'password';
-    elements.passwordInput.type = isPassword ? 'text' : 'password';
-    elements.eyeIcon.innerHTML = isPassword
-      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5
-          c4.478 0 8.268 2.943 9.542 7a9.972 9.972 0 01-1.731 2.885M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`
-      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M2.458 12C3.732 7.943 7.523 5 12 5
-          c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7
-          -4.477 0-8.268-2.943-9.542-7z"/>`;
+  el.togglePassword.addEventListener('click', () => {
+    const isPassword = el.passwordInput.type === 'password';
+    el.passwordInput.type = isPassword ? 'text' : 'password';
+    el.eyeIcon.innerHTML = isPassword
+      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`
+      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
   });
 
   // Step 1: Login
-  elements.loginBtn.addEventListener('click', async (e) => {
+  el.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
 
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
-    
+    const APPLE_ID = document.getElementById('APPLE_ID').value.trim();
+    const PASSWORD = document.getElementById('PASSWORD').value;
     if (!APPLE_ID || !PASSWORD) {
       showError('Vui lòng nhập Apple ID và mật khẩu.');
       setLoading(false);
@@ -205,53 +213,36 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(1);
 
     try {
-      const response = await fetch('/auth', {
+      const res = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ APPLE_ID, PASSWORD })
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (!response.ok) {
+      if (!res.ok) {
         showError(data.error || 'Lỗi từ máy chủ.');
-        return;
-      }
-
-      // Xử lý phản hồi từ server
-      if (data.require2FA) {
-        state.authType = '2fa';
-        state.dsid = data.dsid || null;
-        elements.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn';
-        transition(elements.step1, elements.step2);
-        setProgress(2);
-      } else if (data.success) {
-        state.authType = 'password';
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
       } else {
-        showError(data.error || 'Đăng nhập thất bại');
+        navigateBasedOnState(el.step1, data);
       }
-    } catch (error) {
-      console.error('Auth error:', error);
+    } catch (err) {
+      console.error('Auth error:', err);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
     }
   });
 
-  // Step 2: Verify 2FA
-  elements.verifyBtn.addEventListener('click', async (e) => {
+  // Step 2: Verify
+  el.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
 
-    const CODE = elements.verificationCodeInput.value.trim();
+    const CODE = document.getElementById('VERIFICATION_CODE').value.trim();
     if (CODE.length !== 6) {
       showError('Mã xác minh phải có 6 chữ số.');
       setLoading(false);
@@ -261,7 +252,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(2);
 
     try {
-      const response = await fetch('/verify', {
+      const res = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -272,25 +263,15 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (!response.ok) {
+      if (!res.ok) {
         showError(data.error || 'Xác minh thất bại.');
-        return;
-      }
-
-      if (data.success) {
-        state.CODE = CODE;
-        state.verified2FA = true;
-        state.dsid = data.dsid || state.dsid;
-        showToast('Xác thực 2FA thành công!');
-        transition(elements.step2, elements.step3);
-        setProgress(3);
       } else {
-        showError(data.error || 'Mã xác minh không đúng.');
+        navigateBasedOnState(el.step2, data);
       }
-    } catch (error) {
-      console.error('Verify error:', error);
+    } catch (err) {
+      console.error('Verify error:', err);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
@@ -298,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Step 3: Download
-  elements.downloadBtn.addEventListener('click', async (e) => {
+  el.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
@@ -314,10 +295,17 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Kiểm tra nếu chưa xác minh 2FA
+    if (!state.verified2FA) {
+      showError('Vui lòng xác minh 2FA trước khi tải ứng dụng.');
+      setLoading(false);
+      return;
+    }
+
     setProgress(3);
 
     try {
-      const response = await fetch('/download', {
+      const res = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -330,34 +318,15 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      if (!response.ok) {
+      if (!res.ok) {
         showError(data.error || 'Tải thất bại.');
-        return;
-      }
-
-      if (data.require2FA) {
-        state.verified2FA = false;
-        elements.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
-        transition(elements.step3, elements.step2);
-        setProgress(2);
-      } else if (data.success) {
-        document.getElementById('appName').textContent = data.appInfo.name;
-        document.getElementById('appAuthor').textContent = data.appInfo.artist;
-        document.getElementById('appVersion').textContent = data.appInfo.version;
-        document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
-        document.getElementById('appDate').textContent = data.appInfo.releaseDate;
-        const downloadLink = document.getElementById('downloadLink');
-        downloadLink.href = data.downloadUrl;
-        downloadLink.download = data.fileName;
-        transition(elements.step3, elements.result);
-        setProgress(4);
       } else {
-        showError(data.error || 'Tải ứng dụng thất bại.');
+        navigateBasedOnState(el.step3, data);
       }
-    } catch (error) {
-      console.error('Download error:', error);
+    } catch (err) {
+      console.error('Download error:', err);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
