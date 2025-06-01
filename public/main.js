@@ -20,12 +20,18 @@ document.addEventListener('DOMContentLoaded', () => {
     APPLE_ID: '',
     PASSWORD: '',
     CODE: '',
-    verified2FA: false
+    verified2FA: false,
+    dsid: null
   };
 
   let isLoading = false;
 
-  // Thêm style cho loading
+  // Thêm toast container
+  const toastContainer = document.createElement('div');
+  toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
+  document.body.appendChild(toastContainer);
+
+  // Thêm style
   const style = document.createElement('style');
   style.textContent = `
     .progress-loading {
@@ -49,11 +55,51 @@ document.addEventListener('DOMContentLoaded', () => {
       border-top-color: #fff;
       animation: spin 1s ease-in-out infinite;
     }
+    .toast {
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      color: white;
+      display: flex;
+      align-items: center;
+      animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+    }
+    .toast-success {
+      background-color: #10B981;
+    }
+    .toast-error {
+      background-color: #EF4444;
+    }
+    .toast-icon {
+      margin-right: 8px;
+      font-size: 18px;
+    }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; }
+    }
   `;
   document.head.appendChild(style);
+
+  // Hàm hiển thị toast
+  const showToast = (message, type = 'success') => {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+      <span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span>
+      <span>${message}</span>
+    `;
+    toastContainer.appendChild(toast);
+    setTimeout(() => {
+      toast.remove();
+    }, 3000);
+  };
 
   const showError = (msg) => {
     el.errorMessage.textContent = msg;
@@ -154,11 +200,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data.require2FA) {
         state.verified2FA = false;
-        el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh';
+        state.dsid = data.dsid || null;
+        el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn';
         transition(el.step1, el.step2);
         setProgress(2);
       } else if (data.success) {
         state.verified2FA = true;
+        state.dsid = data.dsid || null;
+        showToast('Đăng nhập thành công!');
         transition(el.step1, el.step3);
         setProgress(3);
       } else {
@@ -193,7 +242,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...state, CODE })
+        body: JSON.stringify({ 
+          APPLE_ID: state.APPLE_ID, 
+          PASSWORD: state.PASSWORD, 
+          CODE,
+          dsid: state.dsid 
+        })
       });
 
       const data = await res.json();
@@ -207,6 +261,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.success) {
         state.CODE = CODE;
         state.verified2FA = true;
+        state.dsid = data.dsid || state.dsid;
+        showToast('Xác thực 2FA thành công!');
         transition(el.step2, el.step3);
         setProgress(3);
       } else {
@@ -243,7 +299,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...state, APPID, appVerId })
+        body: JSON.stringify({ 
+          APPLE_ID: state.APPLE_ID,
+          PASSWORD: state.PASSWORD,
+          CODE: state.CODE,
+          APPID,
+          appVerId,
+          dsid: state.dsid
+        })
       });
 
       const data = await res.json();
