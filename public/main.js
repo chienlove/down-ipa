@@ -202,17 +202,17 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
   });
 
-  // Step 1: Login
+    // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
-    
+
     hideError();
     setLoading(true);
 
     const APPLE_ID = elements.appleIdInput.value.trim();
     const PASSWORD = elements.passwordInput.value;
-    
+
     if (!APPLE_ID || !PASSWORD) {
       showError('Vui lòng nhập Apple ID và mật khẩu.');
       setLoading(false);
@@ -234,18 +234,19 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       const data = await response.json();
       console.log('Auth response:', data);
 
+      // ❌ Nếu sai mật khẩu → hiển thị lỗi, không nhảy step2
       if (!response.ok) {
-        showError(data.error || 'Lỗi từ máy chủ.');
+        showError(data.error || 'Đăng nhập thất bại');
         return;
       }
 
-      // Xử lý 2FA bắt buộc
+      // ✅ Nếu yêu cầu xác minh 2FA
       if (data.require2FA || data.authType === '2fa') {
         handle2FARedirect(data);
         return;
       }
 
-      // Xử lý đăng nhập thành công không cần 2FA
+      // ✅ Nếu đăng nhập thành công không cần 2FA
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
