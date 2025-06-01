@@ -217,46 +217,48 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('[DEBUG] Authenticate response:', JSON.stringify(user, null, 2));
 
-    // Debug log để kiểm tra phản hồi
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId
-    };
+// Debug log để kiểm tra phản hồi
+const debugLog = {
+  _state: user._state,
+  failureType: user.failureType,
+  customerMessage: user.customerMessage,
+  authOptions: user.authOptions,
+  dsid: user.dsPersonId
+};
 
-    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
-    );
+console.log('[DEBUG] Server raw user:', JSON.stringify(user, null, 2));
+console.log('[DEBUG] Server response to client (pre-check):', debugLog);
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
+const needs2FA = (
+  user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+  user.customerMessage?.toLowerCase().includes('two-factor') ||
+  user.customerMessage?.toLowerCase().includes('mfa') ||
+  user.customerMessage?.toLowerCase().includes('code') ||
+  user.customerMessage?.includes('Configurator_message')
+);
 
-    // Đăng nhập hoàn toàn thành công
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
+if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+  console.log('[DEBUG] Sending 2FA required response');
+  return res.json({
+    require2FA: true,
+    message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+    dsid: user.dsPersonId,
+    debug: debugLog
+  });
+}
 
-    // Trường hợp thất bại không rõ nguyên nhân
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+if (user._state === 'success') {
+  console.log('[DEBUG] Sending successful login response');
+  return res.json({
+    success: true,
+    dsid: user.dsPersonId,
+    debug: debugLog
+  });
+}
+
+console.log('[DEBUG] Sending failed login response');
+throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
   } catch (error) {
     res.status(500).json({
