@@ -219,57 +219,34 @@ app.post('/auth', async (req, res) => {
 
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const customerMsg = (user.customerMessage || '').toLowerCase();
     const failure = (user.failureType || '').toLowerCase();
+    const customerMsg = (user.customerMessage || '').toLowerCase();
 
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      trustedDevices: user.trustedDevices,
-      dsid: user.dsPersonId
-    };
+    const has2FA =
+      Array.isArray(user.authOptions) && user.authOptions.length > 0 ||
+      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0;
 
-    const has2FA = (
-      Array.isArray(user.authOptions) && user.authOptions.length > 0
-    ) || (
-      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0
-    );
-
-    const isConfigurator = customerMsg.includes('badlogin.configurator_message');
-
-    const needs2FA = has2FA || isConfigurator || customerMsg.includes('verification') || customerMsg.includes('two-factor');
-
-    if (needs2FA) {
+    // ✅ Chỉ trả require2FA khi thật sự có thiết bị xác minh
+    if (has2FA) {
       return res.status(200).json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
+        dsid: user.dsPersonId
       });
     }
 
-    const isWrongLogin = (
-      failure.includes('badlogin') ||
-      failure.includes('invalid') ||
-      customerMsg.includes('incorrect') ||
-      customerMsg.includes('invalid') ||
-      customerMsg.includes('apple id hoặc mật khẩu không đúng')
-    );
-
-    if (isWrongLogin || user._state !== 'success') {
+    // ❌ Nếu sai tài khoản hoặc không thành công
+    if (user._state !== 'success') {
       return res.status(401).json({
         success: false,
-        error: 'Apple ID hoặc mật khẩu không đúng.',
-        debug: debugLog
+        error: 'Apple ID hoặc mật khẩu không đúng.'
       });
     }
 
+    // ✅ Thành công không cần xác minh
     return res.status(200).json({
       success: true,
-      dsid: user.dsPersonId,
-      debug: debugLog
+      dsid: user.dsPersonId
     });
   } catch (error) {
     console.error('Auth error:', error);

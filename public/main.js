@@ -224,46 +224,41 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     setProgress(1);
 
     try {
-      const response = await fetch('/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ APPLE_ID, PASSWORD })
-      });
-
-      const data = await response.json();
-
-      // ❌ Nếu có lỗi phía server
-      if (!response.ok) {
-        showError(data.error || 'Đăng nhập thất bại');
-        return;
-      }
-
-      // ✅ Nếu cần xác minh 2FA
-      if (data.require2FA === true) {
-        handle2FARedirect(data);
-        return;
-      }
-
-      // ✅ Nếu thành công không cần xác minh
-      if (data.success === true) {
-        state.requires2FA = false;
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
-        return;
-      }
-
-      // ❌ Ngăn mọi trường hợp bất thường
-      showError(data.error || 'Đăng nhập thất bại');
-    } catch (error) {
-      console.error('Auth error:', error);
-      showError('Không thể kết nối tới máy chủ.');
-    } finally {
-      setLoading(false);
-    }
+  const response = await fetch('/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ APPLE_ID, PASSWORD })
   });
+
+  const data = await response.json();
+  console.log('Auth response:', data);
+
+  if (!response.ok) {
+    showError(data.error || 'Đăng nhập thất bại');
+    return;
+  }
+
+  // ✅ Chỉ chuyển bước nếu rõ ràng require2FA hoặc success
+  if (data.require2FA === true) {
+    handle2FARedirect(data);
+    return;
+  } else if (data.success === true) {
+    state.requires2FA = false;
+    state.verified2FA = true;
+    state.dsid = data.dsid || null;
+    showToast('Đăng nhập thành công!');
+    transition(elements.step1, elements.step3);
+    setProgress(3);
+    return;
+  } else {
+    showError(data.error || 'Đăng nhập thất bại');
+  }
+} catch (error) {
+  console.error('Auth error:', error);
+  showError('Không thể kết nối tới máy chủ.');
+} finally {
+  setLoading(false);
+}
 
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
