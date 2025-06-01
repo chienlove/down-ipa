@@ -218,8 +218,9 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const customerMsg = user.customerMessage?.toLowerCase() || '';
-    const failure = user.failureType?.toLowerCase() || '';
+    const customerMsg = (user.customerMessage || '').toLowerCase();
+    const failure = (user.failureType || '').toLowerCase();
+
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -229,21 +230,26 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // ✅ Nếu có dấu hiệu yêu cầu mã xác minh
+    // ✅ Kiểm tra dạng yêu cầu 2FA đặc biệt từ Apple
+    const isConfigurator2FA = customerMsg.includes('badlogin.configurator_message');
+
+    // ❌ Chỉ coi là sai đăng nhập nếu failure rõ ràng là sai và không phải configurator
+    const isWrongLogin = (
+      (failure.includes('badlogin') ||
+       failure.includes('invalid_credentials') ||
+       failure.includes('invalid')) &&
+      !isConfigurator2FA
+    );
+
+    // ✅ Cần 2FA nếu phát hiện các keyword liên quan
     const needs2FA = (
       failure.includes('mfa') ||
       customerMsg.includes('verification code') ||
       customerMsg.includes('mã xác minh') ||
       customerMsg.includes('two-factor') ||
-      customerMsg.includes('configurator')
+      customerMsg.includes('configurator') ||
+      isConfigurator2FA
     );
-
-    const isWrongLogin = (
-  failure.includes('badlogin') ||
-  failure.includes('invalid_credentials') ||
-  failure.includes('invalid') ||
-  customerMsg.includes('badlogin.configurator_message')
-);
 
     if (isWrongLogin) {
       return res.status(401).json({
@@ -256,7 +262,7 @@ app.post('/auth', async (req, res) => {
     if (needs2FA) {
       return res.json({
         require2FA: true,
-        message: 'Tài khoản yêu cầu mã xác minh 2FA',
+        message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
         dsid: user.dsPersonId,
         debug: debugLog
       });
@@ -272,6 +278,7 @@ app.post('/auth', async (req, res) => {
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
+    console.error('Auth endpoint error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
