@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const el = {
+  const elements = {
     step1: document.getElementById('step1'),
     step2: document.getElementById('step2'),
     step3: document.getElementById('step3'),
@@ -13,7 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
     progressBar: document.getElementById('progressBar'),
     togglePassword: document.getElementById('togglePassword'),
     passwordInput: document.getElementById('PASSWORD'),
-    eyeIcon: document.getElementById('eyeIcon')
+    eyeIcon: document.getElementById('eyeIcon'),
+    appleIdInput: document.getElementById('APPLE_ID'),
+    passwordInput: document.getElementById('PASSWORD'),
+    verificationCodeInput: document.getElementById('VERIFICATION_CODE')
   };
 
   const state = {
@@ -21,17 +24,22 @@ document.addEventListener('DOMContentLoaded', () => {
     PASSWORD: '',
     CODE: '',
     verified2FA: false,
-    dsid: null
+    dsid: null,
+    authType: null // '2fa' hoặc 'password'
   };
 
   let isLoading = false;
 
-  // Thêm toast container
-  const toastContainer = document.createElement('div');
-  toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2';
-  document.body.appendChild(toastContainer);
+  // Tạo toast container nếu chưa có
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
+    document.body.appendChild(toastContainer);
+  }
 
-  // Thêm style
+  // Thêm CSS
   const style = document.createElement('style');
   style.textContent = `
     .progress-loading {
@@ -58,11 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
     .toast {
       padding: 12px 16px;
       border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       color: white;
       display: flex;
       align-items: center;
       animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
+      transform: translateX(100%);
+      opacity: 0;
     }
     .toast-success {
       background-color: #10B981;
@@ -71,23 +81,25 @@ document.addEventListener('DOMContentLoaded', () => {
       background-color: #EF4444;
     }
     .toast-icon {
-      margin-right: 8px;
-      font-size: 18px;
+      margin-right: 12px;
+      font-size: 20px;
     }
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
     @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
     }
     @keyframes fadeOut {
       to { opacity: 0; }
     }
+    #step2 {
+      display: none;
+    }
   `;
   document.head.appendChild(style);
 
-  // Hàm hiển thị toast
+  // Hiển thị toast thông báo
   const showToast = (message, type = 'success') => {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -96,22 +108,30 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     toastContainer.appendChild(toast);
+    
+    // Kích hoạt animation
+    setTimeout(() => {
+      toast.style.transform = 'translateX(0)';
+      toast.style.opacity = '1';
+    }, 10);
+
+    // Tự động xóa sau 3 giây
     setTimeout(() => {
       toast.remove();
     }, 3000);
   };
 
   const showError = (msg) => {
-    el.errorMessage.textContent = msg;
-    el.errorBox.classList.remove('hidden');
+    elements.errorMessage.textContent = msg;
+    elements.errorBox.classList.remove('hidden');
     setTimeout(() => {
-      el.errorBox.classList.add('animate__fadeIn');
+      elements.errorBox.classList.add('animate__fadeIn');
     }, 10);
   };
 
   const hideError = () => {
-    el.errorBox.classList.add('hidden');
-    el.errorBox.classList.remove('animate__fadeIn');
+    elements.errorBox.classList.add('hidden');
+    elements.errorBox.classList.remove('animate__fadeIn');
   };
 
   const transition = (from, to) => {
@@ -127,19 +147,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const setProgress = (step) => {
     const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
-    el.progressBar.style.width = map[step] || '0%';
+    elements.progressBar.style.width = map[step] || '0%';
   };
 
   const setLoading = (loading) => {
     isLoading = loading;
     if (loading) {
-      el.progressBar.classList.add('progress-loading');
+      elements.progressBar.classList.add('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.add('button-loading');
         btn.disabled = true;
       });
     } else {
-      el.progressBar.classList.remove('progress-loading');
+      elements.progressBar.classList.remove('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.remove('button-loading');
         btn.disabled = false;
@@ -148,10 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Toggle password visibility
-  el.togglePassword.addEventListener('click', () => {
-    const isPassword = el.passwordInput.type === 'password';
-    el.passwordInput.type = isPassword ? 'text' : 'password';
-    el.eyeIcon.innerHTML = isPassword
+  elements.togglePassword.addEventListener('click', () => {
+    const isPassword = elements.passwordInput.type === 'password';
+    elements.passwordInput.type = isPassword ? 'text' : 'password';
+    elements.eyeIcon.innerHTML = isPassword
       ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5
           c4.478 0 8.268 2.943 9.542 7a9.972 9.972 0 01-1.731 2.885M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`
@@ -163,15 +183,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Step 1: Login
-  el.loginBtn.addEventListener('click', async (e) => {
+  elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
 
-    const APPLE_ID = document.getElementById('APPLE_ID').value.trim();
-    const PASSWORD = document.getElementById('PASSWORD').value;
+    const APPLE_ID = elements.appleIdInput.value.trim();
+    const PASSWORD = elements.passwordInput.value;
+    
     if (!APPLE_ID || !PASSWORD) {
       showError('Vui lòng nhập Apple ID và mật khẩu.');
       setLoading(false);
@@ -184,52 +205,53 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(1);
 
     try {
-      const res = await fetch('/auth', {
+      const response = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ APPLE_ID, PASSWORD })
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         showError(data.error || 'Lỗi từ máy chủ.');
-        setLoading(false);
         return;
       }
 
+      // Xử lý phản hồi từ server
       if (data.require2FA) {
-        state.verified2FA = false;
+        state.authType = '2fa';
         state.dsid = data.dsid || null;
-        el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn';
-        transition(el.step1, el.step2);
+        elements.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn';
+        transition(elements.step1, elements.step2);
         setProgress(2);
       } else if (data.success) {
+        state.authType = 'password';
         state.verified2FA = true;
         state.dsid = data.dsid || null;
         showToast('Đăng nhập thành công!');
-        transition(el.step1, el.step3);
+        transition(elements.step1, elements.step3);
         setProgress(3);
       } else {
         showError(data.error || 'Đăng nhập thất bại');
       }
-    } catch (err) {
-      console.error('Auth error:', err);
+    } catch (error) {
+      console.error('Auth error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
     }
   });
 
-  // Step 2: Verify
-  el.verifyBtn.addEventListener('click', async (e) => {
+  // Step 2: Verify 2FA
+  elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
 
-    const CODE = document.getElementById('VERIFICATION_CODE').value.trim();
+    const CODE = elements.verificationCodeInput.value.trim();
     if (CODE.length !== 6) {
       showError('Mã xác minh phải có 6 chữ số.');
       setLoading(false);
@@ -239,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(2);
 
     try {
-      const res = await fetch('/verify', {
+      const response = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -250,11 +272,10 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         showError(data.error || 'Xác minh thất bại.');
-        setLoading(false);
         return;
       }
 
@@ -263,13 +284,13 @@ document.addEventListener('DOMContentLoaded', () => {
         state.verified2FA = true;
         state.dsid = data.dsid || state.dsid;
         showToast('Xác thực 2FA thành công!');
-        transition(el.step2, el.step3);
+        transition(elements.step2, elements.step3);
         setProgress(3);
       } else {
         showError(data.error || 'Mã xác minh không đúng.');
       }
-    } catch (err) {
-      console.error('Verify error:', err);
+    } catch (error) {
+      console.error('Verify error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
@@ -277,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Step 3: Download
-  el.downloadBtn.addEventListener('click', async (e) => {
+  elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
@@ -296,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(3);
 
     try {
-      const res = await fetch('/download', {
+      const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -309,18 +330,17 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok) {
+      if (!response.ok) {
         showError(data.error || 'Tải thất bại.');
-        setLoading(false);
         return;
       }
 
       if (data.require2FA) {
         state.verified2FA = false;
-        el.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
-        transition(el.step3, el.step2);
+        elements.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
+        transition(elements.step3, elements.step2);
         setProgress(2);
       } else if (data.success) {
         document.getElementById('appName').textContent = data.appInfo.name;
@@ -331,13 +351,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
-        transition(el.step3, el.result);
+        transition(elements.step3, elements.result);
         setProgress(4);
       } else {
         showError(data.error || 'Tải ứng dụng thất bại.');
       }
-    } catch (err) {
-      console.error('Download error:', err);
+    } catch (error) {
+      console.error('Download error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
