@@ -241,46 +241,33 @@ app.post('/auth', async (req, res) => {
     if (!APPLE_ID || !PASSWORD) {
       return res.status(400).json({ 
         success: false,
-        error: 'Apple ID và mật khẩu là bắt buộc'
+        error: 'Vui lòng nhập Apple ID và mật khẩu' 
       });
     }
 
-    console.log(`Attempting to authenticate: ${APPLE_ID}`);
+    // Gọi Apple API để xác thực
     const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Raw authentication response:', authResult);
+    console.log('Kết quả từ Apple:', authResult); // Log để debug
 
-    // Phân tích kết quả xác thực
-    if (authResult && authResult._state === 'success') {
-      console.log('Authentication SUCCESS');
-      return res.json({
-        success: true,
-        dsid: authResult.dsPersonId
+    // Kiểm tra kết quả CHÍNH XÁC
+    if (!authResult || authResult._state !== 'success') {
+      return res.status(401).json({
+        success: false,
+        error: authResult?.customerMessage || 'Sai Apple ID hoặc mật khẩu'
       });
     }
 
-    // Xử lý trường hợp cần 2FA
-    if (authResult.failureType && authResult.failureType.toLowerCase().includes('mfa')) {
-      console.log('2FA REQUIRED');
-      return res.json({
-        require2FA: true,
-        success: false, // Quan trọng: phải là false
-        message: authResult.customerMessage || 'Yêu cầu xác minh 2FA',
-        dsid: authResult.dsPersonId
-      });
-    }
-
-    // Trường hợp đăng nhập thất bại
-    console.log('Authentication FAILED');
-    return res.status(401).json({
-      success: false,
-      error: authResult.customerMessage || 'Sai Apple ID hoặc mật khẩu'
+    // Chỉ trả về success:true khi THỰC SỰ thành công
+    res.json({
+      success: true,
+      dsid: authResult.dsPersonId
     });
 
   } catch (error) {
-    console.error('Authentication error:', error);
-    return res.status(500).json({
+    console.error('Lỗi xác thực:', error);
+    res.status(500).json({
       success: false,
-      error: 'Lỗi hệ thống xác thực'
+      error: 'Lỗi hệ thống'
     });
   }
 });
