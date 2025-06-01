@@ -213,19 +213,16 @@ class IPATool {
 const ipaTool = new IPATool();
 
 // Authentication endpoint
-// Authentication endpoint
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
 
-    // Gọi tới Apple để xác thực
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Chuẩn hóa thông tin lỗi/trạng thái
     const customerMsg = (user.customerMessage || '').toLowerCase();
     const failure = (user.failureType || '').toLowerCase();
+    const _state = user._state || '';
 
-    // Log nội bộ (hữu ích để debug client nếu cần)
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -235,29 +232,20 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Trường hợp đặc biệt: thông điệp "configurator" thực chất là yêu cầu xác minh thiết bị tin cậy
-    const isConfigurator2FA = customerMsg.includes('badlogin.configurator_message');
-
-    // ❌ Được coi là sai tài khoản nếu failure rõ ràng, không liên quan đến 2FA
-    const isWrongLogin = (
-      (failure.includes('badlogin') ||
-       failure.includes('invalid_credentials') ||
-       failure.includes('invalid')) &&
-      !isConfigurator2FA
+    // Nếu có authOptions/trustedDevices → thực sự là 2FA
+    const has2FAIndicators = (
+      Array.isArray(user.authOptions) && user.authOptions.length > 0
+    ) || (
+      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0
     );
 
-    // ✅ Được coi là yêu cầu xác minh nếu liên quan đến 2FA hoặc configurator
-    const needs2FA = (
-      failure.includes('mfa') ||
-      customerMsg.includes('verification code') ||
-      customerMsg.includes('mã xác minh') ||
-      customerMsg.includes('two-factor') ||
-      customerMsg.includes('configurator') ||
-      isConfigurator2FA
+    // Mặc định: nếu thất bại
+    const isLoginFailed = (
+      _state !== 'success' ||
+      (!has2FAIndicators && customerMsg.includes('badlogin'))
     );
 
-    // ❌ Sai tài khoản/mật khẩu
-    if (isWrongLogin) {
+    if (isLoginFailed) {
       return res.status(401).json({
         success: false,
         error: 'Apple ID hoặc mật khẩu không đúng.',
@@ -265,8 +253,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Yêu cầu mã xác minh 2FA
-    if (needs2FA) {
+    if (has2FAIndicators) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản yêu cầu mã xác minh 2FA',
@@ -275,17 +262,12 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Thành công không cần xác minh
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
-
-    // ❓ Trường hợp không rõ ràng
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    // Thành công không cần 2FA
+    return res.json({
+      success: true,
+      dsid: user.dsPersonId,
+      debug: debugLog
+    });
   } catch (error) {
     console.error('Auth endpoint error:', error);
     res.status(500).json({
