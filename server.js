@@ -218,7 +218,7 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Debug log để kiểm tra phản hồi
+    // Ghi log để debug nếu cần
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -227,25 +227,40 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
-    );
+    // Nếu đăng nhập thất bại do sai mật khẩu hoặc Apple ID
+    const isInvalidLogin =
+      user._state !== 'success' &&
+      (
+        user.customerMessage?.toLowerCase().includes('mật khẩu') ||
+        user.customerMessage?.toLowerCase().includes('apple id') ||
+        user.customerMessage?.toLowerCase().includes('badlogin') ||
+        user.failureType?.toLowerCase().includes('invalid')
+      );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (isInvalidLogin) {
+      return res.status(401).json({
+        success: false,
+        error: 'Apple ID hoặc mật khẩu không đúng.',
+        debug: debugLog
+      });
+    }
+
+    // Nếu cần xác minh 2FA
+    const needs2FA =
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.includes('Configurator_message') ||
+      user.failureType?.toLowerCase().includes('mfa');
+
+    if (needs2FA) {
       return res.json({
         require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        message: 'Tài khoản yêu cầu mã xác minh 2FA',
         dsid: user.dsPersonId,
         debug: debugLog
       });
     }
 
-    // Đăng nhập hoàn toàn thành công
+    // Nếu login thành công không cần 2FA
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -254,9 +269,8 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Trường hợp thất bại không rõ nguyên nhân
+    // Nếu lỗi khác
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
-
   } catch (error) {
     res.status(500).json({
       success: false,
