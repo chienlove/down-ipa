@@ -216,14 +216,22 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const has2FA =
-      Array.isArray(user.authOptions) && user.authOptions.length > 0 ||
-      Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0;
+    console.log('DEBUG AUTH RESULT:', JSON.stringify(user, null, 2)); // ✳️ Thêm log debug
 
-    // ✅ Nếu thực sự cần mã xác minh
+    const has2FA =
+      (Array.isArray(user.authOptions) && user.authOptions.length > 0) ||
+      (Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0);
+
+    if (user._state !== 'success') {
+      // ❌ Nếu Apple không xác nhận thành công → báo lỗi đăng nhập
+      return res.status(401).json({
+        success: false,
+        error: 'Apple ID hoặc mật khẩu không đúng.'
+      });
+    }
+
     if (has2FA) {
       return res.status(200).json({
         require2FA: true,
@@ -232,15 +240,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ❌ Nếu xác thực thất bại, báo lỗi
-    if (user._state !== 'success') {
-      return res.status(401).json({
-        success: false,
-        error: 'Apple ID hoặc mật khẩu không đúng.'
-      });
-    }
-
-    // ✅ Nếu đăng nhập thành công không cần mã xác minh
     return res.status(200).json({
       success: true,
       dsid: user.dsPersonId
@@ -248,7 +247,7 @@ app.post('/auth', async (req, res) => {
 
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
     });
