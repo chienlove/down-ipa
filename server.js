@@ -234,8 +234,7 @@ const needs2FA = (
   user.customerMessage?.toLowerCase().includes('mã xác minh') ||
   user.customerMessage?.toLowerCase().includes('two-factor') ||
   user.customerMessage?.toLowerCase().includes('mfa') ||
-  user.customerMessage?.toLowerCase().includes('code') ||
-  user.customerMessage?.includes('Configurator_message')
+  user.customerMessage?.toLowerCase().includes('code')
 );
 
 if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
