@@ -218,56 +218,38 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
 
     if (!APPLE_ID || !PASSWORD) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Apple ID và mật khẩu là bắt buộc.' 
+      return res.status(400).json({
+        success: false,
+        error: 'Apple ID và mật khẩu là bắt buộc.'
       });
     }
 
     console.log(`Đăng nhập Apple ID: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('Auth response state:', user._state);
-    console.log('Auth response:', user);
-
-    // Kiểm tra nếu cần 2FA
-    if (user._state !== 'success') {
-      // Kiểm tra các trường hợp cần 2FA
-      if (user.failureType?.toLowerCase().includes('mfa') || 
-          user.failureType?.toLowerCase().includes('2fa') ||
-          user.authOptions?.containsMfa ||
-          user.customerMessage?.toLowerCase().includes('verification') ||
-          user.customerMessage?.toLowerCase().includes('code')) {
-        
-        return res.json({
-          require2FA: true,
-          message: user.customerMessage || 'Tài khoản này cần xác minh 2FA. Vui lòng nhập mã xác minh.'
-        });
-      }
-      
-      // Nếu không phải lỗi 2FA thì báo lỗi đăng nhập
-      throw new Error(user.customerMessage || 'Đăng nhập thất bại');
-    }
-
-    // Nếu đăng nhập thành công nhưng vẫn có yêu cầu 2FA
-    if (user.authOptions?.containsMfa) {
+    // Trường hợp Apple gửi mã 2FA nhưng vẫn trả "success" => cần xử lý đúng
+    if (
+      user._state !== 'success' ||
+      user.authOptions?.containsMfa || // dấu hiệu 2FA được yêu cầu
+      user.needsTwoFactorAuth === true || // một số version dùng flag này
+      user.customerMessage?.toLowerCase().includes('verification code')
+    ) {
       return res.json({
         require2FA: true,
-        message: 'Tài khoản này cần xác minh 2FA để tiếp tục.'
+        message: user.customerMessage || 'Apple yêu cầu xác minh mã 2FA'
       });
     }
 
-    // Đăng nhập thành công hoàn toàn (không cần 2FA)
-    return res.json({ 
+    // Nếu không yêu cầu 2FA thì mới trả thành công
+    return res.json({
       success: true,
-      dsid: user.dsPersonId 
+      dsid: user.dsPersonId
     });
-
   } catch (error) {
     console.error('Lỗi xác thực:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID' 
+      error: error.message || 'Lỗi xác thực Apple ID'
     });
   }
 });
