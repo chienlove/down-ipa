@@ -228,18 +228,20 @@ app.post('/auth', async (req, res) => {
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     if (user._state === 'success') {
-      if (user.authOptions?.containsMfa) {
-        return res.json({
-          require2FA: true,
-          message: 'Tài khoản này cần xác minh 2FA.'
-        });
-      }
+  const has2FA = user.authOptions?.containsMfa || user.authOptions?.includes('mfa');
+  if (has2FA) {
+    return res.json({
+      require2FA: true,
+      message: 'Tài khoản này cần xác minh 2FA.',
+      dsid: user.dsPersonId
+    });
+  }
 
-      return res.json({ 
-        success: true,
-        dsid: user.dsPersonId 
-      });
-    }
+  return res.json({ 
+    success: true,
+    dsid: user.dsPersonId 
+  });
+}
 
     if (user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
