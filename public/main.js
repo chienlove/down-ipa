@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.progressBar.style.width = map[step] || '0%';
   };
 
-  // Toggle password visibility with icon switch
+  // Toggle password visibility
   el.togglePassword.addEventListener('click', () => {
     const isPassword = el.passwordInput.type === 'password';
     el.passwordInput.type = isPassword ? 'text' : 'password';
@@ -75,13 +75,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setProgress(1);
 
-    const res = await fetch('/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ APPLE_ID, PASSWORD })
-    });
+    let data;
+    try {
+      const res = await fetch('/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ APPLE_ID, PASSWORD })
+      });
 
-    const data = await res.json();
+      data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Lỗi từ máy chủ.');
+        return;
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      showError('Không thể kết nối tới máy chủ.');
+      return;
+    }
+
     if (data.require2FA) {
       state.verified2FA = false;
       el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh';
@@ -103,13 +116,27 @@ document.addEventListener('DOMContentLoaded', () => {
     if (CODE.length !== 6) return showError('Mã xác minh phải có 6 chữ số.');
 
     setProgress(2);
-    const res = await fetch('/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...state, CODE })
-    });
 
-    const data = await res.json();
+    let data;
+    try {
+      const res = await fetch('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...state, CODE })
+      });
+
+      data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Xác minh thất bại.');
+        return;
+      }
+    } catch (err) {
+      console.error('Verify error:', err);
+      showError('Không thể kết nối tới máy chủ.');
+      return;
+    }
+
     if (data.success) {
       state.CODE = CODE;
       state.verified2FA = true;
@@ -133,13 +160,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setProgress(3);
 
-    const res = await fetch('/download', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...state, APPID, appVerId })
-    });
+    let data;
+    try {
+      const res = await fetch('/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...state, APPID, appVerId })
+      });
 
-    const data = await res.json();
+      data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Tải thất bại.');
+        return;
+      }
+    } catch (err) {
+      console.error('Download error:', err);
+      showError('Không thể kết nối tới máy chủ.');
+      return;
+    }
+
     if (data.require2FA) {
       state.verified2FA = false;
       el.verifyMessage.textContent = data.message || 'Cần xác minh lại mã 2FA';
