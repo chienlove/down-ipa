@@ -5,8 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     CODE: '',
     APPID: '',
     appVerId: '',
-    authenticated: false,
-    require2FA: false,
+    verified2FA: false,
   };
 
   const el = {
@@ -21,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loginBtn: document.getElementById('loginBtn'),
     verifyBtn: document.getElementById('verifyBtn'),
     downloadBtn: document.getElementById('downloadBtn'),
+    togglePassword: document.getElementById('togglePassword'),
+    passwordInput: document.getElementById('PASSWORD'),
+    eyeIcon: document.getElementById('eyeIcon'),
   };
 
   const setButtonLoading = (btn, loading) => {
@@ -81,18 +83,30 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadLink.download = fileName || 'app.ipa';
   };
 
+  // Toggle password visibility
+  el.togglePassword.addEventListener('click', () => {
+    const isHidden = el.passwordInput.type === 'password';
+    el.passwordInput.type = isHidden ? 'text' : 'password';
+    el.eyeIcon.innerHTML = isHidden
+      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.956 9.956 0 013.293-4.528M15 12a3 3 0 01-6 0"/>`
+      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
+  });
+
   // STEP 1: LOGIN
   el.loginBtn.dataset.originalText = el.loginBtn.textContent;
   el.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     hideError();
 
-    state.APPLE_ID = document.getElementById('APPLE_ID').value.trim();
-    state.PASSWORD = document.getElementById('PASSWORD').value;
+    const appleId = document.getElementById('APPLE_ID').value.trim();
+    const password = document.getElementById('PASSWORD').value;
 
-    if (!state.APPLE_ID || !state.PASSWORD) {
+    if (!appleId || !password) {
       return showError('Vui lòng nhập đầy đủ Apple ID và mật khẩu.');
     }
+
+    state.APPLE_ID = appleId;
+    state.PASSWORD = password;
 
     setButtonLoading(el.loginBtn, true);
     setProgress(1);
@@ -101,22 +115,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          APPLE_ID: state.APPLE_ID,
-          PASSWORD: state.PASSWORD,
-        }),
+        body: JSON.stringify({ APPLE_ID: appleId, PASSWORD: password }),
       });
 
       const data = await res.json();
 
       if (data.require2FA) {
-        state.require2FA = true;
-        el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 2FA được gửi tới thiết bị của bạn.';
+        state.verified2FA = false;
+        el.verifyMessage.textContent = data.message || 'Nhập mã xác minh được gửi đến thiết bị của bạn';
         transition(el.step1, el.step2);
         setProgress(2);
       } else if (data.success) {
-        state.authenticated = true;
-        state.require2FA = false;
+        state.verified2FA = true;
         transition(el.step1, el.step3);
         setProgress(3);
       } else {
@@ -130,16 +140,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // STEP 2: VERIFY 2FA
+  // STEP 2: VERIFY
   el.verifyBtn.dataset.originalText = el.verifyBtn.textContent;
   el.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     hideError();
 
-    state.CODE = document.getElementById('VERIFICATION_CODE').value.trim();
-    if (!/^\d{6}$/.test(state.CODE)) {
-      return showError('Vui lòng nhập mã xác minh 6 chữ số.');
-    }
+    const code = document.getElementById('VERIFICATION_CODE').value.trim();
+    if (!/^\d{6}$/.test(code)) return showError('Vui lòng nhập mã xác minh 6 chữ số.');
 
     setButtonLoading(el.verifyBtn, true);
     setProgress(2);
@@ -151,14 +159,15 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           APPLE_ID: state.APPLE_ID,
           PASSWORD: state.PASSWORD,
-          CODE: state.CODE,
+          CODE: code,
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        state.authenticated = true;
+        state.CODE = code;
+        state.verified2FA = true;
         transition(el.step2, el.step3);
         setProgress(3);
       } else {
@@ -172,19 +181,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // STEP 3: DOWNLOAD IPA
+  // STEP 3: DOWNLOAD
   el.downloadBtn.dataset.originalText = el.downloadBtn.textContent;
   el.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     hideError();
 
-    const rawAppId = document.getElementById('APPID').value.trim();
-    state.APPID = extractAppId(rawAppId);
+    const raw = document.getElementById('APPID').value.trim();
+    state.APPID = extractAppId(raw);
     state.appVerId = document.getElementById('APP_VER_ID').value.trim();
 
-    if (!state.APPID) {
-      return showError('Vui lòng nhập App ID hoặc URL hợp lệ.');
-    }
+    if (!state.APPID) return showError('Vui lòng nhập App ID hợp lệ.');
+    if (!state.verified2FA) return showError('Bạn cần xác thực 2FA trước khi tải.');
 
     setButtonLoading(el.downloadBtn, true);
     setProgress(3);
@@ -199,10 +207,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
 
       if (data.require2FA) {
+        state.verified2FA = false;
         el.verifyMessage.textContent = data.message || 'Cần xác thực lại mã 2FA';
         transition(el.step3, el.step2);
         setProgress(2);
-      } else if (data.success && data.downloadUrl) {
+      } else if (data.success) {
         displayResult(data);
         transition(el.step3, el.result);
         setProgress(4);
