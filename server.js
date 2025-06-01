@@ -218,36 +218,47 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('DEBUG AUTH RESULT:', JSON.stringify(user, null, 2)); // ✳️ Thêm log debug
-
-    const has2FA =
-      (Array.isArray(user.authOptions) && user.authOptions.length > 0) ||
-      (Array.isArray(user.trustedDevices) && user.trustedDevices.length > 0);
-
-    if (user._state !== 'success') {
-      // ❌ Nếu Apple không xác nhận thành công → báo lỗi đăng nhập
-      return res.status(401).json({
-        success: false,
-        error: 'Apple ID hoặc mật khẩu không đúng.'
-      });
-    }
-
-    if (has2FA) {
-      return res.status(200).json({
-        require2FA: true,
-        message: 'Tài khoản yêu cầu mã xác minh 2FA',
-        dsid: user.dsPersonId
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
+    // Debug log để kiểm tra phản hồi
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
       dsid: user.dsPersonId
-    });
+    };
+
+    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    // Đăng nhập hoàn toàn thành công
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    // Trường hợp thất bại không rõ nguyên nhân
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
   } catch (error) {
-    console.error('Auth error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
     });
