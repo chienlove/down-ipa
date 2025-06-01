@@ -213,39 +213,48 @@ class IPATool {
 const ipaTool = new IPATool();
 
 // Authentication endpoint
+// Authentication endpoint
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-    
+
     if (!APPLE_ID || !PASSWORD) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Apple ID and password are required' 
+        error: 'Apple ID và mật khẩu là bắt buộc.' 
       });
     }
 
-    console.log(`Authenticating: ${APPLE_ID}`);
+    console.log(`Đăng nhập Apple ID: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    if (user._state !== 'success') {
-      if (user.failureType?.toLowerCase().includes('mfa')) {
+    if (user._state === 'success') {
+      if (user.authOptions?.containsMfa) {
         return res.json({
           require2FA: true,
-          message: user.customerMessage || '2FA verification required'
+          message: 'Tài khoản này cần xác minh 2FA.'
         });
       }
-      throw new Error(user.customerMessage || 'Authentication failed');
+
+      return res.json({ 
+        success: true,
+        dsid: user.dsPersonId 
+      });
     }
 
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
+    if (user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Yêu cầu mã xác minh 2FA.'
+      });
+    }
+
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('Lỗi xác thực:', error);
     res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Authentication error' 
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID' 
     });
   }
 });
