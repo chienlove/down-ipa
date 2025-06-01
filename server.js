@@ -229,20 +229,20 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // ❌ Dấu hiệu rõ ràng sai tài khoản
-    const isWrongLogin = (
-      customerMsg.includes('badlogin') ||
-      customerMsg.includes('mật khẩu') ||
-      customerMsg.includes('apple id') ||
-      failure.includes('invalid')
-    );
-
-    // ✅ Dấu hiệu rõ ràng cần 2FA
+    // ✅ Nếu có dấu hiệu yêu cầu mã xác minh
     const needs2FA = (
+      failure.includes('mfa') ||
+      customerMsg.includes('verification code') ||
       customerMsg.includes('mã xác minh') ||
       customerMsg.includes('two-factor') ||
-      customerMsg.includes('verification code') ||
-      failure.includes('mfa')
+      customerMsg.includes('configurator')
+    );
+
+    // ❌ Chỉ coi là sai đăng nhập nếu failure rõ ràng là badlogin hoặc invalid_credentials
+    const isWrongLogin = (
+      failure.includes('badlogin') ||
+      failure.includes('invalid_credentials') ||
+      failure.includes('invalid')
     );
 
     if (isWrongLogin) {
@@ -262,7 +262,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Nếu đăng nhập thẳng thành công (không cần 2FA)
     if (user._state === 'success') {
       return res.json({
         success: true,
