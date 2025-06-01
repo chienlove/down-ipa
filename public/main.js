@@ -294,13 +294,20 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (data.success) {
-        state.CODE = CODE;
-        state.verified2FA = true;
-        state.dsid = data.dsid || state.dsid;
-        showToast('Xác thực 2FA thành công!');
-        transition(elements.step2, elements.step3);
-        setProgress(3);
-      } else {
+  state.CODE = CODE;
+  state.verified2FA = true;
+  state.dsid = data.dsid || state.dsid;
+  showToast('Xác thực 2FA thành công!');
+
+  // Ẩn step2 hoàn toàn
+  elements.step2.classList.add('hidden');
+  elements.step2.style.display = 'none';
+  elements.verificationCodeInput.value = '';
+  elements.verifyMessage.textContent = '';
+
+  transition(elements.step2, elements.step3);
+  setProgress(3);
+} else {
         showError(data.error || 'Mã xác minh không đúng.');
       }
     } catch (error) {
