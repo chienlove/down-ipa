@@ -229,13 +229,20 @@ app.post('/auth', async (req, res) => {
     const customerMsg = user.customerMessage?.toLowerCase() || '';
     const failure = user.failureType?.toLowerCase() || '';
 
-    // ❌ Không còn coi 'configurator_message' là 2FA nữa
+    // ⚠️ KHÔNG còn coi "configurator_message" là sai mật khẩu nữa
     const isBadLogin = (
+      customerMsg.includes('mật khẩu không đúng') ||
+      customerMsg.includes('apple id không đúng') ||
       customerMsg.includes('badlogin') ||
-      customerMsg.includes('configurator_message') ||
-      customerMsg.includes('mật khẩu') ||
-      customerMsg.includes('apple id') ||
       failure.includes('invalid')
+    );
+
+    const needs2FA = (
+      customerMsg.includes('mã xác minh') ||
+      customerMsg.includes('two-factor') ||
+      customerMsg.includes('code') ||
+      customerMsg.includes('configurator_message') || // 👈 chuyển qua 2FA thay vì báo lỗi
+      failure.includes('mfa')
     );
 
     if (isBadLogin) {
@@ -246,14 +253,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Chỉ coi là 2FA nếu có dấu hiệu rõ ràng
-    const needs2FA = (
-      customerMsg.includes('mã xác minh') ||
-      customerMsg.includes('two-factor') ||
-      customerMsg.includes('code') ||
-      failure.includes('mfa')
-    );
-
     if (needs2FA) {
       return res.json({
         require2FA: true,
@@ -263,7 +262,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Thành công
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -272,7 +270,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Lỗi không xác định
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
