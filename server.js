@@ -12,24 +12,39 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 5004;
 
+// Cấu hình Express
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy', timestamp: new Date().toISOString() });
+// Middleware để log request
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
+// Trang chủ
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const CHUNK_SIZE = 5 * 1024 * 1024;
+// Các hằng số
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_CONCURRENT_DOWNLOADS = 10;
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 3000;
 
+// Helper functions
 function generateRandomString(length) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
@@ -171,10 +186,84 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
+// Endpoint xác thực
+app.post('/auth', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Vui lòng nhập Apple ID và mật khẩu' 
+      });
+    }
+
+    console.log(`🔑 Authenticating user: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
+
+    if (user._state !== 'success') {
+      if (user.failureType?.toLowerCase().includes('mfa')) {
+        return res.json({
+          require2FA: true,
+          message: user.customerMessage || '🔐 Vui lòng nhập mã xác minh 2FA được gửi đến thiết bị của bạn'
+        });
+      }
+      throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Lỗi xác thực' 
+    });
+  }
+});
+
+// Endpoint xác thực 2FA
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Vui lòng nhập đầy đủ thông tin' 
+      });
+    }
+
+    console.log(`🔐 Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Mã xác minh không đúng');
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Lỗi xác thực 2FA' 
+    });
+  }
+});
+
+// Endpoint tải về
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !APPID) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Vui lòng nhập đầy đủ thông tin' 
+      });
+    }
+
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString(16));
+    console.log(`📥 Starting download for app: ${APPID}`);
 
     const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
@@ -193,6 +282,7 @@ app.post('/download', async (req, res) => {
       });
     }
 
+    // Tự động xóa file sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -211,30 +301,35 @@ app.post('/download', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Download error:', error.stack || error.message || error);
+    console.error('❌ Download error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'An unknown error has occurred'
+      error: error.message || 'Đã xảy ra lỗi khi tải ứng dụng'
     });
   }
 });
 
+// Phục vụ file tải về
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
+// Xử lý 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
+// Xử lý lỗi
 app.use((err, req, res, next) => {
   console.error('🔥 Server error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
+// Khởi động server
 const server = app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}`);
   console.log(`🔗 Health check: http://localhost:${port}/health`);
 });
 
+// Xử lý tắt server
 const shutdown = () => {
   console.log('🛑 Received shutdown signal');
   server.close(() => {

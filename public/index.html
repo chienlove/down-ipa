@@ -3,67 +3,170 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TTJB IPA Downloader</title>
+  <title>IPA Downloader Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <style>
+    .fade-in {
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    .slide-up {
+      animation: slideUp 0.5s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .progress-bar {
+      height: 4px;
+      background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #3b82f6 100%);
+      background-size: 200% 100%;
+      animation: progress 2s linear infinite;
+    }
+    @keyframes progress {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen p-4">
-  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-md p-6 space-y-6">
-    <h1 class="text-2xl font-bold text-center text-blue-600">🔐 TTJB IPA Downloader</h1>
+<body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
+  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
+    <!-- Progress bar -->
+    <div id="progressBar" class="progress-bar w-0"></div>
+    
+    <div class="p-6 space-y-6">
+      <h1 class="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500">
+        🚀 IPA Downloader Pro
+      </h1>
 
-    <form id="download-form" class="space-y-4">
-      <div>
-        <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
-        <input id="APPLE_ID" name="APPLE_ID" required type="email"
-          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <!-- Bước 1: Đăng nhập Apple ID -->
+      <div id="step1" class="space-y-4 animate__animated animate__fadeIn">
+        <div class="space-y-1">
+          <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
+          <input id="APPLE_ID" name="APPLE_ID" required type="email"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="your@appleid.com">
+        </div>
+
+        <div class="space-y-1">
+          <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
+          <input id="PASSWORD" name="PASSWORD" required type="password"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="••••••••">
+        </div>
+
+        <button id="loginBtn"
+          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+          Đăng nhập
+        </button>
       </div>
 
-      <div>
-        <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
-        <input id="PASSWORD" name="PASSWORD" required type="password"
-          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <!-- Bước 2: Xác thực 2FA -->
+      <div id="step2" class="hidden space-y-4">
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+          <div class="flex items-start">
+            <div class="flex-shrink-0 text-blue-500">
+              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p id="verifyMessage" class="text-sm text-blue-700">
+                Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
+          <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="123456" maxlength="6">
+        </div>
+
+        <button id="verifyBtn"
+          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+          Xác thực
+        </button>
       </div>
 
-      <div>
-        <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL App Store</label>
-        <input id="APPID" name="APPID" required
-          placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789"
-          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <!-- Bước 3: Nhập thông tin ứng dụng -->
+      <div id="step3" class="hidden space-y-4">
+        <div class="space-y-1">
+          <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL App Store</label>
+          <input id="APPID" name="APPID" required
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789">
+        </div>
+
+        <div class="space-y-1">
+          <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">Phiên bản ứng dụng (tùy chọn)</label>
+          <input id="APP_VER_ID" name="APP_VER_ID"
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="Nhập nếu muốn tải phiên bản cụ thể">
+        </div>
+
+        <button id="downloadBtn"
+          class="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-green-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+          📥 Tải IPA
+        </button>
       </div>
 
-      <div>
-        <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA (nếu có)</label>
-        <input id="VERIFICATION_CODE" name="VERIFICATION_CODE"
-          placeholder="Nhập mã nếu được yêu cầu"
-          class="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <!-- Hiển thị kết quả -->
+      <div id="result" class="hidden border-t pt-6 space-y-4 slide-up">
+        <h2 class="text-xl font-bold text-gray-800">🎉 Tải thành công!</h2>
+        
+        <div class="bg-gray-50 p-4 rounded-lg space-y-2">
+          <p class="flex items-center">
+            <span class="font-medium text-gray-700 w-28">Tên ứng dụng:</span>
+            <span id="appName" class="font-semibold text-gray-900"></span>
+          </p>
+          <p class="flex items-center">
+            <span class="font-medium text-gray-700 w-28">Tác giả:</span>
+            <span id="appAuthor" class="font-semibold text-gray-900"></span>
+          </p>
+          <p class="flex items-center">
+            <span class="font-medium text-gray-700 w-28">Phiên bản:</span>
+            <span id="appVersion" class="font-semibold text-gray-900"></span>
+          </p>
+          <p class="flex items-center">
+            <span class="font-medium text-gray-700 w-28">Bundle ID:</span>
+            <span id="appBundleId" class="font-semibold text-gray-900"></span>
+          </p>
+          <p class="flex items-center">
+            <span class="font-medium text-gray-700 w-28">Ngày phát hành:</span>
+            <span id="appDate" class="font-semibold text-gray-900"></span>
+          </p>
+        </div>
+
+        <a id="downloadLink"
+          class="inline-flex items-center justify-center w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-green-600 transition-all duration-300 font-semibold shadow-md hover:shadow-lg">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Tải xuống ngay
+        </a>
       </div>
 
-      <!-- Thông báo yêu cầu 2FA -->
-      <div id="verifyBox" class="hidden text-blue-600 text-sm font-medium border border-blue-200 bg-blue-50 p-3 rounded"></div>
-
-      <button type="submit" id="submitBtn"
-        class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition font-semibold flex items-center justify-center">
-        📥 Tải IPA
-      </button>
-    </form>
-
-    <!-- Hiển thị kết quả -->
-    <div id="result" class="hidden border-t pt-6 space-y-3">
-      <h2 class="text-lg font-bold text-gray-700">📦 Thông tin IPA</h2>
-      <p><strong>Tên ứng dụng:</strong> <span id="appName"></span></p>
-      <p><strong>Tác giả:</strong> <span id="appAuthor"></span></p>
-      <p><strong>Phiên bản:</strong> <span id="appVersion"></span></p>
-      <p><strong>Bundle ID:</strong> <span id="appBundleId"></span></p>
-      <p><strong>Ngày phát hành:</strong> <span id="appDate"></span></p>
-      <a id="downloadLink"
-         class="inline-block bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-         target="_blank"
-         download>
-        📥 Nhấn để tải IPA
-      </a>
+      <!-- Thông báo lỗi -->
+      <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+        <div class="flex">
+          <div class="flex-shrink-0 text-red-500">
+            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p id="errorMessage" class="text-sm text-red-700"></p>
+          </div>
+        </div>
+      </div>
     </div>
-
-    <!-- Thông báo lỗi -->
-    <div id="error" class="hidden text-red-600 text-sm font-medium"></div>
   </div>
 
   <script src="/main.js"></script>
