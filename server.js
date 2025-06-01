@@ -238,13 +238,11 @@ app.post('/auth', async (req, res) => {
       customerMsg.includes('configurator')
     );
 
-    const customerMsg = (user.customerMessage || '').toLowerCase();
-
-const isWrongLogin = (
+    const isWrongLogin = (
   failure.includes('badlogin') ||
   failure.includes('invalid_credentials') ||
   failure.includes('invalid') ||
-  customerMsg.includes('badlogin.configurator_message') // catch dạng thông báo đặc biệt
+  customerMsg.includes('badlogin.configurator_message')
 );
 
     if (isWrongLogin) {
