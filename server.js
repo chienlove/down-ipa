@@ -258,23 +258,6 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-    if (user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Yêu cầu mã xác minh 2FA.'
-      });
-    }
-
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
-  } catch (error) {
-    console.error('Lỗi xác thực:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message || 'Lỗi xác thực Apple ID' 
-    });
-  }
-});
-
 // 2FA Verification endpoint
 app.post('/verify', async (req, res) => {
   try {
