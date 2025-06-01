@@ -237,75 +237,74 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // Step 1: Login
-  elements.loginBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    console.log('Login button clicked');
-    
-    if (isLoading) {
-      console.log('Already loading, ignoring click');
-      return;
+elements.loginBtn.addEventListener('click', async (e) => {
+  e.preventDefault();
+  console.log('Login button clicked');
+  
+  if (isLoading) {
+    console.log('Already loading, ignoring click');
+    return;
+  }
+
+  hideError();
+  setLoading(true);
+
+  const APPLE_ID = elements.appleIdInput.value.trim();
+  const PASSWORD = elements.passwordInput.value;
+  console.log('Attempting login with Apple ID:', APPLE_ID);
+
+  if (!APPLE_ID || !PASSWORD) {
+    console.log('Validation failed: empty credentials');
+    showError('Vui lòng nhập Apple ID và mật khẩu.');
+    setLoading(false);
+    return;
+  }
+
+  state.APPLE_ID = APPLE_ID;
+  state.PASSWORD = PASSWORD;
+  setProgress(1);
+
+  try {
+    console.log('Sending auth request to server');
+    const response = await enhancedFetch('/auth', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({ APPLE_ID, PASSWORD })
+    });
+
+    console.log('Received auth response, status:', response.status);
+    const data = await response.json();
+    console.log('Auth response data:', data);
+
+    // Xử lý response từ server
+    if (data.success === true) {
+      console.log('Login successful');
+      state.requires2FA = false;
+      state.verified2FA = true;
+      state.dsid = data.dsid || null;
+      showToast('Đăng nhập thành công!');
+      transition(elements.step1, elements.step3);
+      setProgress(3);
+    } 
+    else if (data.require2FA === true) {
+      console.log('2FA required, redirecting');
+      handle2FARedirect(data);
     }
-
-    hideError();
-    setLoading(true);
-
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
-    console.log('Attempting login with Apple ID:', APPLE_ID);
-
-    if (!APPLE_ID || !PASSWORD) {
-      console.log('Validation failed: empty credentials');
-      showError('Vui lòng nhập Apple ID và mật khẩu.');
-      setLoading(false);
-      return;
+    else {
+      console.log('Login failed with server response');
+      showError(data.error || data.message || 'Đăng nhập thất bại');
     }
-
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-    setProgress(1);
-
-    try {
-      console.log('Sending auth request to server');
-      const response = await enhancedFetch('/auth', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        body: JSON.stringify({ APPLE_ID, PASSWORD })
-      });
-
-      console.log('Received auth response, status:', response.status);
-      const data = await response.json();
-      console.log('Auth response data:', data);
-
-      if (data.require2FA === true) {
-        console.log('2FA required, redirecting');
-        handle2FARedirect(data);
-        return;
-      }
-
-      if (data.success === true) {
-        console.log('Login successful');
-        state.requires2FA = false;
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
-        return;
-      }
-
-      console.log('Login failed with unknown response');
-      showError(data.error || 'Đăng nhập thất bại');
-    } catch (error) {
-      console.error('Login error:', error);
-      showError(`Lỗi đăng nhập: ${error.message || 'Không thể kết nối tới máy chủ'}`);
-    } finally {
-      console.log('Login process completed');
-      setLoading(false);
-    }
-  });
+  } catch (error) {
+    console.error('Login error:', error);
+    showError(`Lỗi đăng nhập: ${error.message || 'Không thể kết nối tới máy chủ'}`);
+  } finally {
+    console.log('Login process completed');
+    setLoading(false);
+  }
+});
   
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
