@@ -213,14 +213,19 @@ class IPATool {
 const ipaTool = new IPATool();
 
 // Authentication endpoint
+// Authentication endpoint
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
+
+    // Gọi tới Apple để xác thực
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
+    // Chuẩn hóa thông tin lỗi/trạng thái
     const customerMsg = (user.customerMessage || '').toLowerCase();
     const failure = (user.failureType || '').toLowerCase();
 
+    // Log nội bộ (hữu ích để debug client nếu cần)
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
@@ -230,10 +235,10 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // ✅ Kiểm tra dạng yêu cầu 2FA đặc biệt từ Apple
+    // Trường hợp đặc biệt: thông điệp "configurator" thực chất là yêu cầu xác minh thiết bị tin cậy
     const isConfigurator2FA = customerMsg.includes('badlogin.configurator_message');
 
-    // ❌ Chỉ coi là sai đăng nhập nếu failure rõ ràng là sai và không phải configurator
+    // ❌ Được coi là sai tài khoản nếu failure rõ ràng, không liên quan đến 2FA
     const isWrongLogin = (
       (failure.includes('badlogin') ||
        failure.includes('invalid_credentials') ||
@@ -241,7 +246,7 @@ app.post('/auth', async (req, res) => {
       !isConfigurator2FA
     );
 
-    // ✅ Cần 2FA nếu phát hiện các keyword liên quan
+    // ✅ Được coi là yêu cầu xác minh nếu liên quan đến 2FA hoặc configurator
     const needs2FA = (
       failure.includes('mfa') ||
       customerMsg.includes('verification code') ||
@@ -251,6 +256,7 @@ app.post('/auth', async (req, res) => {
       isConfigurator2FA
     );
 
+    // ❌ Sai tài khoản/mật khẩu
     if (isWrongLogin) {
       return res.status(401).json({
         success: false,
@@ -259,6 +265,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ✅ Yêu cầu mã xác minh 2FA
     if (needs2FA) {
       return res.json({
         require2FA: true,
@@ -268,6 +275,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ✅ Thành công không cần xác minh
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -276,6 +284,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ❓ Trường hợp không rõ ràng
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     console.error('Auth endpoint error:', error);
