@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     CODE: '',
     APPID: '',
     appVerId: '',
+    authenticated: false,
+    require2FA: false,
   };
 
   const el = {
@@ -99,15 +101,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state),
+        body: JSON.stringify({
+          APPLE_ID: state.APPLE_ID,
+          PASSWORD: state.PASSWORD,
+        }),
       });
+
       const data = await res.json();
 
       if (data.require2FA) {
-        el.verifyMessage.textContent = data.message;
+        state.require2FA = true;
+        el.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 2FA được gửi tới thiết bị của bạn.';
         transition(el.step1, el.step2);
         setProgress(2);
       } else if (data.success) {
+        state.authenticated = true;
+        state.require2FA = false;
         transition(el.step1, el.step3);
         setProgress(3);
       } else {
@@ -139,11 +148,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(state),
+        body: JSON.stringify({
+          APPLE_ID: state.APPLE_ID,
+          PASSWORD: state.PASSWORD,
+          CODE: state.CODE,
+        }),
       });
+
       const data = await res.json();
 
       if (data.success) {
+        state.authenticated = true;
         transition(el.step2, el.step3);
         setProgress(3);
       } else {
@@ -180,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(state),
       });
+
       const data = await res.json();
 
       if (data.require2FA) {
@@ -195,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       console.error(err);
-      showError('Lỗi tải xuống.');
+      showError('Lỗi khi tải xuống.');
     } finally {
       setButtonLoading(el.downloadBtn, false);
     }
