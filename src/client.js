@@ -19,65 +19,68 @@ class Store {
             why: 'signIn',
         };
 
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-
         try {
-            const resp = await this.fetch(url, {
-                method: 'POST',
-                body,
-                headers: this.Headers
-            });
-
-            // Kiểm tra HTTP status code
-            if (!resp.ok) {
-                throw new Error(`Apple API returned ${resp.status}: ${resp.statusText}`);
-            }
+            const resp = await this.fetch(
+                `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`,
+                {
+                    method: 'POST',
+                    body: plist.build(dataJson),
+                    headers: this.Headers
+                }
+            );
 
             const responseText = await resp.text();
             const parsedResp = plist.parse(responseText);
-            console.log('Raw Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
+            console.log('[DEBUG] Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
 
-            // Xác định trạng thái đăng nhập
-            const isSuccess = this._checkAuthSuccess(parsedResp);
-            
+            // Phát hiện yêu cầu 2FA (HSA2)
+            if (parsedResp.authType === 'hsa2' || parsedResp.authType === 'hsa') {
+                return {
+                    _state: 'requires_2fa',
+                    authType: parsedResp.authType,
+                    dsPersonId: parsedResp.dsPersonId,
+                    customerMessage: parsedResp.customerMessage || 'Vui lòng nhập mã xác minh 2FA',
+                    securityCode: {
+                        length: parsedResp.securityCode?.length,
+                        tooManyAttempts: parsedResp.securityCode?.tooManyAttempts
+                    }
+                };
+            }
+
+            // Xử lý đăng nhập thất bại
+            if (parsedResp.failureType || !parsedResp.dsPersonId) {
+                return {
+                    _state: 'failure',
+                    error: this._parseErrorMessage(parsedResp),
+                    debug: parsedResp
+                };
+            }
+
+            // Đăng nhập thành công
             return {
-                ...parsedResp,
-                _state: isSuccess ? 'success' : 'failure',
-                _isAuthenticated: isSuccess,
-                _debug: {
-                    hasFailureType: !!parsedResp.failureType,
-                    hasCustomerMessage: !!parsedResp.customerMessage,
-                    hasDsPersonId: !!parsedResp.dsPersonId
-                }
+                _state: 'success',
+                dsPersonId: parsedResp.dsPersonId,
+                passwordToken: parsedResp.passwordToken
             };
 
         } catch (error) {
-            console.error('Authentication Error:', error);
+            console.error('[ERROR] Authentication failed:', error);
             return {
-                _state: 'failure',
-                customerMessage: 'Lỗi kết nối đến Apple',
-                error: error.message,
-                _isAuthenticated: false
+                _state: 'error',
+                error: 'Không thể kết nối đến Apple Server'
             };
         }
     }
 
-    static _checkAuthSuccess(response) {
-        // Kiểm tra tất cả điều kiện có thể cho thấy thất bại
-        if (response.failureType || 
-            response.customerMessage?.toLowerCase().includes('invalid') ||
-            !response.dsPersonId) {
-            return false;
+    static _parseErrorMessage(response) {
+        // Xử lý các thông báo lỗi đặc biệt từ Apple
+        if (response.customerMessage) {
+            if (response.customerMessage.includes('Configurator_message')) {
+                return 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy.';
+            }
+            return response.customerMessage;
         }
-        
-        // Thêm các kiểm tra đặc thù của Apple
-        if (response.status === 'failed' || 
-            response.passwordToken === 'FAILED') {
-            return false;
-        }
-
-        return true;
+        return 'Sai Apple ID hoặc mật khẩu';
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
@@ -88,19 +91,19 @@ class Store {
             ...(appVerId && {externalVersionId: appVerId})
         };
 
-        const body = plist.build(dataJson);
-        const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-
         try {
-            const resp = await this.fetch(url, {
-                method: 'POST', 
-                body,
-                headers: {
-                    ...this.Headers,
-                    'X-Dsid': Cookie.dsPersonId,
-                    'iCloud-DSID': Cookie.dsPersonId
+            const resp = await this.fetch(
+                'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct',
+                {
+                    method: 'POST',
+                    body: plist.build(dataJson),
+                    headers: {
+                        ...this.Headers,
+                        'X-Dsid': Cookie.dsPersonId,
+                        'iCloud-DSID': Cookie.dsPersonId
+                    }
                 }
-            });
+            );
 
             const parsedResp = plist.parse(await resp.text());
             return {
@@ -109,16 +112,16 @@ class Store {
             };
 
         } catch (error) {
-            console.error('Download Error:', error);
+            console.error('[ERROR] Download failed:', error);
             return {
                 _state: 'failure',
-                error: error.message
+                error: 'Lỗi tải ứng dụng'
             };
         }
     }
 }
 
-// Khởi tạo fetch với cookie support
+// Cấu hình fetch với cookie
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
 

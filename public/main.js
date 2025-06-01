@@ -244,35 +244,34 @@ elements.loginBtn.addEventListener('click', async (e) => {
   hideError();
   setLoading(true);
 
-  const APPLE_ID = elements.appleIdInput.value.trim();
-  const PASSWORD = elements.passwordInput.value;
-
-  if (!APPLE_ID || !PASSWORD) {
-    showError('Vui lòng nhập đầy đủ thông tin');
-    setLoading(false);
-    return;
-  }
-
   try {
     const response = await fetch('/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ APPLE_ID, PASSWORD })
+      body: JSON.stringify({
+        APPLE_ID: elements.appleIdInput.value.trim(),
+        PASSWORD: elements.passwordInput.value
+      })
     });
 
     const data = await response.json();
-    console.log('Phản hồi từ server:', data); // Debug
+    console.log('Auth Response:', data);
 
-    // Chỉ xử lý khi server trả về success:true
-    if (data.success !== true) {
-      showError(data.error || 'Đăng nhập thất bại');
-      return; // Dừng ngang nếu không thành công
+    // Xử lý 2FA
+    if (data.requires2FA) {
+      handle2FARedirect(data);
+      return;
     }
 
     // Xử lý thành công
-    state.dsid = data.dsid;
-    showToast('Đăng nhập thành công');
-    transition(elements.step1, elements.step3);
+    if (data.success) {
+      state.dsid = data.dsid;
+      transition(elements.step1, elements.step3);
+      return;
+    }
+
+    // Xử lý lỗi
+    showError(data.error || 'Đăng nhập thất bại');
 
   } catch (error) {
     showError('Lỗi kết nối đến server');

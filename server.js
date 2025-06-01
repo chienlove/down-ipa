@@ -237,25 +237,31 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-    
     const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
     console.log('Auth Result:', authResult);
 
-    // 🔴 Kiểm tra CHUẨN theo Apple API
-    if (authResult._state !== 'success' || !authResult.dsPersonId) {
-      return res.status(401).json({
-        success: false,
-        error: authResult.customerMessage || 'Sai Apple ID hoặc mật khẩu',
-        debug: {
-          appleStatus: authResult._rawStatus,
-          appleFailure: authResult._rawFailure
-        }
+    // Trường hợp cần 2FA
+    if (authResult._state === 'requires_2fa') {
+      return res.status(200).json({
+        requires2FA: true,
+        message: authResult.customerMessage || 'Yêu cầu xác minh 2FA',
+        dsid: authResult.dsPersonId
       });
     }
 
-    res.json({ 
+    // Trường hợp thất bại
+    if (authResult._state === 'failure') {
+      return res.status(401).json({
+        success: false,
+        error: authResult.error || 'Đăng nhập thất bại',
+        debug: authResult.debug
+      });
+    }
+
+    // Thành công
+    res.json({
       success: true,
-      dsid: authResult.dsPersonId 
+      dsid: authResult.dsPersonId
     });
 
   } catch (error) {
