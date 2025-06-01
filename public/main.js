@@ -173,7 +173,15 @@ document.addEventListener('DOMContentLoaded', () => {
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
-    elements.verifyMessage.textContent = responseData.message || 'Vui lòng nhập mã xác minh 6 chữ số';
+    // Friendly error mapping
+let message = responseData.message || '';
+if (message.includes('MZFinance.BadLogin.Configurator_message')) {
+  message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
+} else if (message.toLowerCase().includes('code')) {
+  message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
+}
+
+elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     
     // Force show step2
     elements.step2.style.display = 'block';
