@@ -213,7 +213,6 @@ class IPATool {
 const ipaTool = new IPATool();
 
 // Authentication endpoint
-// Authentication endpoint
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
@@ -228,28 +227,42 @@ app.post('/auth', async (req, res) => {
     console.log(`Đăng nhập Apple ID: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    if (user._state === 'success') {
-      if (user.authOptions?.containsMfa) {
+    console.log('Auth response state:', user._state);
+    console.log('Auth response:', user);
+
+    // Kiểm tra nếu cần 2FA
+    if (user._state !== 'success') {
+      // Kiểm tra các trường hợp cần 2FA
+      if (user.failureType?.toLowerCase().includes('mfa') || 
+          user.failureType?.toLowerCase().includes('2fa') ||
+          user.authOptions?.containsMfa ||
+          user.customerMessage?.toLowerCase().includes('verification') ||
+          user.customerMessage?.toLowerCase().includes('code')) {
+        
         return res.json({
           require2FA: true,
-          message: 'Tài khoản này cần xác minh 2FA.'
+          message: user.customerMessage || 'Tài khoản này cần xác minh 2FA. Vui lòng nhập mã xác minh.'
         });
       }
-
-      return res.json({ 
-        success: true,
-        dsid: user.dsPersonId 
-      });
+      
+      // Nếu không phải lỗi 2FA thì báo lỗi đăng nhập
+      throw new Error(user.customerMessage || 'Đăng nhập thất bại');
     }
 
-    if (user.failureType?.toLowerCase().includes('mfa')) {
+    // Nếu đăng nhập thành công nhưng vẫn có yêu cầu 2FA
+    if (user.authOptions?.containsMfa) {
       return res.json({
         require2FA: true,
-        message: user.customerMessage || 'Yêu cầu mã xác minh 2FA.'
+        message: 'Tài khoản này cần xác minh 2FA để tiếp tục.'
       });
     }
 
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    // Đăng nhập thành công hoàn toàn (không cần 2FA)
+    return res.json({ 
+      success: true,
+      dsid: user.dsPersonId 
+    });
+
   } catch (error) {
     console.error('Lỗi xác thực:', error);
     res.status(500).json({ 
