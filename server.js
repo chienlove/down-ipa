@@ -217,42 +217,21 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
 
-    if (!APPLE_ID || !PASSWORD) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Apple ID và mật khẩu là bắt buộc.' 
-      });
-    }
-
-    console.log(`Đăng nhập Apple ID: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('[AUTH] Response from Store.authenticate:', user);
+    // Debug gửi log ngược về client
+    return res.json({
+      debug: user,  // 👈 gửi toàn bộ response từ Store.authenticate(...)
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    });
 
-    // Trường hợp cần mã 2FA
-    if (user.failureType?.toLowerCase().includes('mfa') || user.customerMessage?.includes('mã xác minh')) {
-      return res.json({
-        success: false,
-        require2FA: true,
-        message: user.customerMessage || 'Yêu cầu xác minh 2FA',
-        dsid: user.dsPersonId
-      });
-    }
-
-    // Đăng nhập thành công
-    if (user._state === 'success') {
-      return res.json({ 
-        success: true,
-        dsid: user.dsPersonId 
-      });
-    }
-
-    // Các lỗi khác
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    console.error('Lỗi xác thực:', error);
     res.status(500).json({ 
-      success: false,
+      success: false, 
       error: error.message || 'Lỗi xác thực Apple ID' 
     });
   }
