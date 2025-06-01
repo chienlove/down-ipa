@@ -7,33 +7,21 @@ import { Store } from './src/client.js';
 import { SignatureClient } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Agent } from 'https';
-import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 5004;
 
-// Enhanced middleware
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
-  const start = Date.now();
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
-  });
-  
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
@@ -65,7 +53,6 @@ function generateRandomString(length = 16) {
 }
 
 async function downloadChunk({ url, start, end, output }) {
-  console.log(`Downloading chunk ${start}-${end} to ${output}`);
   const headers = { Range: `bytes=${start}-${end}` };
   const agent = new Agent({ rejectUnauthorized: false });
 
@@ -82,9 +69,7 @@ async function downloadChunk({ url, start, end, output }) {
       
       clearTimeout(timeout);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
       const fileStream = createWriteStream(output, { flags: 'a' });
       await new Promise((resolve, reject) => {
@@ -94,7 +79,6 @@ async function downloadChunk({ url, start, end, output }) {
       });
       return;
     } catch (error) {
-      console.error(`Chunk download attempt ${attempt + 1} failed:`, error);
       if (attempt === MAX_RETRIES - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     }
@@ -103,7 +87,6 @@ async function downloadChunk({ url, start, end, output }) {
 
 async function clearCache(cacheDir) {
   try {
-    console.log(`Clearing cache directory: ${cacheDir}`);
     const files = await fsPromises.readdir(cacheDir);
     await Promise.all(files.map(file => fsPromises.unlink(path.join(cacheDir, file))));
   } catch (error) {
@@ -121,11 +104,9 @@ class IPATool {
     try {
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-      console.log('Apple authentication response:', JSON.stringify(user, null, 2));
 
       if (user._state !== 'success') {
         if (user.failureType?.toLowerCase().includes('mfa')) {
-          console.log('2FA required during download');
           return {
             require2FA: true,
             message: user.customerMessage || '2FA verification required'
@@ -136,12 +117,10 @@ class IPATool {
 
       console.log('Fetching app info...');
       const app = await Store.download(APPID, appVerId, user);
-      console.log('App info response:', JSON.stringify(app, null, 2));
       const songList0 = app?.songList?.[0];
 
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
-          console.log('2FA required during app info fetch');
           return {
             require2FA: true,
             message: app.customerMessage || '2FA verification required'
@@ -237,37 +216,51 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-    const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Auth Result:', authResult);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Trường hợp cần 2FA
-    if (authResult._state === 'requires_2fa') {
-      return res.status(200).json({
-        requires2FA: true,
-        message: authResult.customerMessage || 'Yêu cầu xác minh 2FA',
-        dsid: authResult.dsPersonId
+    // Debug log để kiểm tra phản hồi
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
+
+    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
-    // Trường hợp thất bại
-    if (authResult._state === 'failure') {
-      return res.status(401).json({
-        success: false,
-        error: authResult.error || 'Đăng nhập thất bại',
-        debug: authResult.debug
+    // Đăng nhập hoàn toàn thành công
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
-    // Thành công
-    res.json({
-      success: true,
-      dsid: authResult.dsPersonId
-    });
+    // Trường hợp thất bại không rõ nguyên nhân
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'Lỗi hệ thống'
+      error: error.message || 'Lỗi xác thực Apple ID'
     });
   }
 });
@@ -275,11 +268,9 @@ app.post('/auth', async (req, res) => {
 // 2FA Verification endpoint
 app.post('/verify', async (req, res) => {
   try {
-    console.log('Verify request received:', req.body);
     const { APPLE_ID, PASSWORD, CODE } = req.body;
     
     if (!APPLE_ID || !PASSWORD || !CODE) {
-      console.log('Missing verification fields');
       return res.status(400).json({ 
         success: false, 
         error: 'All fields are required' 
@@ -288,14 +279,11 @@ app.post('/verify', async (req, res) => {
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-    console.log('2FA verification response:', JSON.stringify(user, null, 2));
 
     if (user._state !== 'success') {
-      console.log('2FA verification failed');
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    console.log('2FA verification successful');
     res.json({ 
       success: true,
       dsid: user.dsPersonId
@@ -304,10 +292,7 @@ app.post('/verify', async (req, res) => {
     console.error('Verify error:', error);
     res.status(500).json({ 
       success: false, 
-      error: error.message || 'Verification error',
-      debug: {
-        rawError: error.toString()
-      }
+      error: error.message || 'Verification error' 
     });
   }
 });
@@ -315,11 +300,9 @@ app.post('/verify', async (req, res) => {
 // Download endpoint
 app.post('/download', async (req, res) => {
   try {
-    console.log('Download request received:', req.body);
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     
     if (!APPLE_ID || !PASSWORD || !APPID) {
-      console.log('Missing required download fields');
       return res.status(400).json({ 
         success: false, 
         error: 'Required fields are missing' 
@@ -327,7 +310,7 @@ app.post('/download', async (req, res) => {
     }
 
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
-    console.log(`Download request for app: ${APPID} to path: ${uniqueDownloadPath}`);
+    console.log(`Download request for app: ${APPID}`);
 
     const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
@@ -339,7 +322,6 @@ app.post('/download', async (req, res) => {
     });
 
     if (result.require2FA) {
-      console.log('2FA required during download process');
       return res.json({
         success: false,
         require2FA: true,
@@ -350,15 +332,14 @@ app.post('/download', async (req, res) => {
     // Schedule cleanup after 30 minutes
     setTimeout(async () => {
       try {
-        console.log(`Cleaning up: ${result.filePath}`);
         await fsPromises.unlink(result.filePath);
         await fsPromises.rm(uniqueDownloadPath, { recursive: true, force: true });
+        console.log(`Cleaned up: ${result.filePath}`);
       } catch (err) {
         console.error('Cleanup error:', err.message);
       }
     }, 30 * 60 * 1000);
 
-    console.log('Download completed, returning result');
     res.json({
       success: true,
       downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
@@ -369,11 +350,7 @@ app.post('/download', async (req, res) => {
     console.error('Download error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Download failed',
-      debug: {
-        rawError: error.toString(),
-        stack: error.stack
-      }
+      error: error.message || 'Download failed'
     });
   }
 });
@@ -383,19 +360,12 @@ app.use('/files', express.static(path.join(__dirname, 'app')));
 
 // Error handling
 app.use((req, res) => {
-  console.error(`404 Not Found: ${req.method} ${req.path}`);
   res.status(404).json({ error: 'Not Found' });
 });
 
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ 
-    error: 'Internal Server Error',
-    debug: {
-      message: err.message,
-      stack: err.stack
-    }
-  });
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 // Start server
