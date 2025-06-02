@@ -219,8 +219,7 @@ app.post('/auth', async (req, res) => {
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     console.log('[DEBUG] _state:', user._state);
-    console.log('[DEBUG] authOptions:', user.authOptions);
-    console.log('[DEBUG] customerMessage:', user.customerMessage);
+    console.log('[DEBUG] full user object:', JSON.stringify(user, null, 2));
 
     if (user._state === 'requires2FA') {
       return res.status(200).json({
@@ -237,7 +236,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu _state vẫn là failure
+    // Lỗi thật
     return res.status(401).json({
       success: false,
       error: user.customerMessage || 'Đăng nhập thất bại'

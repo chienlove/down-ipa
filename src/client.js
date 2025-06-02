@@ -24,13 +24,13 @@ class Store {
   const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
   const parsedResp = plist.parse(await resp.text());
 
-  // ✅ Xác định _state đúng
+  // ✅ Xác định _state bằng authOptions hoặc accountInfo
   let _state = 'failure';
 
-  if (parsedResp.authOptions) {
-    _state = 'requires2FA'; // Có authOptions → Apple gửi mã → không phải sai pass
+  if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+    _state = 'requires2FA'; // Có 2FA
   } else if (parsedResp.accountInfo?.address?.firstName) {
-    _state = 'success';     // Đăng nhập hoàn tất
+    _state = 'success';     // Đăng nhập thành công
   }
 
   return { ...parsedResp, _state };
