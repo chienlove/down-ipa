@@ -218,7 +218,7 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('[DEBUG] user._state:', user._state);
+    console.log('[DEBUG] FULL user object:', JSON.stringify(user, null, 2));
 
     if (user._state === 'requires2FA') {
       return res.status(200).json({
