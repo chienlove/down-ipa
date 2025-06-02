@@ -25,12 +25,17 @@ static async authenticate(email, password, mfa) {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
         
-        // Thêm kiểm tra rõ ràng cho lỗi mật khẩu
-        if (parsedResp.failureType && parsedResp.failureType.toLowerCase().includes('password')) {
+        // Debug log để xem response từ Apple
+        console.log('Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
+        
+        // Kiểm tra response có chứa thông báo lỗi mật khẩu không
+        if (parsedResp.failureType && 
+            (parsedResp.failureType.toLowerCase().includes('password') || 
+             parsedResp.customerMessage?.toLowerCase().includes('forgot your password'))) {
             return {
                 _state: 'failure',
                 failureType: 'password',
-                customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu'
+                customerMessage: 'Sai tài khoản hoặc mật khẩu'
             };
         }
         
