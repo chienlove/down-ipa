@@ -26,27 +26,33 @@ static async authenticate(email, password, mfa) {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
         
-        console.log('Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
+        console.log('Raw Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
         
-        // Xử lý trường hợp Configurator_message - coi như lỗi đăng nhập
-        if (parsedResp.customerMessage === "MZFinance.BadLogin.Configurator_message") {
+        // Xử lý trường hợp có mã 2FA
+        if (parsedResp.authOptions && parsedResp.authOptions.length > 0) {
             return {
-                _state: 'failure',
-                failureType: 'bad_login',
-                customerMessage: 'Sai tài khoản hoặc mật khẩu'
+                _state: 'needs2fa',
+                authOptions: parsedResp.authOptions,
+                dsPersonId: parsedResp.dsPersonId,
+                customerMessage: parsedResp.customerMessage || 'Vui lòng nhập mã xác minh'
             };
         }
         
-        // Kiểm tra các trường hợp lỗi khác
-        if (parsedResp.failureType && parsedResp.failureType !== '') {
+        // Xử lý trường hợp thành công
+        if (parsedResp.dsPersonId && !parsedResp.failureType) {
             return {
-                _state: 'failure',
-                failureType: parsedResp.failureType,
-                customerMessage: parsedResp.customerMessage || 'Đăng nhập thất bại'
+                _state: 'success',
+                dsPersonId: parsedResp.dsPersonId
             };
         }
         
-        return {...parsedResp, _state: 'success'};
+        // Mọi trường hợp khác coi như lỗi
+        return {
+            _state: 'failure',
+            failureType: parsedResp.failureType || 'bad_login',
+            customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu'
+        };
+        
     } catch (error) {
         console.error('Authentication error:', error);
         return {

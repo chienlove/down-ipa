@@ -232,16 +232,11 @@ elements.loginBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('Auth response:', data);
-
-      if (!response.ok) {
-        showError(data.error || 'Sai tài khoản hoặc mật khẩu');
-        setLoading(false);
-        return;
-      }
+      console.log('UI Auth Response:', data);
 
       // Xử lý 2FA
       if (data.require2FA) {
+        showToast('Mã xác minh đã được gửi đến thiết bị của bạn');
         handle2FARedirect(data);
         return;
       }
@@ -254,9 +249,12 @@ elements.loginBtn.addEventListener('click', async (e) => {
         showToast('Đăng nhập thành công!');
         transition(elements.step1, elements.step3);
         setProgress(3);
-      } else {
-        showError(data.error || 'Đăng nhập thất bại');
+        return;
       }
+
+      // Xử lý lỗi
+      showError(data.error || 'Đăng nhập thất bại');
+      
     } catch (error) {
       console.error('Auth error:', error);
       showError('Không thể kết nối tới máy chủ.');
