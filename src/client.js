@@ -29,20 +29,19 @@ class Store {
 
     const parsedResp = plist.parse(await resp.text());
 
-    // ✅ Xác định trạng thái đúng: đăng nhập thường, 2FA, hoặc sai
     let _state = 'failure';
 
-    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-      _state = 'requires2FA';
-    } else if (
-      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-      !parsedResp.failureType
-    ) {
-      // Apple trả "BadLogin" nhưng không có failureType → là tài khoản đúng, cần 2FA
-      _state = 'requires2FA';
-    } else if (parsedResp.accountInfo?.address?.firstName) {
-      _state = 'success';
-    }
+if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+  _state = 'requires2FA';
+} else if (
+  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+  !parsedResp.failureType &&
+  parsedResp["cancel-purchase-batch"] !== true
+) {
+  _state = 'requires2FA';
+} else if (parsedResp.accountInfo?.address?.firstName) {
+  _state = 'success';
+}
 
     // ✅ In log để debug nếu cần
     console.log('[DEBUG] Apple parsed response:', JSON.stringify(parsedResp, null, 2));
