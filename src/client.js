@@ -23,8 +23,8 @@ class Store {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
         //console.log(JSON.stringify(parsedResp));
-        return {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
-    }
+        const hasError = parsedResp.failureType || (parsedResp.customerMessage && parsedResp.customerMessage.toLowerCase().includes('badlogin'));
+return { ...parsedResp, _state: hasError ? 'failure' : 'success' };
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
