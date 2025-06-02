@@ -8,6 +8,7 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
+// client.js
 static async authenticate(email, password, mfa) {
     const dataJson = {
         appleId: email,
@@ -23,27 +24,41 @@ static async authenticate(email, password, mfa) {
     
     try {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
-        const parsedResp = plist.parse(await resp.text());
+        const textResponse = await resp.text();
+        const parsedResp = plist.parse(textResponse);
         
-        // Kiểm tra header X-Apple-AS-Results để phát hiện 2FA
-        const asResults = resp.headers.get('X-Apple-AS-Results');
-        const has2FA = asResults && asResults.includes('stage=2');
+        console.log('Raw Apple Response:', textResponse); // Log toàn bộ response dạng text
         
-        // Nếu có 2FA mặc dù message là BadLogin
+        // Phát hiện 2FA bằng nhiều cách
+        const has2FA = (
+            textResponse.includes('x-apple-id-session-id') ||
+            textResponse.includes('x-apple-twosv-code') ||
+            textResponse.includes('authType="2fa"') ||
+            (parsedResp.authOptions && parsedResp.authOptions.length > 0)
+        );
+        
+        // Nếu phát hiện 2FA
         if (has2FA) {
             return {
                 _state: 'needs2fa',
-                dsPersonId: resp.headers.get('X-Dsid'),
+                dsPersonId: parsedResp.dsPersonId || resp.headers.get('x-dsid'),
                 customerMessage: 'Vui lòng nhập mã xác minh 2FA'
             };
         }
         
-        // Xử lý các trường hợp khác
+        // Nếu có dsPersonId nhưng không có lỗi -> thành công
+        if ((parsedResp.dsPersonId || resp.headers.get('x-dsid')) && !parsedResp.failureType) {
+            return {
+                _state: 'success',
+                dsPersonId: parsedResp.dsPersonId || resp.headers.get('x-dsid')
+            };
+        }
+        
+        // Mọi trường hợp khác coi là thất bại
         return {
-            _state: parsedResp.failureType ? 'failure' : 'success',
-            failureType: parsedResp.failureType,
-            customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu',
-            dsPersonId: parsedResp.dsPersonId
+            _state: 'failure',
+            failureType: parsedResp.failureType || 'bad_login',
+            customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu'
         };
         
     } catch (error) {

@@ -234,13 +234,14 @@ elements.loginBtn.addEventListener('click', async (e) => {
       const data = await response.json();
       console.log('UI response:', data);
 
-      if (data.require2FA) {
-        showToast('Mã xác minh đã được gửi đến thiết bị của bạn');
+      // Kiểm tra nghiêm ngặt
+      if (data.require2FA === true) {
+        showToast('Vui lòng nhập mã xác minh từ thiết bị tin cậy');
         handle2FARedirect(data);
         return;
       }
 
-      if (data.success) {
+      if (data.success === true) {
         state.requires2FA = false;
         state.verified2FA = true;
         state.dsid = data.dsid || null;

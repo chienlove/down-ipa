@@ -220,7 +220,17 @@ app.post('/auth', async (req, res) => {
 
     console.log('Auth processed:', JSON.stringify(user, null, 2));
 
-    // Trường hợp cần 2FA
+    // Fallback: Nếu có Configurator_message nhưng có 2FA
+    if (user.customerMessage?.includes('Configurator_message') && user._state === 'needs2fa') {
+      return res.json({
+        success: false,
+        require2FA: true,
+        message: 'Vui lòng kiểm tra thiết bị tin cậy để lấy mã xác minh',
+        dsid: user.dsPersonId
+      });
+    }
+
+    // Xử lý các trường hợp khác
     if (user._state === 'needs2fa') {
       return res.json({
         success: false,
@@ -230,7 +240,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Trường hợp thành công
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -238,7 +247,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Trường hợp thất bại
     return res.status(401).json({
       success: false,
       error: user.customerMessage,
