@@ -38,14 +38,13 @@ async function authenticate(email, password, mfa) {
 
   const parsedResp = plist.parse(text);
 
-  // ✅ Gán trạng thái _state: chính xác & thực tế
   let _state = 'failure';
 
   if (
     parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-    !parsedResp.failureType
+    !parsedResp.failureType &&
+    parsedResp.dsPersonId
   ) {
-    // 🔥 Trường hợp tài khoản đúng + đang chờ nhập mã 2FA
     _state = 'requires2FA';
   } else if (parsedResp.accountInfo?.address?.firstName) {
     _state = 'success';
