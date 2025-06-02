@@ -232,16 +232,14 @@ elements.loginBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('UI Auth Response:', data);
+      console.log('UI response:', data);
 
-      // Xử lý 2FA
       if (data.require2FA) {
         showToast('Mã xác minh đã được gửi đến thiết bị của bạn');
         handle2FARedirect(data);
         return;
       }
 
-      // Xử lý thành công
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
@@ -252,7 +250,6 @@ elements.loginBtn.addEventListener('click', async (e) => {
         return;
       }
 
-      // Xử lý lỗi
       showError(data.error || 'Đăng nhập thất bại');
       
     } catch (error) {

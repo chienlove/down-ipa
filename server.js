@@ -218,7 +218,7 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('Processed Auth Result:', JSON.stringify(user, null, 2));
+    console.log('Auth processed:', JSON.stringify(user, null, 2));
 
     // Trường hợp cần 2FA
     if (user._state === 'needs2fa') {
@@ -246,7 +246,7 @@ app.post('/auth', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Auth endpoint error:', error);
+    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
       error: 'Lỗi xác thực Apple ID',

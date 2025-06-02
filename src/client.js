@@ -8,7 +8,6 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-// client.js
 static async authenticate(email, password, mfa) {
     const dataJson = {
         appleId: email,
@@ -26,31 +25,25 @@ static async authenticate(email, password, mfa) {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
         
-        console.log('Raw Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
+        // Kiểm tra header X-Apple-AS-Results để phát hiện 2FA
+        const asResults = resp.headers.get('X-Apple-AS-Results');
+        const has2FA = asResults && asResults.includes('stage=2');
         
-        // Xử lý trường hợp có mã 2FA
-        if (parsedResp.authOptions && parsedResp.authOptions.length > 0) {
+        // Nếu có 2FA mặc dù message là BadLogin
+        if (has2FA) {
             return {
                 _state: 'needs2fa',
-                authOptions: parsedResp.authOptions,
-                dsPersonId: parsedResp.dsPersonId,
-                customerMessage: parsedResp.customerMessage || 'Vui lòng nhập mã xác minh'
+                dsPersonId: resp.headers.get('X-Dsid'),
+                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
             };
         }
         
-        // Xử lý trường hợp thành công
-        if (parsedResp.dsPersonId && !parsedResp.failureType) {
-            return {
-                _state: 'success',
-                dsPersonId: parsedResp.dsPersonId
-            };
-        }
-        
-        // Mọi trường hợp khác coi như lỗi
+        // Xử lý các trường hợp khác
         return {
-            _state: 'failure',
-            failureType: parsedResp.failureType || 'bad_login',
-            customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu'
+            _state: parsedResp.failureType ? 'failure' : 'success',
+            failureType: parsedResp.failureType,
+            customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu',
+            dsPersonId: parsedResp.dsPersonId
         };
         
     } catch (error) {
