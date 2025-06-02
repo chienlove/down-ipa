@@ -9,32 +9,32 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+  const dataJson = {
+    appleId: email,
+    attempt: mfa ? 2 : 4,
+    createSession: 'true',
+    guid: this.guid,
+    password: `${password}${mfa ?? ''}`,
+    rmp: 0,
+    why: 'signIn',
+  };
 
-        const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
-        const parsedResp = plist.parse(await resp.text());
+  const body = plist.build(dataJson);
+  const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+  const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
+  const parsedResp = plist.parse(await resp.text());
 
-        // ✅ Xác định trạng thái đăng nhập
-        let _state = 'failure';
+  // ✅ Xác định _state đúng
+  let _state = 'failure';
 
-        if (parsedResp.accountInfo?.address?.firstName) {
-            _state = 'success'; // Đăng nhập hoàn toàn thành công
-        } else if (parsedResp.authOptions) {
-            _state = 'requires2FA'; // Cần xác minh 2FA
-        }
+  if (parsedResp.authOptions) {
+    _state = 'requires2FA'; // Có authOptions → Apple gửi mã → không phải sai pass
+  } else if (parsedResp.accountInfo?.address?.firstName) {
+    _state = 'success';     // Đăng nhập hoàn tất
+  }
 
-        return { ...parsedResp, _state };
-    }
+  return { ...parsedResp, _state };
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
