@@ -218,37 +218,38 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // DEBUG log
-    console.log('[DEBUG] Apple parsed response:', JSON.stringify(user, null, 2));
     console.log('[DEBUG] _state:', user._state);
-    console.log('[DEBUG] customerMessage:', user.customerMessage);
+    console.log('[DEBUG] Apple response:', JSON.stringify(user, null, 2));
 
+    // ✅ Nếu là requires2FA
     if (user._state === 'requires2FA') {
-      // ✅ Gửi mã xác minh → phản hồi require2FA
       return res.status(200).json({
         require2FA: true,
-        dsid: user.dsPersonId,
-        message: 'Tài khoản cần xác minh 2FA'
+        message: 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId
       });
     }
 
+    // ✅ Nếu login thành công hoàn toàn
     if (user._state === 'success') {
-      // ✅ Đăng nhập hoàn toàn
       return res.status(200).json({
         success: true,
         dsid: user.dsPersonId
       });
     }
 
-    // ❌ Sai thật
+    // ❌ Nếu thất bại thật sự
     return res.status(401).json({
       success: false,
       error: user.customerMessage || 'Đăng nhập thất bại'
     });
 
-  } catch (err) {
-    console.error('Auth exception:', err);
-    res.status(500).json({ success: false, error: err.message || 'Lỗi xác thực' });
+  } catch (error) {
+    console.error('Auth error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID'
+    });
   }
 });
 
