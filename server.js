@@ -218,11 +218,14 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('[DEBUG] Apple full response:', JSON.stringify(user, null, 2));
-    console.log('[DEBUG] Determined _state:', user._state);
+    // DEBUG log
+    console.log('[DEBUG] user keys:', Object.keys(user));
+    console.log('[DEBUG] user._state:', user._state);
+    console.log('[DEBUG] authOptions:', user.authOptions);
+    console.log('[DEBUG] customerMessage:', user.customerMessage);
 
-    if (user._state === 'requires2FA') {
-      // ĐÂY LÀ TRƯỜNG HỢP CẦN 2FA
+    // ✅ Trường hợp tài khoản yêu cầu 2FA
+    if (user.authOptions && user.authType === 'hsa2') {
       return res.status(200).json({
         require2FA: true,
         message: 'Tài khoản cần xác minh 2FA',
@@ -230,15 +233,15 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    if (user._state === 'success') {
-      // Tài khoản không bật 2FA → thành công
+    // ✅ Trường hợp đăng nhập thành công không cần 2FA
+    if (user.accountInfo?.address?.firstName) {
       return res.status(200).json({
         success: true,
         dsid: user.dsPersonId
       });
     }
 
-    // CHỈ khi _state vẫn là failure thật sự mới trả lỗi
+    // ❌ Tài khoản hoặc mật khẩu sai thật sự
     return res.status(401).json({
       success: false,
       error: user.customerMessage || 'Đăng nhập thất bại'
