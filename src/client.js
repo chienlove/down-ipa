@@ -38,14 +38,12 @@ async function authenticate(email, password, mfa) {
 
   const parsedResp = plist.parse(text);
 
-  // ✅ Xác định chính xác _state dựa vào raw text
+  // ✅ Cách phân biệt tài khoản đúng có 2FA (dù Apple trả BadLogin)
   let _state = 'failure';
 
   if (
-    text.includes('createSession') &&
-    text.includes('authType') &&
-    text.includes('appleId') &&
-    text.includes('attempt')
+    parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+    !parsedResp.failureType
   ) {
     _state = 'requires2FA';
   } else if (parsedResp.accountInfo?.address?.firstName) {
