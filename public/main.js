@@ -219,11 +219,6 @@ elements.loginBtn.addEventListener('click', async (e) => {
       return;
     }
 
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-
-    setProgress(1);
-
     try {
       const response = await fetch('/auth', {
         method: 'POST',
@@ -232,22 +227,15 @@ elements.loginBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('Full auth response:', {
-        status: response.status,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: data
-      });
+      console.log('Full response:', { status: response.status, data });
 
       if (data.require2FA) {
-        showToast('Mã xác minh đã được gửi! Vui lòng kiểm tra thiết bị tin cậy');
+        showToast('Mã xác minh đã được gửi đến thiết bị của bạn');
         handle2FARedirect(data);
         return;
       }
 
       if (data.success) {
-        state.requires2FA = false;
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
         showToast('Đăng nhập thành công!');
         transition(elements.step1, elements.step3);
         setProgress(3);
@@ -258,7 +246,7 @@ elements.loginBtn.addEventListener('click', async (e) => {
       
     } catch (error) {
       console.error('Auth error:', error);
-      showError('Không thể kết nối tới máy chủ.');
+      showError('Không thể kết nối tới máy chủ');
     } finally {
       setLoading(false);
     }

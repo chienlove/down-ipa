@@ -216,11 +216,13 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
+    
+    // Reset cookie store trước mỗi lần thử
+    Store.cookieJar.removeAllCookies();
+    
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
-
     console.log('Auth result:', JSON.stringify(user, null, 2));
 
-    // Chỉ cần kiểm tra _state
     if (user._state === 'needs2fa') {
       return res.json({
         success: false,

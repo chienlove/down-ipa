@@ -23,32 +23,35 @@ static async authenticate(email, password, mfa) {
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
     
     try {
+        // Reset cookie jar trước mỗi lần thử
+        this.cookieJar.removeAllCookies();
+        
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const textResponse = await resp.text();
+        const cookies = await this.cookieJar.getCookies(url);
         
-        // Phát hiện 2FA qua headers
-        const dsid = resp.headers.get('x-dsid');
-        const sessionId = resp.headers.get('x-apple-id-session-id');
-        const is2FA = sessionId && dsid;
+        // Phát hiện 2FA qua cookies
+        const hasAuthToken = cookies.some(c => c.key === 'myacinfo');
+        const has2FACookie = cookies.some(c => c.key.includes('X-Apple-ID-Session'));
         
-        // Nếu có 2FA
-        if (is2FA) {
+        if (has2FACookie && hasAuthToken) {
+            const dsid = cookies.find(c => c.key === 'X-Dsid')?.value;
             return {
                 _state: 'needs2fa',
                 dsPersonId: dsid,
-                customerMessage: 'Vui lòng kiểm tra thiết bị tin cậy để lấy mã xác minh'
+                customerMessage: 'Vui lòng nhập mã xác minh từ thiết bị tin cậy'
             };
         }
         
-        // Nếu có dsid nhưng không có 2FA -> thành công
-        if (dsid) {
+        // Nếu có myacinfo nhưng không có 2FA -> thành công
+        if (hasAuthToken && !has2FACookie) {
+            const dsid = cookies.find(c => c.key === 'X-Dsid')?.value;
             return {
                 _state: 'success',
                 dsPersonId: dsid
             };
         }
         
-        // Mọi trường hợp khác coi là thất bại
         return {
             _state: 'failure',
             failureType: 'bad_login',
