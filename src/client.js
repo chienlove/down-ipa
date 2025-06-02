@@ -21,16 +21,17 @@ class Store {
 
     const body = plist.build(dataJson);
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
-      headers: this.Headers
+      headers: this.Headers,
     });
 
     const text = await resp.text();
     const parsedResp = plist.parse(text);
 
-    // ✅ Gán trạng thái _state chính xác
+    // ✅ Phân biệt rõ ràng đúng/sai/2FA
     let _state = 'failure';
 
     if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
@@ -39,17 +40,14 @@ class Store {
       parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
       parsedResp.hasOwnProperty('authOptions')
     ) {
-      // ✅ Nếu có authOptions (dù null), Apple đã xử lý → tài khoản đúng, cần xác minh
       _state = 'requires2FA';
     } else if (parsedResp.accountInfo?.address?.firstName) {
       _state = 'success';
     }
 
-    // ✅ Log debug nếu cần
-    console.log('[DEBUG] Apple response:', JSON.stringify(parsedResp, null, 2));
-    console.log('[DEBUG] Determined _state:', _state);
+    console.log('[DEBUG] Apple parsed:', JSON.stringify(parsedResp, null, 2));
+    console.log('[DEBUG] Final _state:', _state);
 
-    // ✅ Đảm bảo _state được truyền về đúng cách
     return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
   }
 
@@ -58,25 +56,27 @@ class Store {
       creditDisplay: '',
       guid: this.guid,
       salableAdamId: appIdentifier,
-      ...(appVerId && { externalVersionId: appVerId })
+      ...(appVerId && { externalVersionId: appVerId }),
     };
 
     const body = plist.build(dataJson);
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
+
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
       headers: {
         ...this.Headers,
         'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId
-      }
+        'iCloud-DSID': Cookie.dsPersonId,
+      },
     });
 
     const parsedResp = plist.parse(await resp.text());
+
     return {
       ...parsedResp,
-      _state: parsedResp.failureType ? 'failure' : 'success'
+      _state: parsedResp.failureType ? 'failure' : 'success',
     };
   }
 }
