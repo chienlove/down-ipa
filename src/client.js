@@ -25,8 +25,10 @@ class Store {
   const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
   const parsedResp = plist.parse(await resp.text());
 
-  const message = parsedResp.customerMessage?.toLowerCase() || '';
-  const hasError = parsedResp.failureType || message.includes('badlogin');
+  // ✅ Phân biệt thất bại thật và yêu cầu xác minh
+  const msg = parsedResp.customerMessage?.toLowerCase() || '';
+  const hasError = parsedResp.failureType ||
+                   (!parsedResp.authOptions && msg.includes('badlogin'));
 
   return { ...parsedResp, _state: hasError ? 'failure' : 'success' };
 }
