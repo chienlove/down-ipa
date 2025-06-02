@@ -218,33 +218,49 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('[DEBUG] Final _state:', user._state);
+    // Debug log để kiểm tra phản hồi
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
 
-    if (user._state === 'requires2FA') {
-      return res.status(200).json({
+    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
         require2FA: true,
-        message: 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId || null
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
+    // Đăng nhập hoàn toàn thành công
     if (user._state === 'success') {
-      return res.status(200).json({
+      return res.json({
         success: true,
-        dsid: user.dsPersonId || null
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
-    return res.status(401).json({
-      success: false,
-      error: user.customerMessage || 'Sai tài khoản hoặc mật khẩu'
-    });
+    // Trường hợp thất bại không rõ nguyên nhân
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
-  } catch (err) {
-    console.error('[ERROR /auth]:', err);
-    return res.status(500).json({
+  } catch (error) {
+    res.status(500).json({
       success: false,
-      error: err.message || 'Lỗi máy chủ'
+      error: error.message || 'Lỗi xác thực Apple ID'
     });
   }
 });
