@@ -203,7 +203,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
   });
 
   // Step 1: Login
-  elements.loginBtn.addEventListener('click', async (e) => {
+elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
@@ -235,17 +235,22 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       console.log('Auth response:', data);
 
       if (!response.ok) {
-        showError(data.error || 'Lỗi từ máy chủ.');
+        // Xử lý lỗi mật khẩu
+        if (response.status === 401) {
+          showError(data.error || 'Sai tài khoản hoặc mật khẩu');
+        } else {
+          showError(data.error || 'Lỗi từ máy chủ.');
+        }
         return;
       }
 
-      // Xử lý 2FA bắt buộc
-      if (data.require2FA || data.authType === '2fa') {
+      // Chỉ chuyển sang step2 khi require2FA là true
+      if (data.require2FA) {
         handle2FARedirect(data);
         return;
       }
 
-      // Xử lý đăng nhập thành công không cần 2FA
+      // Xử lý đăng nhập thành công
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
@@ -262,7 +267,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     } finally {
       setLoading(false);
     }
-  });
+});
 
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {

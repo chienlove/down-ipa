@@ -8,23 +8,42 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-    static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+static async authenticate(email, password, mfa) {
+    const dataJson = {
+        appleId: email,
+        attempt: mfa ? 2 : 4,
+        createSession: 'true',
+        guid: this.guid,
+        password: `${password}${mfa ?? ''}`,
+        rmp: 0,
+        why: 'signIn',
+    };
+    const body = plist.build(dataJson);
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    
+    try {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
+        
+        // Thêm kiểm tra rõ ràng cho lỗi mật khẩu
+        if (parsedResp.failureType && parsedResp.failureType.toLowerCase().includes('password')) {
+            return {
+                _state: 'failure',
+                failureType: 'password',
+                customerMessage: parsedResp.customerMessage || 'Sai tài khoản hoặc mật khẩu'
+            };
+        }
+        
         return {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
+    } catch (error) {
+        console.error('Authentication error:', error);
+        return {
+            _state: 'failure',
+            failureType: 'network',
+            customerMessage: 'Lỗi kết nối đến Apple'
+        };
     }
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {

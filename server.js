@@ -218,49 +218,48 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    // Debug log để kiểm tra phản hồi
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId
-    };
+    // Kiểm tra lỗi mật khẩu trước
+    if (user.failureType === 'password') {
+      return res.status(401).json({
+        success: false,
+        error: user.customerMessage || 'Sai tài khoản hoặc mật khẩu',
+        require2FA: false
+      });
+    }
 
-    // Kiểm tra có cần 2FA không dựa vào message hoặc các trường đặc biệt
+    // Kiểm tra 2FA
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message') // như log bạn gửi
+      user.customerMessage?.includes('Configurator_message')
     );
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
+        dsid: user.dsPersonId
       });
     }
 
-    // Đăng nhập hoàn toàn thành công
+    // Kiểm tra thành công
     if (user._state === 'success') {
       return res.json({
         success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
+        dsid: user.dsPersonId
       });
     }
 
-    // Trường hợp thất bại không rõ nguyên nhân
+    // Các trường hợp lỗi khác
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID'
+      error: error.message || 'Lỗi xác thực Apple ID',
+      require2FA: false
     });
   }
 });
