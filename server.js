@@ -220,8 +220,8 @@ app.post('/auth', async (req, res) => {
 
     console.log('Authentication result:', JSON.stringify(user, null, 2));
 
-    // Kiểm tra lỗi mật khẩu trước
-    if (user.failureType === 'password') {
+    // Kiểm tra lỗi đăng nhập
+    if (user._state === 'failure') {
       return res.status(401).json({
         success: false,
         error: user.customerMessage,
@@ -229,7 +229,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Kiểm tra 2FA - chỉ khi không có lỗi mật khẩu
+    // Kiểm tra 2FA - chỉ khi không có lỗi
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('verification') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
@@ -238,7 +238,7 @@ app.post('/auth', async (req, res) => {
       (user.authOptions && user.authOptions.length > 0)
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (needs2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -254,7 +254,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Các trường hợp lỗi khác
+    // Các trường hợp khác coi như lỗi
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
 
   } catch (error) {

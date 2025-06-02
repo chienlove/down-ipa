@@ -8,6 +8,7 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
+// client.js
 static async authenticate(email, password, mfa) {
     const dataJson = {
         appleId: email,
@@ -25,21 +26,27 @@ static async authenticate(email, password, mfa) {
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const parsedResp = plist.parse(await resp.text());
         
-        // Debug log để xem response từ Apple
         console.log('Apple Auth Response:', JSON.stringify(parsedResp, null, 2));
         
-        // Kiểm tra response có chứa thông báo lỗi mật khẩu không
-        if (parsedResp.failureType && 
-            (parsedResp.failureType.toLowerCase().includes('password') || 
-             parsedResp.customerMessage?.toLowerCase().includes('forgot your password'))) {
+        // Xử lý trường hợp Configurator_message - coi như lỗi đăng nhập
+        if (parsedResp.customerMessage === "MZFinance.BadLogin.Configurator_message") {
             return {
                 _state: 'failure',
-                failureType: 'password',
+                failureType: 'bad_login',
                 customerMessage: 'Sai tài khoản hoặc mật khẩu'
             };
         }
         
-        return {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
+        // Kiểm tra các trường hợp lỗi khác
+        if (parsedResp.failureType && parsedResp.failureType !== '') {
+            return {
+                _state: 'failure',
+                failureType: parsedResp.failureType,
+                customerMessage: parsedResp.customerMessage || 'Đăng nhập thất bại'
+            };
+        }
+        
+        return {...parsedResp, _state: 'success'};
     } catch (error) {
         console.error('Authentication error:', error);
         return {

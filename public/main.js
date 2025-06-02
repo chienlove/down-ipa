@@ -235,23 +235,18 @@ elements.loginBtn.addEventListener('click', async (e) => {
       console.log('Auth response:', data);
 
       if (!response.ok) {
-        // Xử lý lỗi mật khẩu
-        if (response.status === 401) {
-          showError(data.error || 'Sai tài khoản hoặc mật khẩu');
-        } else {
-          showError(data.error || 'Lỗi từ máy chủ.');
-        }
+        showError(data.error || 'Sai tài khoản hoặc mật khẩu');
         setLoading(false);
         return;
       }
 
-      // Chỉ chuyển sang step2 khi require2FA là true VÀ không có lỗi
-      if (data.require2FA && !data.error) {
+      // Xử lý 2FA
+      if (data.require2FA) {
         handle2FARedirect(data);
         return;
       }
 
-      // Xử lý đăng nhập thành công
+      // Xử lý thành công
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
