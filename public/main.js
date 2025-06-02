@@ -232,16 +232,19 @@ elements.loginBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('UI response:', data);
+      console.log('Full auth response:', {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: data
+      });
 
-      // Kiểm tra nghiêm ngặt
-      if (data.require2FA === true) {
-        showToast('Vui lòng nhập mã xác minh từ thiết bị tin cậy');
+      if (data.require2FA) {
+        showToast('Mã xác minh đã được gửi! Vui lòng kiểm tra thiết bị tin cậy');
         handle2FARedirect(data);
         return;
       }
 
-      if (data.success === true) {
+      if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
         state.dsid = data.dsid || null;

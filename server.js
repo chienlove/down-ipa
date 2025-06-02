@@ -218,19 +218,9 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('Auth processed:', JSON.stringify(user, null, 2));
+    console.log('Auth result:', JSON.stringify(user, null, 2));
 
-    // Fallback: Nếu có Configurator_message nhưng có 2FA
-    if (user.customerMessage?.includes('Configurator_message') && user._state === 'needs2fa') {
-      return res.json({
-        success: false,
-        require2FA: true,
-        message: 'Vui lòng kiểm tra thiết bị tin cậy để lấy mã xác minh',
-        dsid: user.dsPersonId
-      });
-    }
-
-    // Xử lý các trường hợp khác
+    // Chỉ cần kiểm tra _state
     if (user._state === 'needs2fa') {
       return res.json({
         success: false,
