@@ -38,11 +38,15 @@ async function authenticate(email, password, mfa) {
 
   const parsedResp = plist.parse(text);
 
-  // ✅ Gán _state dựa trên raw text
+  // ✅ Xác định chính xác _state dựa vào raw text
   let _state = 'failure';
 
-  if (text.includes('createSession') && text.includes('appleId') && text.includes('authType')) {
-    // Dấu hiệu rõ ràng tài khoản đúng và cần xác minh
+  if (
+    text.includes('createSession') &&
+    text.includes('authType') &&
+    text.includes('appleId') &&
+    text.includes('attempt')
+  ) {
     _state = 'requires2FA';
   } else if (parsedResp.accountInfo?.address?.firstName) {
     _state = 'success';
