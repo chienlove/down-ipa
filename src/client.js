@@ -24,19 +24,27 @@ class Store {
     const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
     const parsedResp = plist.parse(await resp.text());
 
+    // ✅ Xác định trạng thái _state chính xác
     let _state = 'failure';
 
-if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-  _state = 'requires2FA';
-} else if (
-  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message'
-) {
-  _state = 'requires2FA';
-} else if (parsedResp.accountInfo?.address?.firstName) {
-  _state = 'success';
-}
+    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+      _state = 'requires2FA';
+    } else if (
+      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message'
+    ) {
+      // ✅ Apple dùng "BadLogin" cho cả tài khoản đúng có 2FA
+      _state = 'requires2FA';
+    } else if (parsedResp.accountInfo?.address?.firstName) {
+      _state = 'success';
+    }
 
-return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
+    // ✅ Log để debug
+    console.log('[DEBUG] Apple response (parsed):', JSON.stringify(parsedResp, null, 2));
+    console.log('[DEBUG] Determined _state:', _state);
+
+    // ✅ Trả kết quả đảm bảo _state không bị mất
+    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
+  }
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
@@ -45,6 +53,7 @@ return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
       salableAdamId: appIdentifier,
       ...(appVerId && { externalVersionId: appVerId })
     };
+
     const body = plist.build(dataJson);
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
     const resp = await this.fetch(url, {
@@ -56,7 +65,9 @@ return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
         'iCloud-DSID': Cookie.dsPersonId
       }
     });
+
     const parsedResp = plist.parse(await resp.text());
+
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 }
