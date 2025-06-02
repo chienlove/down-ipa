@@ -9,54 +9,49 @@ class Store {
   }
 
   static async authenticate(email, password, mfa) {
-  const dataJson = {
-    appleId: email,
-    attempt: mfa ? 2 : 4,
-    createSession: 'true',
-    guid: this.guid,
-    password: `${password}${mfa ?? ''}`,
-    rmp: 0,
-    why: 'signIn',
-  };
+    const dataJson = {
+      appleId: email,
+      attempt: mfa ? 2 : 4,
+      createSession: 'true',
+      guid: this.guid,
+      password: `${password}${mfa ?? ''}`,
+      rmp: 0,
+      why: 'signIn',
+    };
 
-  const body = plist.build(dataJson);
-  const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-  const resp = await this.fetch(url, {
-    method: 'POST',
-    body,
-    headers: this.Headers
-  });
+    const body = plist.build(dataJson);
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      body,
+      headers: this.Headers
+    });
 
-  const text = await resp.text();
-  const parsedResp = plist.parse(text);
+    const text = await resp.text();
+    const parsedResp = plist.parse(text);
 
-  // Debug raw
-  console.log('[DEBUG] Raw Apple text:', text);
-  console.log('[DEBUG] Parsed:', parsedResp);
+    // ✅ Gán trạng thái _state chính xác
+    let _state = 'failure';
 
-  let _state = 'failure';
-
-  // Cách đơn giản và an toàn nhất: nếu có authOptions hoặc không có failureType => coi là requires2FA
-  if (
-    parsedResp.authOptions ||
-    (
+    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+      _state = 'requires2FA';
+    } else if (
       parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-      !parsedResp.failureType
-    )
-  ) {
-    _state = 'requires2FA';
-  } else if (parsedResp.accountInfo?.address?.firstName) {
-    _state = 'success';
+      parsedResp.hasOwnProperty('authOptions')
+    ) {
+      // ✅ Nếu có authOptions (dù null), Apple đã xử lý → tài khoản đúng, cần xác minh
+      _state = 'requires2FA';
+    } else if (parsedResp.accountInfo?.address?.firstName) {
+      _state = 'success';
+    }
+
+    // ✅ Log debug nếu cần
+    console.log('[DEBUG] Apple response:', JSON.stringify(parsedResp, null, 2));
+    console.log('[DEBUG] Determined _state:', _state);
+
+    // ✅ Đảm bảo _state được truyền về đúng cách
+    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
   }
-
-  // Log state
-  console.log('[DEBUG] Final _state:', _state);
-
-  return {
-    ...parsedResp,
-    _state
-  };
-}
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
