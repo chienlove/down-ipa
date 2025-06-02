@@ -30,11 +30,11 @@ class Store {
     if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
       _state = 'requires2FA';
     } else if (
-      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message'
-    ) {
-      // ✅ Apple dùng "BadLogin" cho cả tài khoản đúng có 2FA
-      _state = 'requires2FA';
-    } else if (parsedResp.accountInfo?.address?.firstName) {
+  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+  parsedResp.dsPersonId
+) {
+  _state = 'requires2FA';
+} else if (parsedResp.accountInfo?.address?.firstName) {
       _state = 'success';
     }
 
