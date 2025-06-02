@@ -31,25 +31,21 @@ class Store {
     const text = await resp.text();
     const parsedResp = plist.parse(text);
 
-    // ✅ Phân biệt rõ ràng đúng/sai/2FA
     let _state = 'failure';
 
-    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-      _state = 'requires2FA';
-    } else if (
-      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-      parsedResp.hasOwnProperty('authOptions')
-    ) {
-      _state = 'requires2FA';
-    } else if (parsedResp.accountInfo?.address?.firstName) {
-      _state = 'success';
-    }
+if (
+  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+  !parsedResp.failureType &&
+  parsedResp["cancel-purchase-batch"] !== true
+) {
+  _state = 'requires2FA';
+} else if (parsedResp.accountInfo?.address?.firstName) {
+  _state = 'success';
+}
 
-    console.log('[DEBUG] Apple parsed:', JSON.stringify(parsedResp, null, 2));
-    console.log('[DEBUG] Final _state:', _state);
+console.log('[DEBUG] Final _state:', _state);
 
-    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
-  }
+return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
