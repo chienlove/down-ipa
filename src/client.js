@@ -21,38 +21,41 @@ class Store {
 
   const body = plist.build(dataJson);
   const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-
   const resp = await this.fetch(url, {
     method: 'POST',
     body,
     headers: this.Headers
   });
 
-  const rawHeaders = resp.headers.raw();
-  const setCookies = rawHeaders['set-cookie'];
+  const text = await resp.text();
+  const parsedResp = plist.parse(text);
 
-  const parsedResp = plist.parse(await resp.text());
+  // Debug raw
+  console.log('[DEBUG] Raw Apple text:', text);
+  console.log('[DEBUG] Parsed:', parsedResp);
 
-  // ✅ Gán _state
   let _state = 'failure';
 
-  if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-    _state = 'requires2FA';
-  } else if (
-    parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-    !parsedResp.failureType &&
-    setCookies && setCookies.length > 0
+  // Cách đơn giản và an toàn nhất: nếu có authOptions hoặc không có failureType => coi là requires2FA
+  if (
+    parsedResp.authOptions ||
+    (
+      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+      !parsedResp.failureType
+    )
   ) {
-    // ✅ Nếu có Set-Cookie → là đúng tài khoản có 2FA
     _state = 'requires2FA';
   } else if (parsedResp.accountInfo?.address?.firstName) {
     _state = 'success';
   }
 
-  console.log('[DEBUG] Set-Cookie:', setCookies);
-  console.log('[DEBUG] Determined _state:', _state);
+  // Log state
+  console.log('[DEBUG] Final _state:', _state);
 
-  return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
+  return {
+    ...parsedResp,
+    _state
+  };
 }
 
   static async download(appIdentifier, appVerId, Cookie) {
