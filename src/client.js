@@ -36,8 +36,8 @@ class Store {
     console.log('[DEBUG] Apple response (parsed):', JSON.stringify(parsedResp, null, 2));
     console.log('[DEBUG] Determined _state:', _state);
 
-    // ✅ Đảm bảo _state không bị ghi đè
-    return Object.assign({}, parsedResp, { _state });
+    // ✅ Ép thành JSON thuần để không bị mất _state khi trả về
+    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
   }
 
   static async download(appIdentifier, appVerId, Cookie) {
