@@ -21,26 +21,36 @@ class Store {
 
     const body = plist.build(dataJson);
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-    const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      body,
+      headers: this.Headers
+    });
+
     const parsedResp = plist.parse(await resp.text());
 
+    // ✅ Xác định trạng thái đúng: đăng nhập thường, 2FA, hoặc sai
     let _state = 'failure';
 
-if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-  _state = 'requires2FA';
-} else if (
-  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-  !parsedResp.failureType
-) {
-  _state = 'requires2FA';
-} else if (parsedResp.accountInfo?.address?.firstName) {
-  _state = 'success';
-}
+    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+      _state = 'requires2FA';
+    } else if (
+      parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
+      !parsedResp.failureType
+    ) {
+      // Apple trả "BadLogin" nhưng không có failureType → là tài khoản đúng, cần 2FA
+      _state = 'requires2FA';
+    } else if (parsedResp.accountInfo?.address?.firstName) {
+      _state = 'success';
+    }
 
-console.log('[DEBUG] Apple parsed:', JSON.stringify(parsedResp, null, 2));
-console.log('[DEBUG] _state:', _state);
+    // ✅ In log để debug nếu cần
+    console.log('[DEBUG] Apple parsed response:', JSON.stringify(parsedResp, null, 2));
+    console.log('[DEBUG] Determined _state:', _state);
 
-return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
+    // ✅ Trả về kết quả dạng JSON thuần để không mất _state
+    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
+  }
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
@@ -63,8 +73,10 @@ return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
     });
 
     const parsedResp = plist.parse(await resp.text());
-
-    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+    return {
+      ...parsedResp,
+      _state: parsedResp.failureType ? 'failure' : 'success'
+    };
   }
 }
 
