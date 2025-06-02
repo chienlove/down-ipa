@@ -218,11 +218,8 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('[DEBUG] user._state:', user._state);
-    console.log('[DEBUG] customerMessage:', user.customerMessage);
-
     if (user._state === 'requires2FA') {
-      return res.json({
+      return res.status(200).json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId
@@ -230,14 +227,18 @@ app.post('/auth', async (req, res) => {
     }
 
     if (user._state === 'success') {
-      return res.json({
+      return res.status(200).json({
         success: true,
         dsid: user.dsPersonId
       });
     }
 
-    // Nếu không phải success hoặc 2FA thì là sai thật
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    // Nếu không phải 2FA hoặc success thì là lỗi thật
+    return res.status(401).json({
+      success: false,
+      error: user.customerMessage || 'Đăng nhập thất bại'
+    });
+
   } catch (error) {
     res.status(500).json({
       success: false,
