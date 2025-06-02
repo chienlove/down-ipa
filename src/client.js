@@ -34,22 +34,20 @@ async function authenticate(email, password, mfa) {
   });
 
   const text = await resp.text();
+  console.log('[DEBUG] Apple raw text:\n', text);
+
   const parsedResp = plist.parse(text);
 
-  // ✅ Xác định _state
+  // ✅ Gán _state dựa trên raw text
   let _state = 'failure';
 
-  if (
-    parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message' &&
-    !parsedResp.failureType &&
-    parsedResp["cancel-purchase-batch"] !== true
-  ) {
+  if (text.includes('createSession') && text.includes('appleId') && text.includes('authType')) {
+    // Dấu hiệu rõ ràng tài khoản đúng và cần xác minh
     _state = 'requires2FA';
   } else if (parsedResp.accountInfo?.address?.firstName) {
     _state = 'success';
   }
 
-  console.log('[DEBUG] Apple parsed:', JSON.stringify(parsedResp, null, 2));
   console.log('[DEBUG] Final _state:', _state);
 
   return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
