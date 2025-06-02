@@ -218,47 +218,26 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-// Debug log để kiểm tra phản hồi
-const debugLog = {
-  _state: user._state,
-  failureType: user.failureType,
-  customerMessage: user.customerMessage,
-  authOptions: user.authOptions,
-  dsid: user.dsPersonId
-};
+    console.log('[DEBUG] user._state:', user._state);
+    console.log('[DEBUG] customerMessage:', user.customerMessage);
 
-console.log('[DEBUG] Server raw user:', JSON.stringify(user, null, 2));
-console.log('[DEBUG] Server response to client (pre-check):', debugLog);
+    if (user._state === 'requires2FA') {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId
+      });
+    }
 
-const needs2FA = (
-  user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-  user.customerMessage?.toLowerCase().includes('two-factor') ||
-  user.customerMessage?.toLowerCase().includes('mfa') ||
-  user.customerMessage?.toLowerCase().includes('code')
-);
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId
+      });
+    }
 
-if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-  console.log('[DEBUG] Sending 2FA required response');
-  return res.json({
-    require2FA: true,
-    message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-    dsid: user.dsPersonId,
-    debug: debugLog
-  });
-}
-
-if (user._state === 'success') {
-  console.log('[DEBUG] Sending successful login response');
-  return res.json({
-    success: true,
-    dsid: user.dsPersonId,
-    debug: debugLog
-  });
-}
-
-console.log('[DEBUG] Sending failed login response');
-throw new Error(user.customerMessage || 'Đăng nhập thất bại');
-
+    // Nếu không phải success hoặc 2FA thì là sai thật
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
       success: false,
