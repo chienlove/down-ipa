@@ -24,21 +24,19 @@ class Store {
     const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
     const parsedResp = plist.parse(await resp.text());
 
-    // ✅ Xác định trạng thái
     let _state = 'failure';
 
-    if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-      _state = 'requires2FA';
-    } else if (parsedResp.accountInfo?.address?.firstName) {
-      _state = 'success';
-    }
+if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+  _state = 'requires2FA';
+} else if (
+  parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message'
+) {
+  _state = 'requires2FA';
+} else if (parsedResp.accountInfo?.address?.firstName) {
+  _state = 'success';
+}
 
-    console.log('[DEBUG] Apple response (parsed):', JSON.stringify(parsedResp, null, 2));
-    console.log('[DEBUG] Determined _state:', _state);
-
-    // ✅ Ép thành JSON thuần để không bị mất _state khi trả về
-    return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
-  }
+return JSON.parse(JSON.stringify({ ...parsedResp, _state }));
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
