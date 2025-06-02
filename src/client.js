@@ -9,33 +9,35 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
+  const dataJson = {
+    appleId: email,
+    attempt: mfa ? 2 : 4,
+    createSession: 'true',
+    guid: this.guid,
+    password: `${password}${mfa ?? ''}`,
+    rmp: 0,
+    why: 'signIn',
+  };
 
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+  const body = plist.build(dataJson);
+  const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+  const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
+  const parsedResp = plist.parse(await resp.text());
 
-        const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
-        const parsedResp = plist.parse(await resp.text());
+  // ✅ Gán _state DỰA TRÊN authOptions và accountInfo
+  let _state = 'failure';
 
-        // ✅ Xác định đúng _state
-        let _state = 'failure';
+  if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
+    _state = 'requires2FA';
+  } else if (parsedResp.accountInfo?.address?.firstName) {
+    _state = 'success';
+  }
 
-        if (parsedResp.authOptions && parsedResp.authType === 'hsa2') {
-            _state = 'requires2FA'; // Apple yêu cầu xác minh
-        } else if (parsedResp.accountInfo?.address?.firstName) {
-            _state = 'success'; // Đăng nhập hoàn toàn thành công
-        }
+  console.log('[DEBUG] Apple response (parsed):', JSON.stringify(parsedResp, null, 2));
+  console.log('[DEBUG] Determined _state:', _state);
 
-        return { ...parsedResp, _state };
-    }
+  return { ...parsedResp, _state }; // ✅ chỉ dùng _state đã tính, KHÔNG ghi đè lại
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
