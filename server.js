@@ -235,17 +235,16 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ❗ Rất quan trọng: nếu _state là failure, trả về lỗi rõ ràng
     return res.status(401).json({
       success: false,
       error: user.customerMessage || 'Sai tài khoản hoặc mật khẩu'
     });
 
-  } catch (error) {
-    console.error('[ERROR /auth]:', error);
+  } catch (err) {
+    console.error('[ERROR /auth]:', err);
     return res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi máy chủ'
+      error: err.message || 'Lỗi máy chủ'
     });
   }
 });
