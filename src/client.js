@@ -9,22 +9,27 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-        const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
-        const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        const hasError = parsedResp.failureType || (parsedResp.customerMessage && parsedResp.customerMessage.toLowerCase().includes('badlogin'));
-return { ...parsedResp, _state: hasError ? 'failure' : 'success' };
+  const dataJson = {
+    appleId: email,
+    attempt: mfa ? 2 : 4,
+    createSession: 'true',
+    guid: this.guid,
+    password: `${password}${mfa ?? ''}`,
+    rmp: 0,
+    why: 'signIn',
+  };
+
+  const body = plist.build(dataJson);
+  const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+
+  const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
+  const parsedResp = plist.parse(await resp.text());
+
+  const message = parsedResp.customerMessage?.toLowerCase() || '';
+  const hasError = parsedResp.failureType || message.includes('badlogin');
+
+  return { ...parsedResp, _state: hasError ? 'failure' : 'success' };
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
