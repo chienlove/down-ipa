@@ -217,12 +217,13 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    // Reset cookie store trước mỗi lần thử
-    Store.cookieJar.removeAllCookies();
+    // Ghi log toàn bộ request
+    console.log('Auth request for:', APPLE_ID);
     
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
     console.log('Auth result:', JSON.stringify(user, null, 2));
 
+    // Luôn ưu tiên kiểm tra 2FA trước
     if (user._state === 'needs2fa') {
       return res.json({
         success: false,
@@ -232,6 +233,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // Kiểm tra thành công
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -239,6 +241,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // Trường hợp thất bại
     return res.status(401).json({
       success: false,
       error: user.customerMessage,
@@ -246,43 +249,11 @@ app.post('/auth', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Auth error:', error);
+    console.error('Auth endpoint error:', error);
     res.status(500).json({
       success: false,
       error: 'Lỗi xác thực Apple ID',
       require2FA: false
-    });
-  }
-});
-
-// 2FA Verification endpoint
-app.post('/verify', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Verification failed');
-    }
-
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
-  } catch (error) {
-    console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
     });
   }
 });

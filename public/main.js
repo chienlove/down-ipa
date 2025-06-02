@@ -227,10 +227,14 @@ elements.loginBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('Full response:', { status: response.status, data });
+      console.log('Auth response:', {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: data
+      });
 
       if (data.require2FA) {
-        showToast('Mã xác minh đã được gửi đến thiết bị của bạn');
+        showToast('Mã xác minh đã được gửi! Vui lòng kiểm tra thiết bị của bạn');
         handle2FARedirect(data);
         return;
       }

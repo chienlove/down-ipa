@@ -28,30 +28,26 @@ static async authenticate(email, password, mfa) {
         
         const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
         const textResponse = await resp.text();
-        const cookies = await this.cookieJar.getCookies(url);
         
-        // Phát hiện 2FA qua cookies
-        const hasAuthToken = cookies.some(c => c.key === 'myacinfo');
-        const has2FACookie = cookies.some(c => c.key.includes('X-Apple-ID-Session'));
-        
-        if (has2FACookie && hasAuthToken) {
-            const dsid = cookies.find(c => c.key === 'X-Dsid')?.value;
+        // Phát hiện 2FA qua status code (Apple thường dùng 409 cho 2FA)
+        if (resp.status === 409 || textResponse.includes('x-apple-twosv-code')) {
+            const dsid = resp.headers.get('x-dsid');
             return {
                 _state: 'needs2fa',
                 dsPersonId: dsid,
-                customerMessage: 'Vui lòng nhập mã xác minh từ thiết bị tin cậy'
+                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
             };
         }
-        
-        // Nếu có myacinfo nhưng không có 2FA -> thành công
-        if (hasAuthToken && !has2FACookie) {
-            const dsid = cookies.find(c => c.key === 'X-Dsid')?.value;
+
+        // Nếu status code là 200 và có dsid -> thành công
+        if (resp.status === 200 && resp.headers.get('x-dsid')) {
             return {
                 _state: 'success',
-                dsPersonId: dsid
+                dsPersonId: resp.headers.get('x-dsid')
             };
         }
-        
+
+        // Mọi trường hợp khác coi là thất bại
         return {
             _state: 'failure',
             failureType: 'bad_login',
