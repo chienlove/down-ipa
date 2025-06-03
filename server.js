@@ -224,8 +224,7 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // ✅ Nhận diện 2FA dựa trên failureType an toàn hơn
-    const is2FA = user.failureType?.toLowerCase().includes('mfa');
+    const is2FA = user.failureType === 'MissingTrustedDeviceResponse' || user.failureType === 'MissingSecondaryLoginToken';
 
     if (is2FA) {
       return res.json({
@@ -236,7 +235,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Trường hợp đăng nhập thành công không cần 2FA
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -245,7 +243,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ❌ Trường hợp đăng nhập sai
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
