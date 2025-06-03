@@ -1,3 +1,4 @@
+// client.js
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -8,105 +9,87 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-    // client.js
-static async authenticate(email, password, mfa) {
-    const dataJson = {
-        appleId: email,
-        attempt: mfa ? 2 : 4,
-        createSession: 'true',
-        guid: this.guid,
-        password: `${password}${mfa ?? ''}`,
-        rmp: 0,
-        why: 'signIn',
-    };
-    const body = plist.build(dataJson);
-    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-    
-    try {
-        // Reset toàn bộ trạng thái trước khi thử
-        this.cookieJar.removeAllCookies();
-        
-        const resp = await this.fetch(url, {
-            method: 'POST', 
-            body, 
-            headers: this.Headers,
-            redirect: 'manual' // Quan trọng: không tự động redirect
-        });
-
-        // Phân tích response theo 4 lớp kiểm tra
-        const is2FA = (
-            resp.status === 409 || 
-            resp.headers.get('x-apple-twosv-code') || 
-            /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results') || 
-            resp.headers.get('location')?.includes('signin')
-        );
-
-        const isSuccess = (
-            resp.status === 200 && 
-            resp.headers.get('x-dsid') && 
-            !is2FA
-        );
-
-        const cookies = await this.cookieJar.getCookies(url);
-        const hasAuthCookie = cookies.some(c => c.key.startsWith('myacinfo'));
-
-        // Quyết định trạng thái
-        if (is2FA && hasAuthCookie) {
-            return {
-                _state: 'needs2fa',
-                dsPersonId: resp.headers.get('x-dsid'),
-                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
-            };
-        }
-
-        if (isSuccess && hasAuthCookie) {
-            return {
-                _state: 'success',
-                dsPersonId: resp.headers.get('x-dsid')
-            };
-        }
-
-        return {
-            _state: 'failure',
-            failureType: 'bad_login',
-            customerMessage: 'Sai tài khoản hoặc mật khẩu'
-        };
-
-    } catch (error) {
-        console.error('Authentication error:', error);
-        return {
-            _state: 'failure',
-            failureType: 'network',
-            customerMessage: 'Lỗi kết nối đến Apple'
-        };
-    }
-}
-
-    static async download(appIdentifier, appVerId, Cookie) {
+    static async authenticate(email, password, mfa) {
         const dataJson = {
-            creditDisplay: '',
+            appleId: email,
+            attempt: mfa ? 2 : 4,
+            createSession: 'true',
             guid: this.guid,
-            salableAdamId: appIdentifier,
-            ...(appVerId && {externalVersionId: appVerId})
+            password: `${password}${mfa ?? ''}`,
+            rmp: 0,
+            why: 'signIn',
         };
         const body = plist.build(dataJson);
-        const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-        const resp = await this.fetch(url, {
-            method: 'POST', body,
-            headers: {...this.Headers, 'X-Dsid': Cookie.dsPersonId, 'iCloud-DSID': Cookie.dsPersonId}
-            //'X-Token': Cookie.passwordToken
-        });
-        const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        return {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
-    }
+        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+        
+        try {
+            // Reset cookie jar trước mỗi lần thử
+            this.cookieJar.removeAllCookies();
+            
+            const resp = await this.fetch(url, {
+                method: 'POST', 
+                body, 
+                headers: this.Headers,
+                redirect: 'manual'
+            });
 
+            // Phân tích response
+            const responseText = await resp.text();
+            const is2FA = (
+                resp.status === 409 || 
+                resp.headers.get('x-apple-twosv-code') || 
+                /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results')) ||
+                resp.headers.get('location')?.includes('signin')
+            );
+
+            const isSuccess = (
+                resp.status === 200 && 
+                resp.headers.get('x-dsid') && 
+                !is2FA
+            );
+
+            const cookies = await this.cookieJar.getCookies(url);
+            const hasAuthCookie = cookies.some(c => c.key.startsWith('myacinfo'));
+
+            // Quyết định trạng thái
+            if (is2FA && hasAuthCookie) {
+                return {
+                    _state: 'needs2fa',
+                    dsPersonId: resp.headers.get('x-dsid'),
+                    customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+                };
+            }
+
+            if (isSuccess && hasAuthCookie) {
+                return {
+                    _state: 'success',
+                    dsPersonId: resp.headers.get('x-dsid')
+                };
+            }
+
+            return {
+                _state: 'failure',
+                failureType: 'bad_login',
+                customerMessage: 'Sai tài khoản hoặc mật khẩu'
+            };
+
+        } catch (error) {
+            console.error('Authentication error:', error);
+            return {
+                _state: 'failure',
+                failureType: 'network',
+                customerMessage: 'Lỗi kết nối đến Apple'
+            };
+        }
+    }
 }
 
+// Khởi tạo cookie jar
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
 Store.Headers = {
     'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
     'Content-Type': 'application/x-www-form-urlencoded',
 };
-export {Store};
+
+export { Store };
