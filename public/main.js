@@ -203,55 +203,66 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
   });
 
   // Step 1: Login
-elements.loginBtn.addEventListener('click', async (e) => {
+  elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
-    setLoading(true);
     hideError();
+    setLoading(true);
+
+    const APPLE_ID = elements.appleIdInput.value.trim();
+    const PASSWORD = elements.passwordInput.value;
+    
+    if (!APPLE_ID || !PASSWORD) {
+      showError('Vui lòng nhập Apple ID và mật khẩu.');
+      setLoading(false);
+      return;
+    }
+
+    state.APPLE_ID = APPLE_ID;
+    state.PASSWORD = PASSWORD;
+
+    setProgress(1);
 
     try {
-        const response = await fetch('/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                APPLE_ID: elements.appleIdInput.value.trim(),
-                PASSWORD: elements.passwordInput.value
-            })
-        });
+      const response = await fetch('/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ APPLE_ID, PASSWORD })
+      });
 
-        const data = await response.json();
-        console.log('Auth response:', data);
+      const data = await response.json();
+      console.log('Auth response:', data);
 
-        if (data.require2FA) {
-            // Hiển thị step2 và ẩn step1
-            elements.step1.classList.add('hidden');
-            elements.step2.classList.remove('hidden');
-            elements.verifyMessage.textContent = data.message;
-            state.dsid = data.dsid;
-            state.requires2FA = true;
-            setProgress(2);
-            showToast(data.message);
-            return;
-        }
+      if (!response.ok) {
+        showError(data.error || 'Lỗi từ máy chủ.');
+        return;
+      }
 
-        if (data.success) {
-            state.verified2FA = true;
-            transition(elements.step1, elements.step3);
-            setProgress(3);
-            showToast('Đăng nhập thành công!');
-            return;
-        }
+      // Xử lý 2FA bắt buộc
+      if (data.require2FA || data.authType === '2fa') {
+        handle2FARedirect(data);
+        return;
+      }
 
+      // Xử lý đăng nhập thành công không cần 2FA
+      if (data.success) {
+        state.requires2FA = false;
+        state.verified2FA = true;
+        state.dsid = data.dsid || null;
+        showToast('Đăng nhập thành công!');
+        transition(elements.step1, elements.step3);
+        setProgress(3);
+      } else {
         showError(data.error || 'Đăng nhập thất bại');
-
+      }
     } catch (error) {
-        console.error('Auth error:', error);
-        showError('Không thể kết nối tới máy chủ');
+      console.error('Auth error:', error);
+      showError('Không thể kết nối tới máy chủ.');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-});
+  });
 
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {

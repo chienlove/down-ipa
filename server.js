@@ -170,7 +170,6 @@ class IPATool {
         });
       });
 
-      // Download chunks in parallel
       for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
         await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
       }
@@ -212,47 +211,84 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// Authentication endpoint
 app.post('/auth', async (req, res) => {
-    try {
-        const { APPLE_ID, PASSWORD } = req.body;
-        
-        const result = await Store.authenticate(APPLE_ID, PASSWORD);
-        console.log('Auth result:', JSON.stringify(result));
+  try {
+    const { APPLE_ID, PASSWORD } = req.body;
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-        if (result._state === 'needs2fa') {
-            return res.json({
-                success: false,
-                require2FA: true,
-                message: result.customerMessage,
-                dsid: result.dsPersonId
-            });
-        }
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
 
-        if (result._state === 'success') {
-            return res.json({
-                success: true,
-                dsid: result.dsPersonId
-            });
-        }
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
 
-        return res.status(401).json({
-            success: false,
-            error: result.customerMessage,
-            require2FA: false
-        });
-
-    } catch (error) {
-        console.error('Auth error:', error);
-        return res.status(500).json({
-            success: false,
-            error: 'Lỗi hệ thống',
-            require2FA: false
-        });
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
     }
+
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
 });
 
-// Download endpoint
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
+    });
+  }
+});
+
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -284,7 +320,6 @@ app.post('/download', async (req, res) => {
       });
     }
 
-    // Schedule cleanup after 30 minutes
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -310,10 +345,8 @@ app.post('/download', async (req, res) => {
   }
 });
 
-// Static files
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
-// Error handling
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
@@ -323,13 +356,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// Start server
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
 });
 
-// Shutdown handler
 const shutdown = () => {
   console.log('Shutting down server...');
   server.close(() => {
