@@ -34,11 +34,9 @@ class Store {
       rawText: text
     };
 
+    // Print core response fields
     if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
-      result._state = 'failure';
-      result.failureType = 'invalid_credentials';
-      result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
-      return result;
+      throw new Error('❌ No sessionId returned — likely invalid login.\nResponse: ' + text);
     }
 
     if (result._state === 'success' && !mfa) {
@@ -83,17 +81,10 @@ class Store {
       const status = resp.status;
       const bodyText = await resp.text();
 
-      console.log('📦 TrustedDevice Status:', status);
-      console.log('📨 TrustedDevice Raw:', bodyText);
-
-      if (status === 200 && bodyText.includes('securityCode')) return 'NEEDS_2FA';
-      if (status === 403) return 'LOGIN_SUCCESS_NO_2FA';
-      if (status === 401) return 'LOGIN_FAILED';
+      throw new Error('📦 TrustedDevice DEBUG\nStatus: ' + status + '\nBody: ' + bodyText);
     } catch (err) {
-      console.error('check2FARequirement error:', err.message);
+      throw new Error('check2FARequirement error: ' + err.message);
     }
-
-    return 'UNKNOWN';
   }
 
   static async download(appIdentifier, appVerId, Cookie) {
