@@ -9,22 +9,67 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-        const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
-        const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        return {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
+    const dataJson = {
+        appleId: email,
+        attempt: mfa ? 2 : 4,
+        createSession: 'true',
+        guid: this.guid,
+        password: `${password}${mfa ?? ''}`,
+        rmp: 0,
+        why: 'signIn',
+    };
+    const body = plist.build(dataJson);
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
+    const parsedResp = plist.parse(await resp.text());
+
+    const result = {...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success'};
+
+    // 👇 Gọi thêm endpoint 2FA để xác định chắc chắn nếu response không rõ ràng
+    if (result._state === 'success' && !mfa) {
+        const trustedCheck = await this.check2FARequirement(result);
+
+        if (trustedCheck === 'NEEDS_2FA') {
+            result._state = 'failure';
+            result.failureType = 'mfa';
+            result.customerMessage = 'Yêu cầu xác minh 2FA (được xác định gián tiếp)';
+        }
     }
+
+    return result;
+}
+
+static async check2FARequirement(parsedResp) {
+    try {
+        const sessionId = parsedResp.sessionId;
+        const scnt = parsedResp.scnt;
+        const cookieHeader = parsedResp.setCookie || ''; // fallback if needed
+
+        const resp = await this.fetch('https://idmsa.apple.com/appleauth/auth/verify/trusteddevice', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Apple-ID-Session-Id': sessionId,
+                'scnt': scnt,
+                'Cookie': cookieHeader
+            },
+            body: '{}'
+        });
+
+        if (resp.status === 200) {
+            const body = await resp.text();
+            if (body.includes('securityCode')) return 'NEEDS_2FA';
+        } else if (resp.status === 401) {
+            return 'LOGIN_FAILED';
+        } else if (resp.status === 403) {
+            return 'LOGIN_SUCCESS_NO_2FA';
+        }
+    } catch (err) {
+        console.error('check2FARequirement error:', err.message);
+    }
+
+    return 'UNKNOWN';
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
