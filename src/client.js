@@ -1,112 +1,85 @@
-import plist from 'plist';
-import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
 class Store {
-    static get guid() {
-        return getMAC().replace(/:/g, '').toUpperCase();
-    }
+    static async authenticate(email, password) {
+        const url = 'https://idmsa.apple.com/appleauth/auth/signin';
 
-    static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
+        const headers = {
+            'Content-Type': 'application/json',
+            'X-Apple-Widget-Key': 'f96d30e4d80c24c6f1c3c123c7aa3e5f',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Origin': 'https://idmsa.apple.com',
+            'Referer': 'https://idmsa.apple.com/',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_4) AppleWebKit/605.1.15 (KHTML, like Gecko)'
         };
 
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-        const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
-        const parsedResp = plist.parse(await resp.text());
-
-        // ✅ Kiểm tra nếu là đăng nhập sai (fallback khi không có failureType)
-        const isLoginError = (
-            parsedResp.customerMessage?.toLowerCase().includes('badlogin') ||
-            parsedResp.customerMessage?.toLowerCase().includes('mzfinance.badlogin')
-        );
-
-        const result = {
-            ...parsedResp,
-            _state: (parsedResp.failureType || isLoginError) ? 'failure' : 'success'
+        const body = {
+            accountName: email,
+            password: password,
+            rememberMe: false
         };
 
-        // ✅ Nếu không phải login sai, kiểm tra xem có cần 2FA không (gián tiếp)
-        if (result._state === 'success' && !mfa) {
-            const trustedCheck = await this.check2FARequirement(result);
-            if (trustedCheck === 'NEEDS_2FA') {
-                result._state = 'failure';
-                result.failureType = 'mfa';
-                result.customerMessage = 'Yêu cầu xác minh 2FA (được xác định gián tiếp)';
-            }
-        }
-
-        return result;
-    }
-
-    static async check2FARequirement(parsedResp) {
         try {
-            const sessionId = parsedResp.sessionId;
-            const scnt = parsedResp.scnt;
-            const cookieHeader = parsedResp.setCookie || '';
-
-            const resp = await this.fetch('https://idmsa.apple.com/appleauth/auth/verify/trusteddevice', {
+            const resp = await this.fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Apple-ID-Session-Id': sessionId,
-                    'scnt': scnt,
-                    'Cookie': cookieHeader
-                },
-                body: '{}'
+                headers,
+                body: JSON.stringify(body),
+                redirect: 'manual'
             });
 
-            if (resp.status === 200) {
-                const body = await resp.text();
-                if (body.includes('securityCode')) return 'NEEDS_2FA';
-            } else if (resp.status === 401) {
-                return 'LOGIN_FAILED';
-            } else if (resp.status === 403) {
-                return 'LOGIN_SUCCESS_NO_2FA';
-            }
-        } catch (err) {
-            console.error('check2FARequirement error:', err.message);
-        }
+            const status = resp.status;
+            const text = await resp.text();
+            let json = {};
 
-        return 'UNKNOWN';
+            try {
+                json = JSON.parse(text);
+            } catch (e) {}
+
+            if (status === 200) {
+                return { _state: 'success' };
+            }
+
+            if (status === 409) {
+                return {
+                    _state: 'failure',
+                    failureType: 'mfa',
+                    customerMessage: 'Yêu cầu xác minh hai yếu tố',
+                    scnt: resp.headers.get('scnt'),
+                    sessionId: resp.headers.get('x-apple-id-session-id'),
+                    trustedDevices: json.trustedDevices || []
+                };
+            }
+
+            if (status === 401) {
+                return {
+                    _state: 'failure',
+                    failureType: 'invalid_credentials',
+                    customerMessage: json.service_errors?.[0]?.message || 'Đăng nhập thất bại'
+                };
+            }
+
+            return {
+                _state: 'failure',
+                failureType: 'unknown_error',
+                customerMessage: json.service_errors?.[0]?.message || 'Lỗi không xác định từ Apple',
+                status
+            };
+        } catch (err) {
+            return {
+                _state: 'failure',
+                failureType: 'network_error',
+                customerMessage: err.message
+            };
+        }
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
-        const dataJson = {
-            creditDisplay: '',
-            guid: this.guid,
-            salableAdamId: appIdentifier,
-            ...(appVerId && { externalVersionId: appVerId })
-        };
-        const body = plist.build(dataJson);
-        const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-        const resp = await this.fetch(url, {
-            method: 'POST', body,
-            headers: {
-                ...this.Headers,
-                'X-Dsid': Cookie.dsPersonId,
-                'iCloud-DSID': Cookie.dsPersonId
-            }
-        });
-        const parsedResp = plist.parse(await resp.text());
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+        throw new Error("Download chưa được hỗ trợ trong phiên bản IDMSA-only.");
     }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
-Store.Headers = {
-    'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-    'Content-Type': 'application/x-www-form-urlencoded',
-};
 
 export { Store };
