@@ -23,14 +23,17 @@ class Store {
         const body = plist.build(dataJson);
         const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
         const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
+
         const parsedResp = plist.parse(await resp.text());
+
+        // Lấy cookie thủ công từ phản hồi
+        const cookieHeader = resp.headers.raw()['set-cookie']?.join('; ') || '';
 
         const result = {
             ...parsedResp,
             _state: 'success'
         };
 
-        // Nếu không có sessionId → login sai rõ ràng
         if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
             result._state = 'failure';
             result.failureType = 'invalid_credentials';
@@ -38,9 +41,9 @@ class Store {
             return result;
         }
 
-        // Gọi thêm trusteddevice để phân biệt đúng/sai khi phản hồi giống nhau
+        // Kiểm tra trusteddevice bằng cookie chính xác
         if (result._state === 'success' && !mfa) {
-            const trustedCheck = await this.check2FARequirement(parsedResp);
+            const trustedCheck = await this.check2FARequirement(parsedResp, cookieHeader);
 
             if (trustedCheck === 'NEEDS_2FA') {
                 result._state = 'failure';
@@ -56,11 +59,10 @@ class Store {
         return result;
     }
 
-    static async check2FARequirement(parsedResp) {
+    static async check2FARequirement(parsedResp, cookieHeader) {
         try {
             const sessionId = parsedResp.sessionId;
             const scnt = parsedResp.scnt;
-            const cookieHeader = parsedResp.setCookie || '';
 
             const resp = await this.fetch('https://idmsa.apple.com/appleauth/auth/verify/trusteddevice', {
                 method: 'POST',
