@@ -8,7 +8,7 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-// client.js
+    // client.js
 static async authenticate(email, password, mfa) {
     const dataJson = {
         appleId: email,
