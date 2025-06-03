@@ -34,14 +34,23 @@ class Store {
       rawText: text
     };
 
-    // Print core response fields
+    // ✅ NEW LOGIC: if no sessionId but known customerMessage, treat as 2FA
     if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
-      throw new Error('❌ No sessionId returned — likely invalid login.\nResponse: ' + text);
+      if (parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message') {
+        result._state = 'failure';
+        result.failureType = 'missingTwoFactorCode';
+        result.customerMessage = '🔐 Có thể cần mã xác minh 2FA (Apple chưa trả sessionId)';
+        return result;
+      } else {
+        result._state = 'failure';
+        result.failureType = 'invalid_credentials';
+        result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
+        return result;
+      }
     }
 
     if (result._state === 'success' && !mfa) {
       const trustedCheck = await this.check2FARequirement(parsedResp, cookieHeader);
-
       result.debugTrusted = trustedCheck;
 
       if (trustedCheck === 'NEEDS_2FA') {
@@ -81,10 +90,14 @@ class Store {
       const status = resp.status;
       const bodyText = await resp.text();
 
-      throw new Error('📦 TrustedDevice DEBUG\nStatus: ' + status + '\nBody: ' + bodyText);
+      if (status === 200 && bodyText.includes('securityCode')) return 'NEEDS_2FA';
+      if (status === 403) return 'LOGIN_SUCCESS_NO_2FA';
+      if (status === 401) return 'LOGIN_FAILED';
     } catch (err) {
-      throw new Error('check2FARequirement error: ' + err.message);
+      console.error('check2FARequirement error:', err.message);
     }
+
+    return 'UNKNOWN';
   }
 
   static async download(appIdentifier, appVerId, Cookie) {
