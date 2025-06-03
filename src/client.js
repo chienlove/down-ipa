@@ -34,21 +34,30 @@ class Store {
       rawText: text
     };
 
-    // ✅ NEW LOGIC: if no sessionId but known customerMessage, treat as 2FA
+    // 🚨 Nếu không có sessionId, ta không kết luận vội → kiểm tra trusteddevice để phân biệt sai hay 2FA
     if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
-      if (parsedResp.customerMessage === 'MZFinance.BadLogin.Configurator_message') {
+      const trustedCheck = await this.check2FARequirement(parsedResp, cookieHeader);
+      result.debugTrusted = trustedCheck;
+
+      if (trustedCheck === 'NEEDS_2FA') {
         result._state = 'failure';
         result.failureType = 'missingTwoFactorCode';
-        result.customerMessage = '🔐 Có thể cần mã xác minh 2FA (Apple chưa trả sessionId)';
+        result.customerMessage = '🔐 Thực sự cần mã xác minh 2FA';
         return result;
-      } else {
+      } else if (trustedCheck === 'LOGIN_FAILED') {
         result._state = 'failure';
         result.failureType = 'invalid_credentials';
         result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
         return result;
+      } else {
+        result._state = 'failure';
+        result.failureType = 'unknown';
+        result.customerMessage = '⚠️ Không xác định được trạng thái đăng nhập';
+        return result;
       }
     }
 
+    // Nếu có sessionId mà vẫn cần 2FA
     if (result._state === 'success' && !mfa) {
       const trustedCheck = await this.check2FARequirement(parsedResp, cookieHeader);
       result.debugTrusted = trustedCheck;
@@ -56,7 +65,7 @@ class Store {
       if (trustedCheck === 'NEEDS_2FA') {
         result._state = 'failure';
         result.failureType = 'missingTwoFactorCode';
-        result.customerMessage = '🔐 Thiếu mã xác minh 2FA';
+        result.customerMessage = '🔐 Cần mã xác minh 2FA';
       } else if (trustedCheck === 'INVALID_2FA') {
         result._state = 'failure';
         result.failureType = 'invalidTwoFactorCode';
@@ -73,8 +82,10 @@ class Store {
 
   static async check2FARequirement(parsedResp, cookieHeader) {
     try {
-      const sessionId = parsedResp.sessionId;
-      const scnt = parsedResp.scnt;
+      const sessionId = parsedResp.sessionId || parsedResp['x-apple-id-session-id'];
+      const scnt = parsedResp.scnt || '';
+
+      if (!sessionId || !scnt) return 'LOGIN_FAILED';
 
       const resp = await this.fetch('https://idmsa.apple.com/appleauth/auth/verify/trusteddevice', {
         method: 'POST',
