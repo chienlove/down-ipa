@@ -224,15 +224,10 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
+    // ✅ Nhận diện 2FA dựa trên failureType an toàn hơn
+    const is2FA = user.failureType?.toLowerCase().includes('mfa');
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (is2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -241,6 +236,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ✅ Trường hợp đăng nhập thành công không cần 2FA
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -249,6 +245,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ❌ Trường hợp đăng nhập sai
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
