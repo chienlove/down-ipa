@@ -217,34 +217,42 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    // Ghi log toàn bộ request
-    console.log('Auth request for:', APPLE_ID);
+    // Thử đăng nhập 2 lần để xác minh
+    const firstTry = await Store.authenticate(APPLE_ID, PASSWORD);
     
-    const user = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Auth result:', JSON.stringify(user, null, 2));
+    // Fallback: Thử với mã giả nếu lần đầu nghi ngờ 2FA
+    let result = firstTry;
+    if (firstTry._state === 'failure' && !firstTry.failureType) {
+      const secondTry = await Store.authenticate(APPLE_ID, PASSWORD + '0000');
+      if (secondTry._state === 'needs2fa') {
+        result = {
+          _state: 'needs2fa',
+          dsPersonId: secondTry.dsPersonId,
+          customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+        };
+      }
+    }
 
-    // Luôn ưu tiên kiểm tra 2FA trước
-    if (user._state === 'needs2fa') {
+    // Xác định response
+    if (result._state === 'needs2fa') {
       return res.json({
         success: false,
         require2FA: true,
-        message: user.customerMessage,
-        dsid: user.dsPersonId
+        message: result.customerMessage,
+        dsid: result.dsPersonId
       });
     }
 
-    // Kiểm tra thành công
-    if (user._state === 'success') {
+    if (result._state === 'success') {
       return res.json({
         success: true,
-        dsid: user.dsPersonId
+        dsid: result.dsPersonId
       });
     }
 
-    // Trường hợp thất bại
     return res.status(401).json({
       success: false,
-      error: user.customerMessage,
+      error: result.customerMessage,
       require2FA: false
     });
 

@@ -23,37 +23,55 @@ static async authenticate(email, password, mfa) {
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
     
     try {
-        // Reset cookie jar trước mỗi lần thử
+        // Reset toàn bộ trạng thái trước khi thử
         this.cookieJar.removeAllCookies();
         
-        const resp = await this.fetch(url, {method: 'POST', body, headers: this.Headers});
-        const textResponse = await resp.text();
-        
-        // Phát hiện 2FA qua status code (Apple thường dùng 409 cho 2FA)
-        if (resp.status === 409 || textResponse.includes('x-apple-twosv-code')) {
-            const dsid = resp.headers.get('x-dsid');
+        const resp = await this.fetch(url, {
+            method: 'POST', 
+            body, 
+            headers: this.Headers,
+            redirect: 'manual' // Quan trọng: không tự động redirect
+        });
+
+        // Phân tích response theo 4 lớp kiểm tra
+        const is2FA = (
+            resp.status === 409 || 
+            resp.headers.get('x-apple-twosv-code') || 
+            /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results') || 
+            resp.headers.get('location')?.includes('signin')
+        );
+
+        const isSuccess = (
+            resp.status === 200 && 
+            resp.headers.get('x-dsid') && 
+            !is2FA
+        );
+
+        const cookies = await this.cookieJar.getCookies(url);
+        const hasAuthCookie = cookies.some(c => c.key.startsWith('myacinfo'));
+
+        // Quyết định trạng thái
+        if (is2FA && hasAuthCookie) {
             return {
                 _state: 'needs2fa',
-                dsPersonId: dsid,
+                dsPersonId: resp.headers.get('x-dsid'),
                 customerMessage: 'Vui lòng nhập mã xác minh 2FA'
             };
         }
 
-        // Nếu status code là 200 và có dsid -> thành công
-        if (resp.status === 200 && resp.headers.get('x-dsid')) {
+        if (isSuccess && hasAuthCookie) {
             return {
                 _state: 'success',
                 dsPersonId: resp.headers.get('x-dsid')
             };
         }
 
-        // Mọi trường hợp khác coi là thất bại
         return {
             _state: 'failure',
             failureType: 'bad_login',
             customerMessage: 'Sai tài khoản hoặc mật khẩu'
         };
-        
+
     } catch (error) {
         console.error('Authentication error:', error);
         return {

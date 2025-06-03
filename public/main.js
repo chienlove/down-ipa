@@ -220,21 +220,33 @@ elements.loginBtn.addEventListener('click', async (e) => {
     }
 
     try {
-      const response = await fetch('/auth', {
+      // Thử lần 1
+      let response = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ APPLE_ID, PASSWORD })
       });
+      
+      let data = await response.json();
+      console.log('Auth attempt 1:', data);
 
-      const data = await response.json();
-      console.log('Auth response:', {
-        status: response.status,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: data
-      });
+      // Fallback: Thử lần 2 nếu nghi ngờ 2FA
+      if (response.status === 401 && !data.require2FA) {
+        response = await fetch('/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            APPLE_ID, 
+            PASSWORD: PASSWORD + '0000' // Thêm dummy code
+          })
+        });
+        data = await response.json();
+        console.log('Auth attempt 2:', data);
+      }
 
+      // Xử lý kết quả
       if (data.require2FA) {
-        showToast('Mã xác minh đã được gửi! Vui lòng kiểm tra thiết bị của bạn');
+        showToast('Mã xác minh đã được gửi! Vui lòng kiểm tra thiết bị');
         handle2FARedirect(data);
         return;
       }
