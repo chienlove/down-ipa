@@ -1,3 +1,4 @@
+
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -34,16 +35,24 @@ class Store {
 
     const failureType = parsedResp.failureType?.trim() || '';
     const customerMessage = parsedResp.customerMessage || '';
+    const trustedPhones = parsedResp.authOptions?.trustedPhoneNumbers || [];
 
-    // Analyze based on failureType, same as Swift logic
+    // ✅ Use presence of trustedPhoneNumbers to determine if 2FA is required
+    const hasTrustedPhones = Array.isArray(trustedPhones) && trustedPhones.length > 0;
+
+    if (hasTrustedPhones) {
+      result._state = 'failure';
+      result.failureType = 'missingTwoFactorCode';
+      result.customerMessage = '🔐 Tài khoản cần mã xác minh 2FA (có trustedPhoneNumbers)';
+      return result;
+    }
+
     if (failureType !== '') {
       result._state = 'failure';
       result.failureType = failureType;
 
       if (failureType === 'InvalidCredentials') {
         result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
-      } else if (failureType === 'MissingTrustedDeviceResponse' || failureType === 'MissingSecondaryLoginToken') {
-        result.customerMessage = '🔐 Yêu cầu mã xác minh 2FA';
       } else if (failureType === 'InvalidSecondaryLoginToken') {
         result.customerMessage = '❌ Sai mã xác minh 2FA';
       } else {
@@ -53,13 +62,11 @@ class Store {
       return result;
     }
 
-    // Success case (no failureType)
     if (parsedResp.adamId || parsedResp.sessionId || parsedResp['x-apple-id-session-id']) {
       result._state = 'success';
       return result;
     }
 
-    // Fallback if failureType missing but known bad login message
     if (customerMessage === 'MZFinance.BadLogin.Configurator_message') {
       result._state = 'failure';
       result.failureType = 'InvalidCredentials';
@@ -67,7 +74,6 @@ class Store {
       return result;
     }
 
-    // Unknown fallback
     result._state = 'failure';
     result.failureType = 'Unknown';
     result.customerMessage = '⚠️ Không rõ trạng thái đăng nhập';
