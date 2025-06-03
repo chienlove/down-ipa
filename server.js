@@ -214,59 +214,42 @@ const ipaTool = new IPATool();
 
 // Authentication endpoint
 app.post('/auth', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD } = req.body;
-    
-    // Thử đăng nhập lần 1
-    const firstAttempt = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('First attempt:', JSON.stringify(firstAttempt));
+    try {
+        const { APPLE_ID, PASSWORD } = req.body;
+        
+        const result = await Store.authenticate(APPLE_ID, PASSWORD);
+        console.log('Auth result:', JSON.stringify(result));
 
-    // Fallback: Thử với dummy code nếu lần đầu thất bại
-    let finalResult = firstAttempt;
-    if (firstAttempt._state === 'failure') {
-      const secondAttempt = await Store.authenticate(APPLE_ID, PASSWORD + '000000');
-      console.log('Second attempt:', JSON.stringify(secondAttempt));
-      
-      if (secondAttempt._state === 'needs2fa') {
-        finalResult = {
-          _state: 'needs2fa',
-          dsPersonId: secondAttempt.dsPersonId,
-          customerMessage: 'Vui lòng nhập mã xác minh 2FA'
-        };
-      }
+        if (result._state === 'needs2fa') {
+            return res.json({
+                success: false,
+                require2FA: true,
+                message: result.customerMessage,
+                dsid: result.dsPersonId
+            });
+        }
+
+        if (result._state === 'success') {
+            return res.json({
+                success: true,
+                dsid: result.dsPersonId
+            });
+        }
+
+        return res.status(401).json({
+            success: false,
+            error: result.customerMessage,
+            require2FA: false
+        });
+
+    } catch (error) {
+        console.error('Auth error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Lỗi hệ thống',
+            require2FA: false
+        });
     }
-
-    // Xử lý kết quả cuối cùng
-    if (finalResult._state === 'needs2fa') {
-      return res.json({
-        success: false,
-        require2FA: true,
-        message: finalResult.customerMessage,
-        dsid: finalResult.dsPersonId
-      });
-    }
-
-    if (finalResult._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: finalResult.dsPersonId
-      });
-    }
-
-    return res.status(401).json({
-      success: false,
-      error: 'Sai tài khoản hoặc mật khẩu',
-      require2FA: false
-    });
-
-  } catch (error) {
-    console.error('Auth error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Lỗi hệ thống',
-      require2FA: false
-    });
-  }
 });
 
 // Download endpoint
