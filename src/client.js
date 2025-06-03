@@ -1,3 +1,4 @@
+
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -29,20 +30,26 @@ class Store {
             _state: 'success'
         };
 
-        // ❌ Nếu không có sessionId hoặc scnt → login sai
+        // Nếu không có sessionId → login sai rõ ràng
         if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
             result._state = 'failure';
             result.failureType = 'invalid_credentials';
             result.customerMessage = 'Sai Apple ID hoặc mật khẩu';
+            return result;
         }
 
-        // 🔐 Nếu có sessionId nhưng chưa nhập mã, kiểm tra 2FA
+        // Gọi thêm trusteddevice để phân biệt đúng/sai khi phản hồi giống nhau
         if (result._state === 'success' && !mfa) {
             const trustedCheck = await this.check2FARequirement(parsedResp);
+
             if (trustedCheck === 'NEEDS_2FA') {
                 result._state = 'failure';
                 result.failureType = 'mfa';
                 result.customerMessage = 'Yêu cầu xác minh 2FA';
+            } else if (trustedCheck === 'LOGIN_FAILED') {
+                result._state = 'failure';
+                result.failureType = 'invalid_credentials';
+                result.customerMessage = 'Sai Apple ID hoặc mật khẩu';
             }
         }
 
