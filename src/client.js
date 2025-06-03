@@ -24,16 +24,13 @@ class Store {
         const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
         const parsedResp = plist.parse(await resp.text());
 
-        // 🛡 Phát hiện đăng nhập sai dù _state = "success"
-        const isBadLogin = parsedResp.customerMessage?.includes('BadLogin') ||
-                           parsedResp.customerMessage?.includes('MZFinance.BadLogin');
-
+        // ✅ Không còn phụ thuộc vào customerMessage
         const result = {
             ...parsedResp,
-            _state: (parsedResp.failureType || isBadLogin) ? 'failure' : 'success'
+            _state: parsedResp.failureType ? 'failure' : 'success'
         };
 
-        // 👀 Nếu _state = "success" nhưng chưa có MFA, kiểm tra gián tiếp
+        // ✅ Nếu _state là success và chưa nhập mã, kiểm tra có cần 2FA không
         if (result._state === 'success' && !mfa) {
             const trustedCheck = await this.check2FARequirement(result);
             if (trustedCheck === 'NEEDS_2FA') {
