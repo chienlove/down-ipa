@@ -1,4 +1,3 @@
-// client.js
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -17,42 +16,27 @@ class Store {
             guid: this.guid,
             password: `${password}${mfa ?? ''}`,
             rmp: 0,
-            why: 'signIn',
+            why: 'signIn'
         };
+        
         const body = plist.build(dataJson);
         const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
         
         try {
-            // Reset cookie jar trước mỗi lần thử
             this.cookieJar.removeAllCookies();
-            
             const resp = await this.fetch(url, {
-                method: 'POST', 
-                body, 
+                method: 'POST',
+                body,
                 headers: this.Headers,
                 redirect: 'manual'
             });
 
-            // Phân tích response
-            const responseText = await resp.text();
-            const is2FA = (
-                resp.status === 409 || 
-                resp.headers.get('x-apple-twosv-code') || 
-                /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results')) ||
-                resp.headers.get('location')?.includes('signin')
-            );
+            // Phát hiện 2FA qua status code và headers
+            const is2FA = resp.status === 409 || 
+                         resp.headers.get('x-apple-twosv-code') ||
+                         /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results') || '');
 
-            const isSuccess = (
-                resp.status === 200 && 
-                resp.headers.get('x-dsid') && 
-                !is2FA
-            );
-
-            const cookies = await this.cookieJar.getCookies(url);
-            const hasAuthCookie = cookies.some(c => c.key.startsWith('myacinfo'));
-
-            // Quyết định trạng thái
-            if (is2FA && hasAuthCookie) {
+            if (is2FA) {
                 return {
                     _state: 'needs2fa',
                     dsPersonId: resp.headers.get('x-dsid'),
@@ -60,7 +44,7 @@ class Store {
                 };
             }
 
-            if (isSuccess && hasAuthCookie) {
+            if (resp.status === 200 && resp.headers.get('x-dsid')) {
                 return {
                     _state: 'success',
                     dsPersonId: resp.headers.get('x-dsid')
@@ -89,7 +73,7 @@ Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
 Store.Headers = {
     'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-    'Content-Type': 'application/x-www-form-urlencoded',
+    'Content-Type': 'application/x-www-form-urlencoded'
 };
 
 export { Store };

@@ -217,50 +217,51 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    // Thử đăng nhập 2 lần để xác minh
+    // Thực hiện 2 lần thử để phát hiện 2FA
     const firstTry = await Store.authenticate(APPLE_ID, PASSWORD);
     
-    // Fallback: Thử với mã giả nếu lần đầu nghi ngờ 2FA
-    let result = firstTry;
-    if (firstTry._state === 'failure' && !firstTry.failureType) {
-      const secondTry = await Store.authenticate(APPLE_ID, PASSWORD + '0000');
+    // Nếu lần đầu thất bại, thử với dummy code để kiểm tra 2FA
+    if (firstTry._state === 'failure') {
+      const secondTry = await Store.authenticate(APPLE_ID, PASSWORD + '000000');
+      
       if (secondTry._state === 'needs2fa') {
-        result = {
-          _state: 'needs2fa',
-          dsPersonId: secondTry.dsPersonId,
-          customerMessage: 'Vui lòng nhập mã xác minh 2FA'
-        };
+        return res.json({
+          success: false,
+          require2FA: true,
+          message: 'Vui lòng nhập mã xác minh 2FA',
+          dsid: secondTry.dsPersonId
+        });
       }
     }
 
-    // Xác định response
-    if (result._state === 'needs2fa') {
+    // Xử lý kết quả
+    if (firstTry._state === 'needs2fa') {
       return res.json({
         success: false,
         require2FA: true,
-        message: result.customerMessage,
-        dsid: result.dsPersonId
+        message: firstTry.customerMessage,
+        dsid: firstTry.dsPersonId
       });
     }
 
-    if (result._state === 'success') {
+    if (firstTry._state === 'success') {
       return res.json({
         success: true,
-        dsid: result.dsPersonId
+        dsid: firstTry.dsPersonId
       });
     }
 
     return res.status(401).json({
       success: false,
-      error: result.customerMessage,
+      error: 'Sai tài khoản hoặc mật khẩu',
       require2FA: false
     });
 
   } catch (error) {
-    console.error('Auth endpoint error:', error);
+    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
-      error: 'Lỗi xác thực Apple ID',
+      error: 'Lỗi xác thực',
       require2FA: false
     });
   }
