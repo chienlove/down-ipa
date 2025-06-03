@@ -23,19 +23,21 @@ class Store {
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
     const resp = await this.fetch(url, { method: 'POST', body, headers: this.Headers });
 
-    const parsedResp = plist.parse(await resp.text());
+    const text = await resp.text();
+    const parsedResp = plist.parse(text);
 
     const cookieHeader = resp.headers.raw()['set-cookie']?.join('; ') || '';
 
     const result = {
       ...parsedResp,
-      _state: 'success'
+      _state: 'success',
+      rawText: text
     };
 
     if (!parsedResp.sessionId && !parsedResp['x-apple-id-session-id']) {
       result._state = 'failure';
       result.failureType = 'invalid_credentials';
-      result.customerMessage = 'Sai Apple ID hoặc mật khẩu';
+      result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
       return result;
     }
 
@@ -46,12 +48,16 @@ class Store {
 
       if (trustedCheck === 'NEEDS_2FA') {
         result._state = 'failure';
-        result.failureType = 'mfa';
-        result.customerMessage = 'Yêu cầu xác minh 2FA';
+        result.failureType = 'missingTwoFactorCode';
+        result.customerMessage = '🔐 Thiếu mã xác minh 2FA';
+      } else if (trustedCheck === 'INVALID_2FA') {
+        result._state = 'failure';
+        result.failureType = 'invalidTwoFactorCode';
+        result.customerMessage = '❌ Sai mã xác minh 2FA';
       } else if (trustedCheck === 'LOGIN_FAILED') {
         result._state = 'failure';
         result.failureType = 'invalid_credentials';
-        result.customerMessage = 'Sai Apple ID hoặc mật khẩu';
+        result.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
       }
     }
 
@@ -81,8 +87,8 @@ class Store {
       console.log('📨 TrustedDevice Raw:', bodyText);
 
       if (status === 200 && bodyText.includes('securityCode')) return 'NEEDS_2FA';
-      if (status === 401) return 'LOGIN_FAILED';
       if (status === 403) return 'LOGIN_SUCCESS_NO_2FA';
+      if (status === 401) return 'LOGIN_FAILED';
     } catch (err) {
       console.error('check2FARequirement error:', err.message);
     }
