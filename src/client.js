@@ -1,3 +1,4 @@
+// client.js
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -18,12 +19,14 @@ class Store {
             rmp: 0,
             why: 'signIn'
         };
-        
+
         const body = plist.build(dataJson);
         const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
         
         try {
+            // Reset cookie jar trước mỗi lần thử
             this.cookieJar.removeAllCookies();
+            
             const resp = await this.fetch(url, {
                 method: 'POST',
                 body,
@@ -31,23 +34,34 @@ class Store {
                 redirect: 'manual'
             });
 
-            // Phát hiện 2FA qua status code và headers
-            const is2FA = resp.status === 409 || 
-                         resp.headers.get('x-apple-twosv-code') ||
-                         /(verification|code|2fa)/i.test(resp.headers.get('x-apple-as-results') || '');
+            // Phân tích response text thay vì dùng plist.parse
+            const responseText = await resp.text();
+            console.log('Raw Apple Response:', responseText);
+
+            // Phát hiện 2FA qua nhiều yếu tố
+            const is2FA = (
+                resp.status === 409 ||
+                /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
+                /verification code/i.test(responseText) ||
+                resp.headers.get('x-apple-twosv-code')
+            );
+
+            // Phát hiện thành công qua dsid
+            const dsid = resp.headers.get('x-dsid');
+            const isSuccess = dsid && !is2FA;
 
             if (is2FA) {
                 return {
                     _state: 'needs2fa',
-                    dsPersonId: resp.headers.get('x-dsid'),
+                    dsPersonId: dsid,
                     customerMessage: 'Vui lòng nhập mã xác minh 2FA'
                 };
             }
 
-            if (resp.status === 200 && resp.headers.get('x-dsid')) {
+            if (isSuccess) {
                 return {
                     _state: 'success',
-                    dsPersonId: resp.headers.get('x-dsid')
+                    dsPersonId: dsid
                 };
             }
 

@@ -217,37 +217,39 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    // Thực hiện 2 lần thử để phát hiện 2FA
-    const firstTry = await Store.authenticate(APPLE_ID, PASSWORD);
-    
-    // Nếu lần đầu thất bại, thử với dummy code để kiểm tra 2FA
-    if (firstTry._state === 'failure') {
-      const secondTry = await Store.authenticate(APPLE_ID, PASSWORD + '000000');
+    // Thử đăng nhập lần 1
+    const firstAttempt = await Store.authenticate(APPLE_ID, PASSWORD);
+    console.log('First attempt:', JSON.stringify(firstAttempt));
+
+    // Fallback: Thử với dummy code nếu lần đầu thất bại
+    let finalResult = firstAttempt;
+    if (firstAttempt._state === 'failure') {
+      const secondAttempt = await Store.authenticate(APPLE_ID, PASSWORD + '000000');
+      console.log('Second attempt:', JSON.stringify(secondAttempt));
       
-      if (secondTry._state === 'needs2fa') {
-        return res.json({
-          success: false,
-          require2FA: true,
-          message: 'Vui lòng nhập mã xác minh 2FA',
-          dsid: secondTry.dsPersonId
-        });
+      if (secondAttempt._state === 'needs2fa') {
+        finalResult = {
+          _state: 'needs2fa',
+          dsPersonId: secondAttempt.dsPersonId,
+          customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+        };
       }
     }
 
-    // Xử lý kết quả
-    if (firstTry._state === 'needs2fa') {
+    // Xử lý kết quả cuối cùng
+    if (finalResult._state === 'needs2fa') {
       return res.json({
         success: false,
         require2FA: true,
-        message: firstTry.customerMessage,
-        dsid: firstTry.dsPersonId
+        message: finalResult.customerMessage,
+        dsid: finalResult.dsPersonId
       });
     }
 
-    if (firstTry._state === 'success') {
+    if (finalResult._state === 'success') {
       return res.json({
         success: true,
-        dsid: firstTry.dsPersonId
+        dsid: finalResult.dsPersonId
       });
     }
 
@@ -259,9 +261,9 @@ app.post('/auth', async (req, res) => {
 
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: 'Lỗi xác thực',
+      error: 'Lỗi hệ thống',
       require2FA: false
     });
   }
