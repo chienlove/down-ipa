@@ -216,39 +216,29 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    if (!APPLE_ID || !PASSWORD) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Vui lòng nhập Apple ID và mật khẩu' 
-      });
-    }
+    const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
+    console.log('Auth result:', JSON.stringify(authResult));
 
-    // Thử đăng nhập lần đầu
-    const firstTry = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('First auth attempt:', JSON.stringify(firstTry));
-
-    // Nếu cần 2FA
-    if (firstTry._state === 'needs2fa') {
+    if (authResult._state === 'needs2fa') {
       return res.json({
         success: false,
         require2FA: true,
-        message: firstTry.customerMessage || 'Vui lòng nhập mã xác minh 2FA',
-        dsid: firstTry.dsPersonId || 'unknown'
+        message: authResult.customerMessage,
+        dsid: authResult.dsPersonId
       });
     }
 
-    // Nếu đăng nhập thành công ngay
-    if (firstTry._state === 'success') {
+    if (authResult._state === 'success') {
       return res.json({
         success: true,
-        dsid: firstTry.dsPersonId
+        dsid: authResult.dsPersonId
       });
     }
 
-    // Nếu thất bại do sai mật khẩu
+    // Nếu là lỗi đăng nhập
     return res.status(401).json({
       success: false,
-      error: firstTry.customerMessage || 'Sai tài khoản hoặc mật khẩu',
+      error: authResult.customerMessage,
       require2FA: false
     });
 
@@ -256,7 +246,7 @@ app.post('/auth', async (req, res) => {
     console.error('Auth error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID',
+      error: 'Lỗi hệ thống',
       require2FA: false
     });
   }

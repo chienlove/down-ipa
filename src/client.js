@@ -11,7 +11,7 @@ class Store {
     static async authenticate(email, password, mfa) {
     const dataJson = {
         appleId: email,
-        attempt: mfa ? 2 : 4, // 2 = có mã 2FA, 4 = không có
+        attempt: mfa ? 2 : 4,
         createSession: 'true',
         guid: this.guid,
         password: mfa ? password : `${password}${mfa ?? ''}`,
@@ -36,6 +36,14 @@ class Store {
         const cookies = await this.cookieJar.getCookies(url);
         const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || 'unknown';
 
+        // Phân biệt rõ các loại phản hồi
+        if (resp.status === 200 && dsid !== 'unknown') {
+            return {
+                _state: 'success',
+                dsPersonId: dsid
+            };
+        }
+
         // Kiểm tra 2FA chính xác hơn
         const is2FA = resp.status === 409 || 
                      /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
@@ -50,26 +58,11 @@ class Store {
             };
         }
 
-        if (resp.status === 200 && dsid !== 'unknown') {
-            return {
-                _state: 'success',
-                dsPersonId: dsid
-            };
-        }
-
-        // Nếu là lỗi đăng nhập thông thường
-        if (resp.status === 401 || resp.status === 403) {
-            return {
-                _state: 'failure',
-                failureType: 'bad_login',
-                customerMessage: 'Sai tài khoản hoặc mật khẩu'
-            };
-        }
-
+        // Nếu là lỗi đăng nhập
         return {
             _state: 'failure',
-            failureType: 'unknown',
-            customerMessage: 'Lỗi không xác định'
+            failureType: 'bad_login',
+            customerMessage: 'Sai tài khoản hoặc mật khẩu'
         };
 
     } catch (error) {

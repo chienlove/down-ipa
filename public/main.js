@@ -240,13 +240,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Xử lý 2FA
+      // Chỉ chuyển step 2 khi thực sự cần 2FA
       if (data.require2FA) {
         state.requires2FA = true;
         state.verified2FA = false;
-        state.dsid = data.dsid || null;
+        state.dsid = data.dsid;
         
-        // Hiển thị step 2FA
         elements.step2.style.display = 'block';
         elements.step2.classList.remove('hidden');
         transition(elements.step1, elements.step2);
@@ -258,12 +257,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
-        state.dsid = data.dsid || null;
+        state.dsid = data.dsid;
         showToast('Đăng nhập thành công!');
         transition(elements.step1, elements.step3);
         setProgress(3);
       } else {
-        showError(data.error || 'Đăng nhập thất bại');
+        // Hiển thị lỗi nếu đăng nhập sai
+        showError(data.error || 'Sai tài khoản hoặc mật khẩu');
       }
     } catch (error) {
       console.error('Auth error:', error);
