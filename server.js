@@ -264,17 +264,27 @@ app.post('/verify', async (req, res) => {
       });
     }
 
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-    console.log('Verify result:', JSON.stringify(user));
+    const authResult = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    console.log('Verify result:', JSON.stringify(authResult));
 
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Mã xác minh không hợp lệ');
+    if (authResult._state === 'success') {
+      return res.json({ 
+        success: true,
+        dsid: authResult.dsPersonId || dsid
+      });
     }
 
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId || dsid
-    });
+    if (authResult.failureType === 'invalid_2fa') {
+      return res.status(401).json({
+        success: false,
+        error: authResult.customerMessage,
+        require2FA: true,
+        newChallenge: true // Báo hiệu cần mã mới
+      });
+    }
+
+    throw new Error(authResult.customerMessage || 'Xác thực thất bại');
+    
   } catch (error) {
     console.error('Verify error:', error);
     res.status(500).json({ 

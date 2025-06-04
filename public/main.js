@@ -305,6 +305,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await response.json();
       console.log('Verify response:', data);
 
+      if (data.newChallenge) {
+        // Yêu cầu nhập mã mới nếu mã cũ sai
+        showError(data.error);
+        elements.verificationCodeInput.value = '';
+        elements.verificationCodeInput.focus();
+        return;
+      }
+
       if (!response.ok) {
         showError(data.error || 'Xác minh thất bại.');
         return;
@@ -316,12 +324,11 @@ document.addEventListener('DOMContentLoaded', () => {
         state.dsid = data.dsid || state.dsid;
         showToast('Xác thực 2FA thành công!');
 
-        // Ẩn step2 hoàn toàn
+        // Ẩn step2
         elements.step2.classList.add('hidden');
         elements.step2.style.display = 'none';
         elements.verificationCodeInput.value = '';
-        elements.verifyMessage.textContent = '';
-
+        
         transition(elements.step2, elements.step3);
         setProgress(3);
       } else {
@@ -333,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       setLoading(false);
     }
-  });
+});
 
   // Step 3: Download - With strict 2FA check
   elements.downloadBtn.addEventListener('click', async (e) => {

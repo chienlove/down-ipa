@@ -8,13 +8,13 @@ class Store {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-    static async authenticate(email, password, mfa) {
+    static async authenticate(email, password, mfa = null) {
     const dataJson = {
         appleId: email,
-        attempt: mfa ? 2 : 4,
+        attempt: mfa ? 2 : 4, // 2 = có mã 2FA, 4 = không có
         createSession: 'true',
         guid: this.guid,
-        password: mfa ? password : `${password}${mfa ?? ''}`,
+        password: mfa ? `${password}${mfa}` : password, // Ghép mật khẩu + mã 2FA nếu có
         rmp: 0,
         why: 'signIn'
     };
@@ -36,7 +36,20 @@ class Store {
         const cookies = await this.cookieJar.getCookies(url);
         const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || 'unknown';
 
-        // Phân biệt rõ các loại phản hồi
+        // Phát hiện 2FA chính xác hơn
+        const is2FA = resp.status === 409 || 
+                     /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
+                     resp.headers.get('x-apple-twosv-challenge') || // Sử dụng header chính xác
+                     /two-step verification required/i.test(responseText);
+
+        if (is2FA) {
+            return {
+                _state: 'needs2fa',
+                dsPersonId: dsid,
+                customerMessage: 'Vui lòng nhập mã xác minh 2FA từ thiết bị tin cậy'
+            };
+        }
+
         if (resp.status === 200 && dsid !== 'unknown') {
             return {
                 _state: 'success',
@@ -44,21 +57,15 @@ class Store {
             };
         }
 
-        // Kiểm tra 2FA chính xác hơn
-        const is2FA = resp.status === 409 || 
-                     /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
-                     resp.headers.get('x-apple-twosv-code') ||
-                     /two-step verification required/i.test(responseText);
-
-        if (is2FA) {
+        // Xử lý mã 2FA sai
+        if (mfa && resp.status === 401) {
             return {
-                _state: 'needs2fa',
-                dsPersonId: dsid,
-                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+                _state: 'failure',
+                failureType: 'invalid_2fa',
+                customerMessage: 'Mã xác minh không đúng. Vui lòng kiểm tra lại'
             };
         }
 
-        // Nếu là lỗi đăng nhập
         return {
             _state: 'failure',
             failureType: 'bad_login',
