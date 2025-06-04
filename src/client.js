@@ -9,72 +9,78 @@ class Store {
     }
 
     static async authenticate(email, password, mfa = null) {
-        const authUrl = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: mfa ? `${password}${mfa}` : password,
-            rmp: 0,
-            why: 'signIn'
-        };
+    const authUrl = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    
+    const dataJson = {
+        appleId: email,
+        attempt: mfa ? 2 : 4,
+        createSession: 'true',
+        guid: this.guid,
+        password: mfa ? `${password}${mfa}` : password,
+        rmp: 0,
+        why: 'signIn'
+    };
 
-        try {
-            this.cookieJar.removeAllCookies();
-            const resp = await this.fetch(authUrl, {
-                method: 'POST',
-                body: plist.build(dataJson),
-                headers: this.Headers,
-                redirect: 'manual'
-            });
+    try {
+        this.cookieJar.removeAllCookies();
+        const resp = await this.fetch(authUrl, {
+            method: 'POST',
+            body: plist.build(dataJson),
+            headers: this.Headers,
+            redirect: 'manual'
+        });
 
-            const responseText = await resp.text();
-            const cookies = await this.cookieJar.getCookies(authUrl); // Sửa thành authUrl thay vì url
-            const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || null;
+        const responseText = await resp.text();
+        const parsedResponse = plist.parse(responseText); // Phân tích response XML
+        
+        console.log('Full Apple Response:', {
+            status: resp.status,
+            headers: Object.fromEntries(resp.headers.entries()),
+            body: parsedResponse
+        });
 
-            console.log('Auth Debug:', {
-                status: resp.status,
-                headers: Object.fromEntries(resp.headers.entries()),
-                body: responseText
-            });
-
-            // Xử lý response
-            if (resp.status === 200 && dsid) {
-                return { _state: 'success', dsPersonId: dsid };
-            }
-
-            if (resp.status === 409 || resp.headers.get('x-apple-twosv-challenge')) {
+        // Xử lý response theo nội dung thực tế
+        if (resp.status === 200) {
+            if (parsedResponse?.customerMessage?.includes('verification code')) {
                 return {
                     _state: 'needs2fa',
-                    dsPersonId: dsid,
+                    dsPersonId: parsedResponse.dsPersonId,
                     customerMessage: 'Vui lòng nhập mã xác minh 2FA'
                 };
             }
-
-            if (resp.status === 401) {
+            
+            if (parsedResponse?.dsPersonId) {
                 return {
-                    _state: 'failure',
-                    failureType: 'bad_login',
-                    customerMessage: 'Sai tài khoản hoặc mật khẩu'
+                    _state: 'success',
+                    dsPersonId: parsedResponse.dsPersonId
                 };
             }
+        }
 
+        // Xử lý các trường hợp lỗi
+        if (parsedResponse?.failureType) {
             return {
                 _state: 'failure',
-                failureType: 'unknown',
-                customerMessage: 'Lỗi không xác định từ Apple'
-            };
-
-        } catch (error) {
-            console.error('Auth Error:', error);
-            return {
-                _state: 'failure',
-                failureType: 'network',
-                customerMessage: 'Lỗi kết nối đến Apple'
+                failureType: parsedResponse.failureType,
+                customerMessage: parsedResponse.customerMessage || 'Lỗi xác thực'
             };
         }
+
+        return {
+            _state: 'failure',
+            failureType: 'unknown',
+            customerMessage: 'Lỗi không xác định từ Apple'
+        };
+
+    } catch (error) {
+        console.error('Auth Error:', error);
+        return {
+            _state: 'failure',
+            failureType: 'network',
+            customerMessage: 'Lỗi kết nối đến Apple'
+        };
     }
+}
 
     // ... (các phương thức khác giữ nguyên)
 }

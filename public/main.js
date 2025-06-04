@@ -118,13 +118,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     hideError();
     setLoading(true);
-    setProgress(1);
-
+    
     const APPLE_ID = elements.appleIdInput.value.trim();
     const PASSWORD = elements.passwordInput.value;
 
     try {
-        console.log('Attempting login for:', APPLE_ID);
+        console.log('Starting authentication for:', APPLE_ID);
         const response = await fetch('/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -132,27 +131,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const data = await response.json();
-        console.log('Auth response:', data);
+        console.log('Server response:', data);
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Request failed');
+        }
 
         if (data.require2FA) {
+            console.log('2FA required, showing verification step');
             state.requires2FA = true;
             state.dsid = data.dsid;
+            
             elements.verifyMessage.textContent = data.message;
             elements.step2.style.display = 'block';
             transition(elements.step1, elements.step2);
-            setProgress(2);
             return;
         }
 
         if (data.success) {
+            console.log('Login successful, moving to download step');
             state.verified2FA = true;
             state.dsid = data.dsid;
-            showToast('Đăng nhập thành công!');
             transition(elements.step1, elements.step3);
-            setProgress(3);
             return;
         }
 
+        console.log('Login failed:', data.error);
         showError(data.error || 'Đăng nhập thất bại');
 
     } catch (error) {
