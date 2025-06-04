@@ -216,38 +216,36 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    const authResult = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Auth result:', JSON.stringify(authResult));
+    const result = await Store.authenticate(APPLE_ID, PASSWORD);
+    console.log('Authentication result:', result);
 
-    if (authResult._state === 'needs2fa') {
+    if (result._state === 'needs2fa') {
       return res.json({
         success: false,
         require2FA: true,
-        message: authResult.customerMessage,
-        dsid: authResult.dsPersonId
+        message: result.customerMessage,
+        dsid: result.dsPersonId
       });
     }
 
-    if (authResult._state === 'success') {
+    if (result._state === 'success') {
       return res.json({
         success: true,
-        dsid: authResult.dsPersonId
+        dsid: result.dsPersonId
       });
     }
 
-    // Nếu là lỗi đăng nhập
+    // Sai mật khẩu thì trả về ngay
     return res.status(401).json({
       success: false,
-      error: authResult.customerMessage,
-      require2FA: false
+      error: result.customerMessage,
+      require2FA: false // Quan trọng: phải là false
     });
 
   } catch (error) {
-    console.error('Auth error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      error: 'Lỗi hệ thống',
-      require2FA: false
+      error: 'Lỗi hệ thống'
     });
   }
 });
