@@ -240,13 +240,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Xử lý 2FA bắt buộc
-      if (data.require2FA || data.authType === '2fa') {
-        handle2FARedirect(data);
+      // Xử lý 2FA
+      if (data.require2FA) {
+        state.requires2FA = true;
+        state.verified2FA = false;
+        state.dsid = data.dsid || null;
+        
+        // Hiển thị step 2FA
+        elements.step2.style.display = 'block';
+        elements.step2.classList.remove('hidden');
+        transition(elements.step1, elements.step2);
+        setProgress(2);
         return;
       }
 
-      // Xử lý đăng nhập thành công không cần 2FA
+      // Xử lý đăng nhập thành công
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
@@ -263,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       setLoading(false);
     }
-  });
+});
 
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {

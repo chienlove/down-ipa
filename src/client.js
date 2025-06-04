@@ -9,68 +9,78 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-        const dataJson = {
-            appleId: email,
-            attempt: mfa ? 2 : 4, // 2 = có mã 2FA, 4 = không có
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn'
-        };
+    const dataJson = {
+        appleId: email,
+        attempt: mfa ? 2 : 4, // 2 = có mã 2FA, 4 = không có
+        createSession: 'true',
+        guid: this.guid,
+        password: mfa ? password : `${password}${mfa ?? ''}`,
+        rmp: 0,
+        why: 'signIn'
+    };
 
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    const body = plist.build(dataJson);
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    
+    try {
+        this.cookieJar.removeAllCookies();
         
-        try {
-            this.cookieJar.removeAllCookies();
-            
-            const resp = await this.fetch(url, {
-                method: 'POST',
-                body,
-                headers: this.Headers,
-                redirect: 'manual'
-            });
+        const resp = await this.fetch(url, {
+            method: 'POST',
+            body,
+            headers: this.Headers,
+            redirect: 'manual'
+        });
 
-            const responseText = await resp.text();
-            const cookies = await this.cookieJar.getCookies(url);
-            const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || 'unknown';
+        const responseText = await resp.text();
+        const cookies = await this.cookieJar.getCookies(url);
+        const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || 'unknown';
 
-            // Phát hiện 2FA chính xác
-            const is2FA = resp.status === 409 || 
-                         /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
-                         resp.headers.get('x-apple-twosv-code');
+        // Kiểm tra 2FA chính xác hơn
+        const is2FA = resp.status === 409 || 
+                     /MZFinance\.BadLogin\.Configurator_message/i.test(responseText) ||
+                     resp.headers.get('x-apple-twosv-code') ||
+                     /two-step verification required/i.test(responseText);
 
-            if (is2FA) {
-                return {
-                    _state: 'needs2fa',
-                    dsPersonId: dsid,
-                    customerMessage: 'Vui lòng nhập mã xác minh 2FA'
-                };
-            }
+        if (is2FA) {
+            return {
+                _state: 'needs2fa',
+                dsPersonId: dsid,
+                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+            };
+        }
 
-            if (resp.status === 200 && dsid !== 'unknown') {
-                return {
-                    _state: 'success',
-                    dsPersonId: dsid
-                };
-            }
+        if (resp.status === 200 && dsid !== 'unknown') {
+            return {
+                _state: 'success',
+                dsPersonId: dsid
+            };
+        }
 
+        // Nếu là lỗi đăng nhập thông thường
+        if (resp.status === 401 || resp.status === 403) {
             return {
                 _state: 'failure',
                 failureType: 'bad_login',
                 customerMessage: 'Sai tài khoản hoặc mật khẩu'
             };
-
-        } catch (error) {
-            console.error('Authentication error:', error);
-            return {
-                _state: 'failure',
-                failureType: 'network',
-                customerMessage: 'Lỗi kết nối đến Apple'
-            };
         }
+
+        return {
+            _state: 'failure',
+            failureType: 'unknown',
+            customerMessage: 'Lỗi không xác định'
+        };
+
+    } catch (error) {
+        console.error('Authentication error:', error);
+        return {
+            _state: 'failure',
+            failureType: 'network',
+            customerMessage: 'Lỗi kết nối đến Apple'
+        };
     }
+}
 
     static async download(appIdentifier, appVerId, Cookie) {
         const dataJson = {
