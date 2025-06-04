@@ -173,15 +173,16 @@ document.addEventListener('DOMContentLoaded', () => {
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
+    
     // Friendly error mapping
-let message = responseData.message || '';
-if (message.includes('MZFinance.BadLogin.Configurator_message')) {
-  message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
-} else if (message.toLowerCase().includes('code')) {
-  message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
-}
+    let message = responseData.message || '';
+    if (message.includes('MZFinance.BadLogin.Configurator_message')) {
+      message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
+    } else if (message.toLowerCase().includes('code')) {
+      message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
+    }
 
-elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
+    elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     
     // Force show step2
     elements.step2.style.display = 'block';
@@ -302,20 +303,20 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       }
 
       if (data.success) {
-  state.CODE = CODE;
-  state.verified2FA = true;
-  state.dsid = data.dsid || state.dsid;
-  showToast('Xác thực 2FA thành công!');
+        state.CODE = CODE;
+        state.verified2FA = true;
+        state.dsid = data.dsid || state.dsid;
+        showToast('Xác thực 2FA thành công!');
 
-  // Ẩn step2 hoàn toàn
-  elements.step2.classList.add('hidden');
-  elements.step2.style.display = 'none';
-  elements.verificationCodeInput.value = '';
-  elements.verifyMessage.textContent = '';
+        // Ẩn step2 hoàn toàn
+        elements.step2.classList.add('hidden');
+        elements.step2.style.display = 'none';
+        elements.verificationCodeInput.value = '';
+        elements.verifyMessage.textContent = '';
 
-  transition(elements.step2, elements.step3);
-  setProgress(3);
-} else {
+        transition(elements.step2, elements.step3);
+        setProgress(3);
+      } else {
         showError(data.error || 'Mã xác minh không đúng.');
       }
     } catch (error) {
@@ -334,7 +335,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     hideError();
     setLoading(true);
 
-    const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
+    const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput.value.trim();
     const appVerId = elements.appVerInput.value.trim();
 
     if (!APPID) {
