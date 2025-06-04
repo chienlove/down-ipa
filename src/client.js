@@ -9,15 +9,12 @@ class Store {
     }
 
     static async authenticate(email, password, mfa = null) {
-    const attempt = mfa ? 2 : 4; // 2 = có 2FA, 4 = không có
-    const authPassword = mfa ? password : `${password}${mfa ?? ''}`;
-
     const dataJson = {
         appleId: email,
-        attempt,
+        attempt: mfa ? 2 : 4,
         createSession: 'true',
         guid: this.guid,
-        password: authPassword,
+        password: mfa ? `${password}${mfa}` : password,
         rmp: 0,
         why: 'signIn'
     };
@@ -32,35 +29,38 @@ class Store {
         });
 
         const responseText = await resp.text();
-        const dsid = resp.headers.get('x-dsid') || 'unknown';
+        const cookies = await this.cookieJar.getCookies(url);
+        const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || null;
 
-        // Phát hiện 2FA CHÍNH XÁC theo Apple
-        const is2FA = resp.status === 409 
-            || resp.headers.get('x-apple-twosv-challenge')
-            || /two-step verification required/i.test(responseText);
+        // Debug log quan trọng
+        console.log(`Auth Debug - Status: ${resp.status}, Headers: ${JSON.stringify([...resp.headers])}, Body: ${responseText}`);
 
-        // Phát hiện sai mật khẩu CHÍNH XÁC
-        const isInvalidCreds = resp.status === 401 
-            || /invalid credentials|bad login/i.test(responseText);
-
-        if (resp.status === 200 && dsid !== 'unknown') {
-            return { _state: 'success', dsPersonId: dsid };
-        }
-
-        if (is2FA) {
-            return { 
-                _state: 'needs2fa', 
-                dsPersonId: dsid,
-                customerMessage: 'Vui lòng nhập mã xác minh 2FA từ thiết bị tin cậy' 
-            };
-        }
-
-        if (isInvalidCreds) {
-            return { 
-                _state: 'failure', 
-                failureType: 'bad_login',
-                customerMessage: 'Sai tài khoản hoặc mật khẩu' 
-            };
+        // Xử lý response theo status code
+        switch(resp.status) {
+            case 200:
+                if (dsid) {
+                    return { _state: 'success', dsPersonId: dsid };
+                }
+                break;
+                
+            case 409: // 2FA required
+            case 401: // Có thể là 2FA
+                if (/MZFinance\.BadLogin\.Configurator_message|two-step verification required/i.test(responseText) ||
+                    resp.headers.get('x-apple-twosv-challenge')) {
+                    return { 
+                        _state: 'needs2fa', 
+                        dsPersonId: dsid,
+                        customerMessage: 'Vui lòng nhập mã xác minh 2FA' 
+                    };
+                }
+                return {
+                    _state: 'failure',
+                    failureType: 'bad_login',
+                    customerMessage: 'Sai tài khoản hoặc mật khẩu'
+                };
+                
+            default:
+                console.error('Unknown response:', { status: resp.status, body: responseText });
         }
 
         return {
@@ -70,6 +70,7 @@ class Store {
         };
 
     } catch (error) {
+        console.error('Auth error:', error);
         return {
             _state: 'failure',
             failureType: 'network',

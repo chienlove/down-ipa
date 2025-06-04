@@ -216,31 +216,39 @@ app.post('/auth', async (req, res) => {
     try {
         const { APPLE_ID, PASSWORD } = req.body;
         const result = await Store.authenticate(APPLE_ID, PASSWORD);
+        console.log('Raw auth result:', JSON.stringify(result));
 
-        if (result._state === 'needs2fa') {
-            return res.json({
-                success: false,
-                require2FA: true,
-                message: result.customerMessage,
-                dsid: result.dsPersonId
-            });
+        // Xử lý kết quả theo state
+        switch(result._state) {
+            case 'success':
+                return res.json({ 
+                    success: true, 
+                    dsid: result.dsPersonId 
+                });
+                
+            case 'needs2fa':
+                return res.json({
+                    success: false,
+                    require2FA: true,
+                    message: result.customerMessage,
+                    dsid: result.dsPersonId
+                });
+                
+            case 'failure':
+                return res.status(result.failureType === 'bad_login' ? 401 : 500).json({
+                    success: false,
+                    error: result.customerMessage,
+                    require2FA: false
+                });
+                
+            default:
+                return res.status(500).json({
+                    success: false,
+                    error: 'Lỗi hệ thống không xác định'
+                });
         }
-
-        if (result._state === 'success') {
-            return res.json({ 
-                success: true, 
-                dsid: result.dsPersonId 
-            });
-        }
-
-        // Trả về lỗi SAI MẬT KHẨU ngay
-        return res.status(401).json({
-            success: false,
-            error: result.customerMessage,
-            require2FA: false // QUAN TRỌNG: phải là false
-        });
-
     } catch (error) {
+        console.error('Auth endpoint error:', error);
         return res.status(500).json({
             success: false,
             error: 'Lỗi hệ thống'

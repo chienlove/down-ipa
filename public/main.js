@@ -33,314 +33,242 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let isLoading = false;
 
-  /* ========== UI HELPERS ========== */
-  
-  // Create toast container
-  const toastContainer = document.createElement('div');
-  toastContainer.id = 'toast-container';
-  toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
-  document.body.appendChild(toastContainer);
-
-  // Add CSS styles
-  const addStyles = () => {
-    const style = document.createElement('style');
-    style.textContent = `
-      .progress-loading {
-        width: 100% !important;
-        animation: progress 2s linear infinite !important;
-      }
-      .button-loading {
-        position: relative;
-        color: transparent !important;
-      }
-      .button-loading::after {
-        content: '';
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        top: 50%;
-        left: 50%;
-        margin: -10px 0 0 -10px;
-        border: 2px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 1s ease-in-out infinite;
-      }
-      .toast {
-        padding: 12px 16px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        color: white;
-        display: flex;
-        align-items: center;
-        animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      .toast-success {
-        background-color: #10B981;
-      }
-      .toast-error {
-        background-color: #EF4444;
-      }
-      .toast-icon {
-        margin-right: 12px;
-        font-size: 20px;
-      }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-      @keyframes slideIn {
-        to { transform: translateX(0); opacity: 1; }
-      }
-      @keyframes fadeOut {
-        to { opacity: 0; }
-      }
-      #step2 {
-        display: none;
-      }
-    `;
-    document.head.appendChild(style);
-  };
-  addStyles();
-
-  /* ========== CORE FUNCTIONS ========== */
-
-  const showToast = (message, type = 'success') => {
+  // ==================== UTILITY FUNCTIONS ====================
+  function showToast(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
       <span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span>
       <span>${message}</span>
     `;
-    toastContainer.appendChild(toast);
+    document.body.appendChild(toast);
     
-    setTimeout(() => {
-      toast.style.transform = 'translateX(0)';
-      toast.style.opacity = '1';
-    }, 10);
-
     setTimeout(() => toast.remove(), 3000);
-  };
+  }
 
-  const showError = (msg) => {
+  function showError(msg) {
     elements.errorMessage.textContent = msg;
     elements.errorBox.classList.remove('hidden');
-    setTimeout(() => {
-      elements.errorBox.classList.add('animate__fadeIn');
-    }, 10);
-  };
+  }
 
-  const hideError = () => {
+  function hideError() {
     elements.errorBox.classList.add('hidden');
-    elements.errorBox.classList.remove('animate__fadeIn');
-  };
+  }
 
-  const transition = (from, to) => {
-    from.classList.add('animate__fadeOut');
-    setTimeout(() => {
-      from.classList.add('hidden');
-      from.classList.remove('animate__fadeOut');
-      to.classList.remove('hidden');
-      to.classList.add('animate__fadeIn');
-      setTimeout(() => to.classList.remove('animate__fadeIn'), 500);
-    }, 300);
-  };
+  function transition(from, to) {
+    from.classList.add('hidden');
+    to.classList.remove('hidden');
+  }
 
-  const setProgress = (step) => {
-    const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
-    elements.progressBar.style.width = map[step] || '0%';
-  };
+  function setProgress(step) {
+    const progressMap = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
+    elements.progressBar.style.width = progressMap[step] || '0%';
+  }
 
-  const setLoading = (loading) => {
+  function setLoading(loading) {
     isLoading = loading;
-    if (loading) {
-      elements.progressBar.classList.add('progress-loading');
-      document.querySelectorAll('button').forEach(btn => {
-        btn.classList.add('button-loading');
-        btn.disabled = true;
-      });
-    } else {
-      elements.progressBar.classList.remove('progress-loading');
-      document.querySelectorAll('button').forEach(btn => {
-        btn.classList.remove('button-loading');
-        btn.disabled = false;
-      });
+    document.querySelectorAll('button').forEach(btn => {
+      btn.disabled = loading;
+    });
+  }
+
+  // ==================== DEBUG CONSOLE ====================
+  const debugConsole = document.createElement('div');
+  debugConsole.id = 'debug-console';
+  debugConsole.style.cssText = `
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 150px;
+    background: rgba(0,0,0,0.8);
+    color: white;
+    padding: 10px;
+    overflow-y: auto;
+    z-index: 1000;
+    font-family: monospace;
+    font-size: 12px;
+    display: none;
+  `;
+  document.body.appendChild(debugConsole);
+
+  function debugLog(message) {
+    const now = new Date().toLocaleTimeString();
+    debugConsole.innerHTML += `<div>[${now}] ${message}</div>`;
+    debugConsole.scrollTop = debugConsole.scrollHeight;
+  }
+
+  // Toggle debug console with Ctrl+D
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'd') {
+      debugConsole.style.display = debugConsole.style.display === 'none' ? 'block' : 'none';
     }
-  };
+  });
 
-  const handle2FARedirect = (responseData) => {
-    state.requires2FA = true;
-    state.verified2FA = false;
-    state.dsid = responseData.dsid || null;
-    
-    // Friendly error mapping
-    let message = responseData.message || '';
-    if (message.includes('MZFinance.BadLogin.Configurator_message')) {
-      message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
-    } else if (message.toLowerCase().includes('code')) {
-      message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
-    }
-
-    elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
-    
-    // Force show step2
-    elements.step2.style.display = 'block';
-    elements.step2.classList.remove('hidden');
-    
-    transition(elements.step1, elements.step2);
-    setProgress(2);
-  };
-
-  /* ========== EVENT HANDLERS ========== */
-
-  // Toggle password visibility
+  // ==================== EVENT HANDLERS ====================
   elements.togglePassword.addEventListener('click', () => {
     const isPassword = elements.passwordInput.type === 'password';
     elements.passwordInput.type = isPassword ? 'text' : 'password';
-    elements.eyeIcon.innerHTML = isPassword
-      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`
-      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
   });
 
-  // Step 1: Login
-  // Hàm xử lý đăng nhập mới
-elements.loginBtn.addEventListener('click', async (e) => {
+  // LOGIN HANDLER
+  elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
+    debugLog('=== BẮT ĐẦU ĐĂNG NHẬP ===');
     hideError();
     setLoading(true);
     setProgress(1);
 
+    const APPLE_ID = elements.appleIdInput.value.trim();
+    const PASSWORD = elements.passwordInput.value;
+
+    if (!APPLE_ID || !PASSWORD) {
+      showError('Vui lòng nhập Apple ID và mật khẩu');
+      setLoading(false);
+      return;
+    }
+
+    state.APPLE_ID = APPLE_ID;
+    state.PASSWORD = PASSWORD;
+
     try {
-        const response = await fetch('/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                APPLE_ID: elements.appleIdInput.value.trim(),
-                PASSWORD: elements.passwordInput.value
-            })
-        });
+      debugLog(`Gửi yêu cầu đăng nhập cho: ${APPLE_ID}`);
+      const response = await fetch('/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ APPLE_ID, PASSWORD })
+      });
 
-        const data = await response.json();
-        console.log('Auth response:', data);
+      const data = await response.json();
+      debugLog(`Phản hồi từ server: ${JSON.stringify(data)}`);
 
-        if (data.require2FA) {
-            // CHỈ chuyển step 2 khi require2FA là true và KHÔNG có lỗi
-            state.requires2FA = true;
-            state.dsid = data.dsid;
-            
-            elements.verifyMessage.textContent = data.message;
-            elements.step2.style.display = 'block';
-            transition(elements.step1, elements.step2);
-            setProgress(2);
-            return;
-        }
+      if (!response.ok) {
+        throw new Error(data.error || 'Lỗi từ máy chủ');
+      }
 
-        if (data.success) {
-            // Đăng nhập thành công không cần 2FA
-            state.verified2FA = true;
-            state.dsid = data.dsid;
-            transition(elements.step1, elements.step3);
-            setProgress(3);
-            return;
-        }
+      // Xử lý 2FA
+      if (data.require2FA) {
+        debugLog('Yêu cầu xác thực 2FA');
+        state.requires2FA = true;
+        state.dsid = data.dsid;
+        
+        elements.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 2FA';
+        elements.step2.style.display = 'block';
+        transition(elements.step1, elements.step2);
+        setProgress(2);
+        return;
+      }
 
-        // Hiển thị lỗi SAI MẬT KHẨU và KHÔNG chuyển step
-        showError(data.error || 'Đăng nhập thất bại');
+      // Đăng nhập thành công
+      if (data.success) {
+        debugLog('Đăng nhập thành công không cần 2FA');
+        state.verified2FA = true;
+        state.dsid = data.dsid;
+        showToast('Đăng nhập thành công!');
+        transition(elements.step1, elements.step3);
+        setProgress(3);
+        return;
+      }
+
+      // Sai mật khẩu
+      showError(data.error || 'Sai tài khoản hoặc mật khẩu');
+      debugLog('Đăng nhập thất bại: Sai thông tin');
 
     } catch (error) {
-        showError('Lỗi kết nối đến máy chủ');
+      debugLog(`Lỗi đăng nhập: ${error.message}`);
+      showError(error.message || 'Lỗi kết nối đến máy chủ');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-});
+  });
 
-// Hàm xử lý verify 2FA mới
-elements.verifyBtn.addEventListener('click', async (e) => {
+  // VERIFY 2FA HANDLER
+  elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
+    debugLog('=== XÁC THỰC 2FA ===');
     hideError();
     setLoading(true);
     setProgress(2);
 
+    const CODE = elements.verificationCodeInput.value.trim();
+    if (CODE.length !== 6) {
+      showError('Mã xác minh phải có 6 chữ số');
+      setLoading(false);
+      return;
+    }
+
     try {
-        const response = await fetch('/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                APPLE_ID: state.APPLE_ID,
-                PASSWORD: state.PASSWORD,
-                CODE: elements.verificationCodeInput.value.trim(),
-                dsid: state.dsid
-            })
-        });
+      debugLog(`Gửi mã xác minh: ${CODE}`);
+      const response = await fetch('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          APPLE_ID: state.APPLE_ID, 
+          PASSWORD: state.PASSWORD, 
+          CODE,
+          dsid: state.dsid 
+        })
+      });
 
-        const data = await response.json();
-        console.log('Verify response:', data);
+      const data = await response.json();
+      debugLog(`Phản hồi xác minh: ${JSON.stringify(data)}`);
 
-        if (data.shouldRetry) {
-            // Mã 2FA sai nhưng vẫn ở step 2
-            showError(data.error);
-            elements.verificationCodeInput.value = '';
-            elements.verificationCodeInput.focus();
-            return;
-        }
+      if (!response.ok) {
+        throw new Error(data.error || 'Xác minh thất bại');
+      }
 
-        if (data.success) {
-            // Xác thực 2FA thành công
-            state.verified2FA = true;
-            state.CODE = elements.verificationCodeInput.value.trim();
-            
-            elements.step2.style.display = 'none';
-            transition(elements.step2, elements.step3);
-            setProgress(3);
-            return;
-        }
+      if (data.success) {
+        debugLog('Xác thực 2FA thành công');
+        state.CODE = CODE;
+        state.verified2FA = true;
+        state.dsid = data.dsid || state.dsid;
+        showToast('Xác thực thành công!');
+        
+        elements.step2.style.display = 'none';
+        transition(elements.step2, elements.step3);
+        setProgress(3);
+        return;
+      }
 
-        showError(data.error || 'Xác thực thất bại');
+      // Mã 2FA sai
+      showError(data.error || 'Mã xác minh không đúng');
+      elements.verificationCodeInput.value = '';
+      elements.verificationCodeInput.focus();
+      debugLog('Mã 2FA không đúng, yêu cầu nhập lại');
 
     } catch (error) {
-        showError('Lỗi kết nối đến máy chủ');
+      debugLog(`Lỗi xác minh: ${error.message}`);
+      showError(error.message || 'Lỗi kết nối đến máy chủ');
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
-});
+  });
 
-  // Step 3: Download - With strict 2FA check
+  // DOWNLOAD HANDLER
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
+    debugLog('=== BẮT ĐẦU TẢI ỨNG DỤNG ===');
     hideError();
     setLoading(true);
+    setProgress(3);
 
-    const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput.value.trim();
+    const APPID = elements.appIdInput.value.trim();
     const appVerId = elements.appVerInput.value.trim();
 
     if (!APPID) {
-      showError('Vui lòng nhập App ID hợp lệ.');
+      showError('Vui lòng nhập App ID');
       setLoading(false);
       return;
     }
-
-    // Strict 2FA verification check
-    if (state.requires2FA && !state.verified2FA) {
-      showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
-      setLoading(false);
-      
-      // Auto-redirect to 2FA step
-      elements.step2.style.display = 'block';
-      elements.step2.classList.remove('hidden');
-      transition(elements.step3, elements.step2);
-      return;
-    }
-
-    setProgress(3);
 
     try {
+      debugLog(`Gửi yêu cầu tải app: ${APPID}`);
       const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -355,30 +283,43 @@ elements.verifyBtn.addEventListener('click', async (e) => {
       });
 
       const data = await response.json();
-      console.log('Download response:', data);
+      debugLog(`Phản hồi tải app: ${JSON.stringify(data)}`);
 
       if (data.require2FA) {
-        handle2FARedirect(data);
-      } else if (data.success) {
-        // Display download result
+        debugLog('Yêu cầu xác thực 2FA khi tải');
+        state.requires2FA = true;
+        elements.step2.style.display = 'block';
+        transition(elements.step3, elements.step2);
+        return;
+      }
+
+      if (data.success) {
+        debugLog('Tải app thành công');
         document.getElementById('appName').textContent = data.appInfo.name;
         document.getElementById('appAuthor').textContent = data.appInfo.artist;
         document.getElementById('appVersion').textContent = data.appInfo.version;
-        document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
-        document.getElementById('appDate').textContent = data.appInfo.releaseDate;
+        
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
+        
         transition(elements.step3, elements.result);
         setProgress(4);
-      } else {
-        showError(data.error || 'Tải ứng dụng thất bại.');
+        return;
       }
+
+      showError(data.error || 'Tải ứng dụng thất bại');
+
     } catch (error) {
-      console.error('Download error:', error);
-      showError('Không thể kết nối tới máy chủ.');
+      debugLog(`Lỗi tải app: ${error.message}`);
+      showError(error.message || 'Lỗi kết nối đến máy chủ');
     } finally {
       setLoading(false);
     }
   });
+
+  // ==================== INITIAL SETUP ====================
+  // Ẩn step 2 và 3 khi khởi động
+  elements.step2.style.display = 'none';
+  elements.step3.style.display = 'none';
 });
