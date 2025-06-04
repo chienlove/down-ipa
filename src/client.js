@@ -9,67 +9,71 @@ class Store {
     }
 
     static async authenticate(email, password, mfa = null) {
+    const attempt = mfa ? 2 : 4; // 2 = có 2FA, 4 = không có
+    const authPassword = mfa ? password : `${password}${mfa ?? ''}`;
+
     const dataJson = {
         appleId: email,
-        attempt: mfa ? 2 : 4,
+        attempt,
         createSession: 'true',
         guid: this.guid,
-        password: mfa ? password : `${password}${mfa ?? ''}`,
+        password: authPassword,
         rmp: 0,
         why: 'signIn'
     };
 
-    const body = plist.build(dataJson);
-    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-    
     try {
         this.cookieJar.removeAllCookies();
-        
-        const resp = await this.fetch(url, {
+        const resp = await this.fetch(`https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`, {
             method: 'POST',
-            body,
+            body: plist.build(dataJson),
             headers: this.Headers,
             redirect: 'manual'
         });
 
         const responseText = await resp.text();
-        const cookies = await this.cookieJar.getCookies(url);
-        const dsid = resp.headers.get('x-dsid') || cookies.find(c => c.key === 'X-Dsid')?.value || 'unknown';
+        const dsid = resp.headers.get('x-dsid') || 'unknown';
 
-        // Logic giống hệt StoreClient.swift
+        // Phát hiện 2FA CHÍNH XÁC theo Apple
+        const is2FA = resp.status === 409 
+            || resp.headers.get('x-apple-twosv-challenge')
+            || /two-step verification required/i.test(responseText);
+
+        // Phát hiện sai mật khẩu CHÍNH XÁC
+        const isInvalidCreds = resp.status === 401 
+            || /invalid credentials|bad login/i.test(responseText);
+
         if (resp.status === 200 && dsid !== 'unknown') {
-            return {
-                _state: 'success',
-                dsPersonId: dsid
-            };
+            return { _state: 'success', dsPersonId: dsid };
         }
-
-        // Kiểm tra 2FA theo cách của StoreClient
-        const storeFront = resp.headers.get('x-set-apple-store-front');
-        const is2FA = resp.status === 409 || 
-                     (storeFront && storeFront.includes('-2')) || // Giống StoreClient.swift
-                     /MZFinance\.BadLogin\.Configurator_message/i.test(responseText);
 
         if (is2FA) {
-            return {
-                _state: 'needs2fa',
+            return { 
+                _state: 'needs2fa', 
                 dsPersonId: dsid,
-                customerMessage: 'Vui lòng nhập mã xác minh 2FA'
+                customerMessage: 'Vui lòng nhập mã xác minh 2FA từ thiết bị tin cậy' 
             };
         }
 
-        // Sai mật khẩu thì trả về ngay, không chuyển step 2
+        if (isInvalidCreds) {
+            return { 
+                _state: 'failure', 
+                failureType: 'bad_login',
+                customerMessage: 'Sai tài khoản hoặc mật khẩu' 
+            };
+        }
+
         return {
             _state: 'failure',
-            failureType: 'invalid_credentials', // Giống StoreClient
-            customerMessage: 'Sai tài khoản hoặc mật khẩu'
+            failureType: 'unknown',
+            customerMessage: 'Lỗi không xác định từ Apple'
         };
 
     } catch (error) {
         return {
             _state: 'failure',
             failureType: 'network',
-            customerMessage: 'Lỗi kết nối'
+            customerMessage: 'Lỗi kết nối đến Apple'
         };
     }
 }
