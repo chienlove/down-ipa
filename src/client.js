@@ -42,13 +42,10 @@ class Store {
       msg.includes('trusted') ||
       msg.includes('device');
 
-    const isBadLogin =
-  msg.includes('badlogin') &&
-  !msg.includes('code') &&
-  !msg.includes('device') &&
-  !msg.includes('verification') &&
-  !msg.includes('two-factor') &&
-  dsid === 'unknown';
+    const isBadLogin = (
+  failure === 'invalidcredentials' ||
+  (msg.includes('badlogin') && !msg.includes('code') && !msg.includes('two-factor') && !msg.includes('device') && dsid === 'unknown')
+);
 
     console.log('[DEBUG Apple Response]', {
       dsid,
