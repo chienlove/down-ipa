@@ -43,7 +43,8 @@ class Store {
   msg.includes('two-factor');
 
 const isBadLogin =
-  failure === 'invalidcredentials';
+  failure === 'invalidcredentials' ||
+  (msg.includes('badlogin') && !is2FA && dsid === 'unknown');
 
     console.log('[DEBUG Apple Response]', {
       dsid,

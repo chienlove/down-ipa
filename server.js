@@ -218,7 +218,6 @@ app.post('/auth', async (req, res) => {
 
     console.log('[Apple AUTH DEBUG]', user);
 
-    // ❌ Nếu Apple trả lỗi thật sự (invalidcredentials)
     if (user.isBadLogin) {
       return res.json({
         success: false,
@@ -228,7 +227,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Nếu có dsid rõ → tài khoản không có 2FA
     if (user.dsid && user.dsid !== 'unknown') {
       return res.json({
         success: true,
@@ -236,7 +234,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Mọi trường hợp còn lại → cần xác minh (có thể đúng)
     return res.json({
       success: false,
       require2FA: true,
@@ -249,6 +246,35 @@ app.post('/auth', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
+});
+
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    console.log('[Apple VERIFY DEBUG]', user);
+
+    if (user._state === 'success' && user.dsid !== 'unknown') {
+      return res.json({
+        success: true,
+        dsid: user.dsid
+      });
+    }
+
+    return res.json({
+      success: false,
+      error: user.customerMessage || '❌ Mã xác minh sai hoặc tài khoản không hợp lệ',
+      dsid: user.dsid || 'unknown',
+      debug: user
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi khi xác minh mã'
     });
   }
 });
