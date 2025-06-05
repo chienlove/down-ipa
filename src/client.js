@@ -45,7 +45,10 @@ class Store {
        failure.includes('mfa')) &&
       !msg.includes('badlogin');
 
-    const isBadLogin = failure === 'invalidcredentials';
+    const isBadLogin =
+  failure === 'invalidcredentials' ||
+  msg.includes('badlogin') ||
+  msg.includes('configurator');
 
     console.log('[DEBUG Apple Response]', {
       dsid,

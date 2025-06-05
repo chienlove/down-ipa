@@ -219,13 +219,13 @@ app.post('/auth', async (req, res) => {
     console.log('[Apple AUTH DEBUG]', user);
 
     if (user.isBadLogin) {
-      return res.json({
-        success: false,
-        error: '❌ Sai Apple ID hoặc mật khẩu',
-        dsid: 'unknown',
-        debug: user
-      });
-    }
+  return res.json({
+    success: false,
+    error: '❌ Sai Apple ID hoặc mật khẩu',
+    dsid: user.dsid || 'unknown',
+    debug: user
+  });
+}
 
     // Nếu tài khoản bật 2FA hoặc chưa có dsid rõ → cho qua bước nhập mã
     if (user.require2FA || user.dsid === 'unknown') {
