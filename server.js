@@ -216,6 +216,8 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
+    console.log('[Apple AUTH DEBUG]', user);
+
     if (user.isBadLogin) {
       return res.json({
         success: false,

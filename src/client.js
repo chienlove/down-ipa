@@ -45,7 +45,15 @@ class Store {
     const isBadLogin =
       failure === 'invalidcredentials' ||
       msg.includes('badlogin') ||
-      (dsid === 'unknown' && !is2FA);
+      (dsid === 'unknown' && !is2FA && !msg.includes('code') && !msg.includes('device'));
+
+    // Ghi log toàn bộ phản hồi Apple để kiểm tra chính xác
+    console.log('[DEBUG Apple Response]', {
+      dsid,
+      failure,
+      msg,
+      rawText
+    });
 
     return {
       ...parsed,
