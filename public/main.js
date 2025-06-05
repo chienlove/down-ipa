@@ -106,12 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==================== EVENT HANDLERS ====================
-  elements.togglePassword.addEventListener('click', () => {
-    const isPassword = elements.passwordInput.type === 'password';
-    elements.passwordInput.type = isPassword ? 'text' : 'password';
-  });
-
-  // LOGIN HANDLER
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -123,7 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const PASSWORD = elements.passwordInput.value;
 
     try {
-        console.log('Starting authentication for:', APPLE_ID);
+        console.log(`Attempting login for: ${APPLE_ID}`);
         const response = await fetch('/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -131,11 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const data = await response.json();
-        console.log('Server response:', data);
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Request failed');
-        }
+        console.log('Auth response:', data);
 
         if (data.require2FA) {
             console.log('2FA required, showing verification step');

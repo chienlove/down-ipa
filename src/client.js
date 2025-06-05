@@ -10,7 +10,6 @@ class Store {
 
     static async authenticate(email, password, mfa = null) {
     const authUrl = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-    
     const dataJson = {
         appleId: email,
         attempt: mfa ? 2 : 4,
@@ -31,41 +30,44 @@ class Store {
         });
 
         const responseText = await resp.text();
-        const parsedResponse = plist.parse(responseText); // Phân tích response XML
-        
-        console.log('Full Apple Response:', {
-            status: resp.status,
-            headers: Object.fromEntries(resp.headers.entries()),
-            body: parsedResponse
-        });
+        console.log('Raw Apple Response:', responseText); // Log toàn bộ nội dung XML
 
-        // Xử lý response theo nội dung thực tế
+        // Phân tích response theo cấu trúc thực tế
         if (resp.status === 200) {
-            if (parsedResponse?.customerMessage?.includes('verification code')) {
+            // Kiểm tra nội dung response thay vì chỉ status code
+            if (responseText.includes('<key>dsPersonId</key>')) {
+                const parsed = plist.parse(responseText);
+                if (parsed.dsPersonId) {
+                    return {
+                        _state: 'success',
+                        dsPersonId: parsed.dsPersonId
+                    };
+                }
+            }
+
+            // Phát hiện 2FA qua nội dung response
+            if (responseText.includes('verification code') || 
+                responseText.includes('MZFinance.BadLogin.Configurator_message')) {
+                const dsid = resp.headers.get('x-dsid') || 'unknown';
                 return {
                     _state: 'needs2fa',
-                    dsPersonId: parsedResponse.dsPersonId,
+                    dsPersonId: dsid,
                     customerMessage: 'Vui lòng nhập mã xác minh 2FA'
                 };
             }
-            
-            if (parsedResponse?.dsPersonId) {
+
+            // Phát hiện sai mật khẩu
+            if (responseText.includes('invalid credentials') || 
+                responseText.includes('bad login')) {
                 return {
-                    _state: 'success',
-                    dsPersonId: parsedResponse.dsPersonId
+                    _state: 'failure',
+                    failureType: 'bad_login',
+                    customerMessage: 'Sai tài khoản hoặc mật khẩu'
                 };
             }
         }
 
-        // Xử lý các trường hợp lỗi
-        if (parsedResponse?.failureType) {
-            return {
-                _state: 'failure',
-                failureType: parsedResponse.failureType,
-                customerMessage: parsedResponse.customerMessage || 'Lỗi xác thực'
-            };
-        }
-
+        // Mặc định trả về lỗi không xác định nếu không match các trường hợp trên
         return {
             _state: 'failure',
             failureType: 'unknown',

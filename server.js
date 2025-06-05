@@ -215,34 +215,35 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
     try {
         const { APPLE_ID, PASSWORD } = req.body;
-        console.log('Auth request for:', APPLE_ID);
+        console.log(`Auth request for: ${APPLE_ID}`);
         
         const result = await Store.authenticate(APPLE_ID, PASSWORD);
-        console.log('Parsed auth result:', JSON.stringify(result, null, 2));
+        console.log('Auth result:', JSON.stringify(result, null, 2));
 
-        // Xử lý kết quả theo state
-        switch(result._state) {
-            case 'success':
-                return res.json({ 
-                    success: true,
-                    dsid: result.dsPersonId
-                });
-                
-            case 'needs2fa':
-                return res.json({
-                    success: false,
-                    require2FA: true,
-                    message: result.customerMessage,
-                    dsid: result.dsPersonId
-                });
-                
-            default:
-                return res.status(400).json({
-                    success: false,
-                    error: result.customerMessage,
-                    require2FA: false
-                });
+        // Xử lý theo nội dung response thực tế
+        if (result._state === 'success') {
+            return res.json({ 
+                success: true,
+                dsid: result.dsPersonId
+            });
         }
+
+        if (result._state === 'needs2fa') {
+            return res.json({
+                success: false,
+                require2FA: true,
+                message: result.customerMessage,
+                dsid: result.dsPersonId
+            });
+        }
+
+        // Xử lý các trường hợp lỗi
+        return res.status(400).json({
+            success: false,
+            error: result.customerMessage,
+            require2FA: false
+        });
+
     } catch (error) {
         console.error('Auth endpoint error:', error);
         return res.status(500).json({
