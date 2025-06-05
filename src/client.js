@@ -43,9 +43,9 @@ class Store {
     const dsid = parsedResp.dsPersonId || 'unknown';
 
     const isBadLogin =
-      msg.includes('badlogin') ||
-      msg.includes('configurator') ||
-      dsid === 'unknown';
+  msg.includes('badlogin') ||
+  msg.includes('configurator') ||
+  (!is2FA && dsid === 'unknown');
 
     const is2FA =
       msg.includes('code') ||
