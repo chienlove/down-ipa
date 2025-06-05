@@ -39,15 +39,16 @@ class Store {
     const is2FA =
       msg.includes('code') ||
       msg.includes('two-factor') ||
-      msg.includes('mfa') ||
+      msg.includes('trusted') ||
+      msg.includes('device') ||
+      msg.includes('verification') ||
       failure.includes('mfa');
 
     const isBadLogin =
       failure === 'invalidcredentials' ||
-      msg.includes('badlogin') ||
-      (dsid === 'unknown' && !is2FA && !msg.includes('code') && !msg.includes('device'));
+      (msg.includes('badlogin') && !is2FA && !msg.includes('code'));
 
-    // Ghi log toàn bộ phản hồi Apple để kiểm tra chính xác
+    // Debug log
     console.log('[DEBUG Apple Response]', {
       dsid,
       failure,
