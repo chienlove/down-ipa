@@ -36,8 +36,13 @@ class Store {
   const dsid = parsed.dsPersonId || 'unknown';
 
   const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
-  const is2FA = parsed.authType === 'hsa2' || msg.includes('verification') || msg.includes('trusted');
-  const isBadLogin = !hasToken && (!dsid || dsid === 'unknown');
+
+  const is2FA =
+    parsed.authType === 'hsa2' ||
+    (msg.includes('verification') || parsed.requestUrl?.includes('/verify/trusteddevice'));
+
+  // 👇 Đây là điểm quan trọng
+  const isBadLogin = !hasToken && (dsid === 'unknown' || msg.includes('badlogin') || failure.includes('badlogin'));
 
   console.log('[DEBUG Apple Response]', {
     dsid,
