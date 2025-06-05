@@ -218,7 +218,8 @@ app.post('/auth', async (req, res) => {
 
     console.log('[Apple AUTH DEBUG]', user);
 
-    if (user.isBadLogin) {
+    // Nếu chắc chắn sai và không có dấu hiệu 2FA
+    if (user.isBadLogin && !user.require2FA) {
       return res.json({
         success: false,
         error: '❌ Sai Apple ID hoặc mật khẩu',
@@ -226,15 +227,18 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    if (user.require2FA && user.dsid !== 'unknown') {
+    // Nếu có thể là 2FA hoặc chưa rõ nhưng không lỗi rõ
+    if (user.require2FA || user.dsid === 'unknown') {
       return res.json({
         success: false,
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsid
+        dsid: user.dsid || 'unknown',
+        debug: user
       });
     }
 
+    // Nếu login thành công rõ ràng
     if (user._state === 'success') {
       return res.json({
         success: true,
@@ -242,6 +246,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // Trường hợp không rõ
     return res.json({
       success: false,
       error: user.customerMessage || 'Không rõ lỗi',
