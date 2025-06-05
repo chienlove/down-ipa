@@ -29,7 +29,7 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
-    version: '1.0.2',
+    version: '1.0.1',
     timestamp: new Date().toISOString()
   });
 });
@@ -109,7 +109,7 @@ class IPATool {
         if (user.failureType?.toLowerCase().includes('mfa')) {
           return {
             require2FA: true,
-            message: user.customerMessage || 'Vui lòng nhập mã xác minh 2FA'
+            message: user.customerMessage || '2FA verification required'
           };
         }
         throw new Error(user.customerMessage || 'Authentication failed');
@@ -123,7 +123,7 @@ class IPATool {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
           return {
             require2FA: true,
-            message: app.customerMessage || 'Vui lòng nhập mã xác minh 2FA'
+            message: app.customerMessage || '2FA verification required'
           };
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
@@ -211,91 +211,84 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// Authentication endpoint (đã cải tiến)
 app.post('/auth', async (req, res) => {
-    try {
-        const { APPLE_ID, PASSWORD } = req.body;
-        console.log(`Auth request for: ${APPLE_ID}`);
-        
-        const result = await Store.authenticate(APPLE_ID, PASSWORD);
-        console.log('Auth result:', JSON.stringify(result, null, 2));
+  try {
+    const { APPLE_ID, PASSWORD } = req.body;
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-        // Xử lý theo nội dung response thực tế
-        if (result._state === 'success') {
-            return res.json({ 
-                success: true,
-                dsid: result.dsPersonId
-            });
-        }
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
 
-        if (result._state === 'needs2fa') {
-            return res.json({
-                success: false,
-                require2FA: true,
-                message: result.customerMessage,
-                dsid: result.dsPersonId
-            });
-        }
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
 
-        // Xử lý các trường hợp lỗi
-        return res.status(400).json({
-            success: false,
-            error: result.customerMessage,
-            require2FA: false
-        });
-
-    } catch (error) {
-        console.error('Auth endpoint error:', error);
-        return res.status(500).json({
-            success: false,
-            error: 'Lỗi hệ thống nội bộ'
-        });
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
     }
+
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
 });
 
-// Endpoint /verify hoàn toàn mới
 app.post('/verify', async (req, res) => {
-    try {
-        const { APPLE_ID, PASSWORD, CODE, dsid } = req.body;
-        
-        if (!CODE || CODE.length !== 6) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Mã xác minh phải có 6 chữ số' 
-            });
-        }
-
-        const result = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-        console.log('Verify result:', JSON.stringify(result, null, 2));
-
-        if (result._state === 'success') {
-            return res.json({ 
-                success: true,
-                dsid: result.dsPersonId || dsid
-            });
-        }
-
-        // Xử lý mã 2FA sai
-        if (result.failureType === 'bad_login') {
-            return res.status(401).json({
-                success: false,
-                error: 'Mã xác minh không đúng hoặc đã hết hạn',
-                require2FA: true
-            });
-        }
-
-        throw new Error(result.customerMessage || 'Xác thực thất bại');
-
-    } catch (error) {
-        console.error('Verify error:', error);
-        return res.status(500).json({ 
-            success: false, 
-            error: error.message || 'Lỗi xác minh 2FA' 
-        });
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
     }
+
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
+    });
+  }
 });
 
-// Download endpoint (giữ nguyên)
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -303,7 +296,7 @@ app.post('/download', async (req, res) => {
     if (!APPLE_ID || !PASSWORD || !APPID) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Thiếu thông tin bắt buộc' 
+        error: 'Required fields are missing' 
       });
     }
 
@@ -327,7 +320,6 @@ app.post('/download', async (req, res) => {
       });
     }
 
-    // Tự động xóa file sau 30 phút
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
@@ -348,34 +340,31 @@ app.post('/download', async (req, res) => {
     console.error('Download error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Tải ứng dụng thất bại'
+      error: error.message || 'Download failed'
     });
   }
 });
 
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
-// Error handling
 app.use((req, res) => {
-  res.status(404).json({ error: 'Không tìm thấy trang' });
+  res.status(404).json({ error: 'Not Found' });
 });
 
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({ error: 'Lỗi máy chủ nội bộ' });
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// Start server
 const server = app.listen(port, () => {
-  console.log(`Server đang chạy trên cổng ${port}`);
-  console.log(`Kiểm tra trạng thái: http://localhost:${port}/health`);
+  console.log(`Server running on port ${port}`);
+  console.log(`Health check: http://localhost:${port}/health`);
 });
 
-// Shutdown handler
 const shutdown = () => {
-  console.log('Đang tắt máy chủ...');
+  console.log('Shutting down server...');
   server.close(() => {
-    console.log('Máy chủ đã dừng');
+    console.log('Server stopped');
     process.exit(0);
   });
 };
@@ -383,5 +372,5 @@ const shutdown = () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 process.on('unhandledRejection', (err) => {
-  console.error('Lỗi không xử lý được:', err);
+  console.error('Unhandled rejection:', err);
 });
