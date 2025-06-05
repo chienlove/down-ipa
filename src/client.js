@@ -1,4 +1,3 @@
-
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -44,9 +43,12 @@ class Store {
       msg.includes('device');
 
     const isBadLogin =
-      msg.includes('badlogin') &&
-      !is2FA &&
-      dsid === 'unknown';
+  msg.includes('badlogin') &&
+  !msg.includes('code') &&
+  !msg.includes('device') &&
+  !msg.includes('verification') &&
+  !msg.includes('two-factor') &&
+  dsid === 'unknown';
 
     console.log('[DEBUG Apple Response]', {
       dsid,
