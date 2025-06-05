@@ -37,23 +37,23 @@ class Store {
     const dsid = parsed.dsPersonId || 'unknown';
 
     const is2FA =
-      (msg.includes('code') ||
-       msg.includes('two-factor') ||
-       msg.includes('trusted') ||
-       msg.includes('device') ||
-       msg.includes('verification') ||
-       failure.includes('mfa')) &&
-      !msg.includes('badlogin');
+      msg.includes('code') ||
+      msg.includes('verification') ||
+      msg.includes('two-factor') ||
+      msg.includes('trusted') ||
+      msg.includes('device');
 
     const isBadLogin =
-  failure === 'invalidcredentials' ||
-  msg.includes('badlogin') ||
-  msg.includes('configurator');
+      msg.includes('badlogin') &&
+      !is2FA &&
+      dsid === 'unknown';
 
     console.log('[DEBUG Apple Response]', {
       dsid,
       failure,
       msg,
+      is2FA,
+      isBadLogin,
       rawText
     });
 
