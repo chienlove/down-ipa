@@ -264,30 +264,27 @@ app.post('/auth', async (req, res) => {
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    console.log('[Apple VERIFY DEBUG]', user);
+
+    if (user._state === 'success' && user.dsid !== 'unknown') {
+      return res.json({
+        success: true,
+        dsid: user.dsid
       });
     }
 
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Verification failed');
-    }
-
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
+    return res.json({
+      success: false,
+      error: user.customerMessage || '❌ Mã xác minh sai hoặc hết hạn',
+      dsid: user.dsid || 'unknown',
+      debug: user
     });
   } catch (error) {
-    console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi khi xác minh mã'
     });
   }
 });
