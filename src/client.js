@@ -30,44 +30,43 @@ class Store {
         });
 
         const responseText = await resp.text();
-        console.log('Raw Apple Response:', responseText); // Log toàn bộ nội dung XML
+        console.log('Raw Apple Response:', responseText);
 
         // Phân tích response theo cấu trúc thực tế
-        if (resp.status === 200) {
-            // Kiểm tra nội dung response thay vì chỉ status code
-            if (responseText.includes('<key>dsPersonId</key>')) {
-                const parsed = plist.parse(responseText);
-                if (parsed.dsPersonId) {
-                    return {
-                        _state: 'success',
-                        dsPersonId: parsed.dsPersonId
-                    };
-                }
-            }
+        const parsed = plist.parse(responseText);
+        console.log('Parsed Response:', parsed);
 
-            // Phát hiện 2FA qua nội dung response
-            if (responseText.includes('verification code') || 
-                responseText.includes('MZFinance.BadLogin.Configurator_message')) {
-                const dsid = resp.headers.get('x-dsid') || 'unknown';
-                return {
-                    _state: 'needs2fa',
-                    dsPersonId: dsid,
-                    customerMessage: 'Vui lòng nhập mã xác minh 2FA'
-                };
-            }
+        // Kiểm tra 2FA qua headers và nội dung
+        const is2FA = resp.headers.get('x-apple-twosv-challenge') || 
+                     /verification code|two-step verification required/i.test(responseText);
 
-            // Phát hiện sai mật khẩu
-            if (responseText.includes('invalid credentials') || 
-                responseText.includes('bad login')) {
-                return {
-                    _state: 'failure',
-                    failureType: 'bad_login',
-                    customerMessage: 'Sai tài khoản hoặc mật khẩu'
-                };
-            }
+        // Trường hợp cần 2FA
+        if (is2FA) {
+            return {
+                _state: 'needs2fa',
+                dsPersonId: parsed.dsPersonId || resp.headers.get('x-dsid') || 'unknown',
+                customerMessage: parsed.customerMessage || 'Vui lòng nhập mã xác minh 2FA'
+            };
         }
 
-        // Mặc định trả về lỗi không xác định nếu không match các trường hợp trên
+        // Trường hợp thành công
+        if (resp.status === 200 && parsed.dsPersonId) {
+            return {
+                _state: 'success',
+                dsPersonId: parsed.dsPersonId
+            };
+        }
+
+        // Trường hợp sai mật khẩu
+        if (resp.status === 401 || parsed.failureType) {
+            return {
+                _state: 'failure',
+                failureType: 'bad_login',
+                customerMessage: parsed.customerMessage || 'Sai tài khoản hoặc mật khẩu'
+            };
+        }
+
+        // Mặc định cho các trường hợp khác
         return {
             _state: 'failure',
             failureType: 'unknown',

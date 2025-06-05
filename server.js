@@ -266,11 +266,12 @@ app.post('/verify', async (req, res) => {
         }
 
         const result = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+        console.log('Verify result:', JSON.stringify(result, null, 2));
 
         if (result._state === 'success') {
             return res.json({ 
-                success: true, 
-                dsid: result.dsPersonId || dsid 
+                success: true,
+                dsid: result.dsPersonId || dsid
             });
         }
 
@@ -278,62 +279,20 @@ app.post('/verify', async (req, res) => {
         if (result.failureType === 'bad_login') {
             return res.status(401).json({
                 success: false,
-                error: 'Mã xác minh không đúng hoặc hết hạn',
-                require2FA: true,
-                shouldRetry: true
+                error: 'Mã xác minh không đúng hoặc đã hết hạn',
+                require2FA: true
             });
         }
 
         throw new Error(result.customerMessage || 'Xác thực thất bại');
 
     } catch (error) {
+        console.error('Verify error:', error);
         return res.status(500).json({ 
             success: false, 
-            error: error.message 
+            error: error.message || 'Lỗi xác minh 2FA' 
         });
     }
-});
-
-// Verify endpoint (đã cải tiến)
-app.post('/verify', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE, dsid } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE || CODE.length !== 6) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Vui lòng nhập đầy đủ thông tin và mã xác minh 6 số' 
-      });
-    }
-
-    const authResult = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-    console.log('Verify result:', JSON.stringify(authResult));
-
-    if (authResult._state === 'success') {
-      return res.json({ 
-        success: true,
-        dsid: authResult.dsPersonId || dsid
-      });
-    }
-
-    if (authResult.failureType === 'invalid_2fa') {
-      return res.status(401).json({
-        success: false,
-        error: authResult.customerMessage,
-        require2FA: true,
-        newChallenge: true // Báo hiệu cần mã mới
-      });
-    }
-
-    throw new Error(authResult.customerMessage || 'Xác thực thất bại');
-    
-  } catch (error) {
-    console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Lỗi xác minh 2FA' 
-    });
-  }
 });
 
 // Download endpoint (giữ nguyên)

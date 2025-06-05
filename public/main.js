@@ -106,52 +106,62 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==================== EVENT HANDLERS ====================
-  elements.loginBtn.addEventListener('click', async (e) => {
+  elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
     
     hideError();
     setLoading(true);
-    
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
+
+    const CODE = elements.verificationCodeInput.value.trim();
+    if (CODE.length !== 6) {
+        showError('Mã xác minh phải có 6 chữ số');
+        setLoading(false);
+        return;
+    }
 
     try {
-        console.log(`Attempting login for: ${APPLE_ID}`);
-        const response = await fetch('/auth', {
+        console.log('Verifying 2FA code...');
+        const response = await fetch('/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ APPLE_ID, PASSWORD })
+            body: JSON.stringify({ 
+                APPLE_ID: state.APPLE_ID, 
+                PASSWORD: state.PASSWORD, 
+                CODE,
+                dsid: state.dsid 
+            })
         });
 
         const data = await response.json();
-        console.log('Auth response:', data);
+        console.log('Verify response:', data);
 
-        if (data.require2FA) {
-            console.log('2FA required, showing verification step');
-            state.requires2FA = true;
-            state.dsid = data.dsid;
-            
-            elements.verifyMessage.textContent = data.message;
-            elements.step2.style.display = 'block';
-            transition(elements.step1, elements.step2);
-            return;
+        if (!response.ok) {
+            // Xử lý mã 2FA sai
+            if (data.error?.includes('Mã xác minh không đúng')) {
+                showError(data.error);
+                elements.verificationCodeInput.value = '';
+                elements.verificationCodeInput.focus();
+                return;
+            }
+            throw new Error(data.error || 'Xác minh thất bại');
         }
 
         if (data.success) {
-            console.log('Login successful, moving to download step');
             state.verified2FA = true;
-            state.dsid = data.dsid;
-            transition(elements.step1, elements.step3);
+            state.CODE = CODE;
+            showToast('Xác thực 2FA thành công!');
+            
+            elements.step2.style.display = 'none';
+            transition(elements.step2, elements.step3);
             return;
         }
 
-        console.log('Login failed:', data.error);
-        showError(data.error || 'Đăng nhập thất bại');
+        showError(data.error || 'Xác thực thất bại');
 
     } catch (error) {
-        console.error('Login error:', error);
-        showError('Lỗi kết nối đến máy chủ');
+        console.error('Verify error:', error);
+        showError(error.message || 'Lỗi kết nối đến máy chủ');
     } finally {
         setLoading(false);
     }
