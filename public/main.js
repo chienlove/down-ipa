@@ -240,10 +240,10 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       }
 
       // Xử lý 2FA bắt buộc
-      if (data.require2FA && data.dsid !== 'unknown') {
-  handle2FARedirect(data);
-  return;
-}
+      if (data.require2FA || data.authType === '2fa') {
+        handle2FARedirect(data);
+        return;
+      }
 
       // Xử lý đăng nhập thành công không cần 2FA
       if (data.success) {

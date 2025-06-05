@@ -216,27 +216,36 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    if (user.isBadLogin) {
-      return res.json({
-        success: false,
-        error: '❌ Sai Apple ID hoặc mật khẩu',
-        dsid: 'unknown'
-      });
-    }
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
 
-    if (user.require2FA) {
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
-        success: false,
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsid || 'unknown'
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
     if (user._state === 'success') {
       return res.json({
         success: true,
-        dsid: user.dsid
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 

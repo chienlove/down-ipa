@@ -22,12 +22,12 @@ class Store {
       attempt: mfa ? 2 : 4,
       createSession: 'true',
       guid: this.guid,
-      password: mfa ? \`\${password}\${mfa}\` : password,
+      password: mfa ? `${password}${mfa}` : password,
       rmp: 0,
       why: 'signIn',
     };
     const body = plist.build(dataJson);
-    const url = \`https://auth.itunes.apple.com/auth/v1/native/fast?guid=\${this.guid}\`;
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
 
     const resp = await this.fetch(url, {
       method: 'POST',
@@ -78,7 +78,7 @@ class Store {
       ...(appVerId && { externalVersionId: appVerId })
     };
     const body = plist.build(dataJson);
-    const url = \`https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=\${this.guid}\`;
+    const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
 
     const resp = await this.fetch(url, {
       method: 'POST',
