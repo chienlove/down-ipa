@@ -33,18 +33,11 @@ class Store {
 
     const msg = (parsed.customerMessage || '').toLowerCase();
     const failure = (parsed.failureType || '').toLowerCase();
-    const dsid = parsed.dsPersonId || 'unknown';
-
-    // 🟨 Phân biệt rõ tài khoản yêu cầu 2FA
-    const is2FA =
-      parsed.authType === 'hsa2' ||
-      parsed["2faEnabled"] === true ||
-      (parsed.authType && parsed.authType.toLowerCase().includes('hsa2')) ||
-      (parsed.customerMessage && parsed.customerMessage.toLowerCase().includes('two-factor')) ||
-      (parsed.requestUrl && parsed.requestUrl.includes('verify/trusteddevice'));
+    const dsid = parsed.dsPersonId || parsed.dsid || 'unknown';
 
     const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
-    const isBadLogin = !hasToken && dsid === 'unknown';
+    const is2FA = hasToken && parsed['m-allowed'] === false;
+    const isBadLogin = !hasToken && dsid === 'unknown' && msg.includes('badlogin');
 
     console.log('[DEBUG Apple Response]', {
       dsid,
@@ -61,9 +54,10 @@ class Store {
 
     return {
       ...parsed,
-      _state: parsed.failureType ? 'failure' : 'success',
+      _state: failure ? 'failure' : 'success',
       require2FA: is2FA,
       isBadLogin,
+      hasToken,
       dsid,
       rawText
     };
