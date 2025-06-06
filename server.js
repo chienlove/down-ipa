@@ -230,6 +230,7 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
+
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
