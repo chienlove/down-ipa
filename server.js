@@ -240,9 +240,19 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const needs2FA = (user.authType === '2fa');
+    const hasDSID = user.dsPersonId || user.dsid || user.dsidInstance;
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    // ❌ Nếu không có dsid => sai tài khoản hoặc mật khẩu
+    if (!hasDSID) {
+      return res.status(401).json({
+        success: false,
+        error: '❌ Sai Apple ID hoặc mật khẩu',
+        debug: debugLog
+      });
+    }
+
+    // 🔐 Nếu tài khoản bật 2FA
+    if (user.authType === '2fa') {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -252,17 +262,16 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        authType: user.authType,
-        debug: debugLog
-      });
-    }
+    // ✅ Đăng nhập thành công không cần 2FA
+    return res.json({
+      success: true,
+      dsid: user.dsPersonId,
+      authType: user.authType,
+      debug: debugLog
+    });
 
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
+    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
