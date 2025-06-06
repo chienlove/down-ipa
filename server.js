@@ -232,7 +232,16 @@ app.post('/auth', async (req, res) => {
       headers
     };
 
-    // ✅ Nếu có dsid → đăng nhập thành công
+    if (user._state === '2fa_required') {
+      return res.json({
+        require2FA: true,
+        success: false,
+        message: 'Tài khoản đúng, yêu cầu mã xác minh 2FA',
+        dsid: null,
+        debug: debugLog
+      });
+    }
+
     if (hasDsid) {
       return res.json({
         success: true,
@@ -243,18 +252,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // ✅ Nếu có dấu hiệu tài khoản đúng (cookie/token hoặc authOptions) → cần 2FA
-    if (hasRealToken || hasAuthOptions) {
-      return res.json({
-        require2FA: true,
-        success: false,
-        message: 'Tài khoản yêu cầu mã xác minh 2FA',
-        dsid: null,
-        debug: debugLog
-      });
-    }
-
-    // ❌ Nếu không có bất kỳ tín hiệu nào → sai tài khoản/mật khẩu
     return res.status(401).json({
       success: false,
       error: '❌ Sai Apple ID hoặc mật khẩu',

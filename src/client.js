@@ -26,33 +26,37 @@ class Store {
             headers: this.Headers
         });
         const parsedResp = plist.parse(await resp.text());
+        const headers = resp.headers.raw();
+
+        const isAmbiguous = (
+            parsedResp._state === 'success' &&
+            !parsedResp.dsPersonId &&
+            parsedResp.customerMessage?.includes('MZFinance.BadLogin.Configurator_message')
+        );
+
+        if (isAmbiguous) {
+            const checkResp = await this.fetch('https://setup.icloud.com/setup/fetch', {
+                method: 'GET',
+                headers: {
+                    'User-Agent': this.Headers['User-Agent'],
+                    'X-Apple-ID-Session-Id': parsedResp.sessionId || ''
+                }
+            });
+
+            if (checkResp.status === 200) {
+                parsedResp._state = '2fa_required';
+            } else if (checkResp.status === 401) {
+                parsedResp._state = 'failure';
+                parsedResp.failureType = 'bad_credentials';
+                parsedResp.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
+            }
+        }
+
         return {
             ...parsedResp,
-            _state: parsedResp.failureType ? 'failure' : 'success',
-            headers: resp.headers.raw()
+            _state: parsedResp._state || (parsedResp.failureType ? 'failure' : 'success'),
+            headers
         };
-    }
-
-    static async download(appIdentifier, appVerId, Cookie) {
-        const dataJson = {
-            creditDisplay: '',
-            guid: this.guid,
-            salableAdamId: appIdentifier,
-            ...(appVerId && { externalVersionId: appVerId })
-        };
-        const body = plist.build(dataJson);
-        const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-        const resp = await this.fetch(url, {
-            method: 'POST',
-            body,
-            headers: {
-                ...this.Headers,
-                'X-Dsid': Cookie.dsPersonId,
-                'iCloud-DSID': Cookie.dsPersonId
-            }
-        });
-        const parsedResp = plist.parse(await resp.text());
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 }
 
