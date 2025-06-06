@@ -1,10 +1,10 @@
+
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
 class Store {
-    
     static get guid() {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
@@ -28,22 +28,32 @@ class Store {
         });
         const parsedResp = plist.parse(await resp.text());
 
-        const rawMessage = parsedResp.customerMessage?.toLowerCase() || '';
-        const is2FA =
-            parsedResp.failureType === 'MZFinance.BadLogin.Configurator_message' &&
-            (rawMessage.includes('mã xác minh') ||
-             rawMessage.includes('two-factor') ||
-             rawMessage.includes('mfa') ||
-             rawMessage.includes('code'));
+        const message = parsedResp.customerMessage?.toLowerCase() || '';
+        const failureType = parsedResp.failureType || '';
 
-        const state = parsedResp.failureType ? 'failure' : 'success';
+        const isBadCredentials = (
+            failureType.includes('MZFinance.BadLogin') ||
+            message.includes('id') || 
+            message.includes('mật khẩu') ||
+            message.includes('incorrect') ||
+            message.includes('invalid')
+        );
+
+        const is2FA = (
+            failureType === 'MZFinance.BadLogin.Configurator_message' &&
+            (message.includes('mã xác minh') ||
+             message.includes('two-factor') ||
+             message.includes('mfa') ||
+             message.includes('code'))
+        );
+
+        const state = isBadCredentials ? 'failure' : (parsedResp.failureType ? 'failure' : 'success');
 
         return {
             ...parsedResp,
             _state: state,
             authType: is2FA ? '2fa' : 'normal'
         };
-
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
@@ -62,41 +72,18 @@ class Store {
                 ...this.Headers,
                 'X-Dsid': Cookie.dsPersonId,
                 'iCloud-DSID': Cookie.dsPersonId
-                // 'X-Token': Cookie.passwordToken
             }
         });
         const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        
-const message = parsedResp.customerMessage?.toLowerCase() || '';
-const failureType = parsedResp.failureType || '';
-
-const isBadCredentials = (
-    failureType.includes('MZFinance.BadLogin') ||
-    message.includes('id') || 
-    message.includes('mật khẩu') ||
-    message.includes('incorrect') ||
-    message.includes('invalid')
-);
-
-const is2FA = (
-    failureType === 'MZFinance.BadLogin.Configurator_message' &&
-    (message.includes('mã xác minh') ||
-     message.includes('two-factor') ||
-     message.includes('mfa') ||
-     message.includes('code'))
-);
-
-const state = isBadCredentials ? 'failure' : (parsedResp.failureType ? 'failure' : 'success');
-
-return {
-    ...parsedResp,
-    _state: state,
-    authType: is2FA ? '2fa' : 'normal'
-};
-
+        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
-Store.fetch = fetchCookie(nodeFet
+Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
+Store.Headers = {
+    'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
+    'Content-Type': 'application/x-www-form-urlencoded',
+};
+
+export { Store };
