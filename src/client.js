@@ -35,30 +35,24 @@ class Store {
     const failure = (parsed.failureType || '').toLowerCase();
     const dsid = parsed.dsPersonId || 'unknown';
 
-    const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
+    const hasToken =
+      !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
 
-    // ✅ Phát hiện sai tài khoản/mật khẩu
-    const isBadLogin = (
-      msg.includes('badlogin') ||
-      (!hasToken && dsid === 'unknown')
-    );
+    const is2FA =
+      parsed.authType === 'hsa2' ||
+      msg.includes('verification') ||
+      msg.includes('two-factor') ||
+      rawText.includes('trusteddevice') ||
+      rawText.includes('verify/trusteddevice');
 
-    // ✅ Phát hiện cần 2FA
-    const isLikely2FA = (
-      !isBadLogin &&
-      !code &&
-      (
-        parsed.authType === 'hsa2' ||
-        msg.includes('verification') ||
-        parsed.requestUrl?.includes('/verify/trusteddevice')
-      )
-    );
+    const isBadLogin =
+      !hasToken && !is2FA && (!parsed.dsPersonId || parsed.dsPersonId === 'unknown');
 
     console.log('[DEBUG Apple Response]', {
       dsid,
       failure,
       msg,
-      is2FA: isLikely2FA,
+      is2FA,
       isBadLogin,
       hasToken,
       passwordToken: parsed.passwordToken,
@@ -70,7 +64,7 @@ class Store {
     return {
       ...parsed,
       _state: parsed.failureType ? 'failure' : 'success',
-      require2FA: isLikely2FA,
+      require2FA: is2FA,
       isBadLogin,
       dsid,
       rawText
