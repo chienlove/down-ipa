@@ -33,20 +33,24 @@ class Store {
 
     const msg = (parsed.customerMessage || '').toLowerCase();
     const failure = (parsed.failureType || '').toLowerCase();
-    const dsid = parsed.dsPersonId || parsed.dsid || 'unknown';
+    const dsid = parsed.dsPersonId || 'unknown';
 
     const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
-    const isLikely2FA = (
-      !code &&
-      !hasToken &&
-      msg === 'mzfinance.badlogin.configurator_message' &&
-      dsid === 'unknown'
+
+    // ✅ Phát hiện sai tài khoản/mật khẩu
+    const isBadLogin = (
+      msg.includes('badlogin') ||
+      (!hasToken && dsid === 'unknown')
     );
 
-    const isBadLogin = (
-      !isLikely2FA && (
-        msg.includes('badlogin') ||
-        (!hasToken && dsid === 'unknown')
+    // ✅ Phát hiện cần 2FA
+    const isLikely2FA = (
+      !isBadLogin &&
+      !code &&
+      (
+        parsed.authType === 'hsa2' ||
+        msg.includes('verification') ||
+        parsed.requestUrl?.includes('/verify/trusteddevice')
       )
     );
 
@@ -65,10 +69,9 @@ class Store {
 
     return {
       ...parsed,
-      _state: failure ? 'failure' : 'success',
+      _state: parsed.failureType ? 'failure' : 'success',
       require2FA: isLikely2FA,
       isBadLogin,
-      hasToken,
       dsid,
       rawText
     };
