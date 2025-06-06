@@ -224,25 +224,16 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Nếu không có dsid → chắc chắn sai tài khoản hoặc mật khẩu
-    if (!user.dsPersonId) {
-      return res.status(401).json({
-        success: false,
-        error: '❌ Sai Apple ID hoặc mật khẩu',
-        debug: debugLog
-      });
-    }
-
-    // Nếu có dsid → phân biệt 2FA hay không
+    // Nếu phản hồi cho biết yêu cầu mã xác minh (2FA)
     const needs2FA = (
+      user.failureType?.toLowerCase().includes('mfa') ||
+      user.authOptions ||
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
       user.customerMessage?.includes('Configurator_message')
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (needs2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -251,9 +242,19 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    return res.json({
-      success: true,
-      dsid: user.dsPersonId,
+    // Nếu không có lỗi và không cần 2FA → đăng nhập thành công
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    // Còn lại là lỗi đăng nhập
+    return res.status(401).json({
+      success: false,
+      error: '❌ Sai Apple ID hoặc mật khẩu',
       debug: debugLog
     });
   } catch (error) {
