@@ -4,36 +4,12 @@ import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
 class Store {
-    static async check2FAStatus(email) {
-        const url = 'https://idmsa.apple.com/appleauth/auth/signin';
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Apple-Widget-Key': 'd9d6d97a1e7c4f2ebc4ef5f2f5e1a3c6',
-            'User-Agent': 'Asspp/1.2.10 (iPhone; iOS 17.0)',
-        };
-        const body = JSON.stringify({
-            accountName: email,
-            password: 'invalidpassword123!',
-            rememberMe: true
-        });
-
-        try {
-            const res = await nodeFetch(url, { method: 'POST', headers, body });
-            const json = await res.json();
-            if (res.status === 409 && json.authType === 'hsa2') {
-                return '2fa';
-            }
-        } catch (_) {}
-        return 'normal';
-    }
     
     static get guid() {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
     static async authenticate(email, password, mfa) {
-        const authType = await this.check2FAStatus(email);
         const dataJson = {
             appleId: email,
             attempt: mfa ? 2 : 4,
@@ -51,8 +27,23 @@ class Store {
             headers: this.Headers
         });
         const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+
+        const rawMessage = parsedResp.customerMessage?.toLowerCase() || '';
+        const is2FA =
+            parsedResp.failureType === 'MZFinance.BadLogin.Configurator_message' &&
+            (rawMessage.includes('mã xác minh') ||
+             rawMessage.includes('two-factor') ||
+             rawMessage.includes('mfa') ||
+             rawMessage.includes('code'));
+
+        const state = parsedResp.failureType ? 'failure' : 'success';
+
+        return {
+            ...parsedResp,
+            _state: state,
+            authType: is2FA ? '2fa' : 'normal'
+        };
+
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
@@ -76,15 +67,36 @@ class Store {
         });
         const parsedResp = plist.parse(await resp.text());
         //console.log(JSON.stringify(parsedResp));
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+        
+const message = parsedResp.customerMessage?.toLowerCase() || '';
+const failureType = parsedResp.failureType || '';
+
+const isBadCredentials = (
+    failureType.includes('MZFinance.BadLogin') ||
+    message.includes('id') || 
+    message.includes('mật khẩu') ||
+    message.includes('incorrect') ||
+    message.includes('invalid')
+);
+
+const is2FA = (
+    failureType === 'MZFinance.BadLogin.Configurator_message' &&
+    (message.includes('mã xác minh') ||
+     message.includes('two-factor') ||
+     message.includes('mfa') ||
+     message.includes('code'))
+);
+
+const state = isBadCredentials ? 'failure' : (parsedResp.failureType ? 'failure' : 'success');
+
+return {
+    ...parsedResp,
+    _state: state,
+    authType: is2FA ? '2fa' : 'normal'
+};
+
     }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
-Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
-Store.Headers = {
-    'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-    'Content-Type': 'application/x-www-form-urlencoded',
-};
-
-export { Store };
+Store.fetch = fetchCookie(nodeFet

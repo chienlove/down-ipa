@@ -224,14 +224,7 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const needs2FA = (
-      user.authType === '2fa' ||
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
+    const needs2FA = (user.authType === '2fa');
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
