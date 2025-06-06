@@ -28,29 +28,27 @@ class Store {
         });
 
         const parsedResp = plist.parse(await resp.text());
-        const message = parsedResp.customerMessage?.toLowerCase() || '';
         const failureType = parsedResp.failureType || '';
-        const hasToken =
-            parsedResp.passwordToken ||
-            parsedResp.password ||
-            parsedResp.clearToken;
+        const message = parsedResp.customerMessage?.toLowerCase() || '';
 
-        const isBadCredentials =
-            failureType.includes('MZFinance.BadLogin') ||
-            message.includes('id') ||
-            message.includes('mật khẩu') ||
-            message.includes('incorrect') ||
-            message.includes('invalid');
+        const hasDSID =
+            parsedResp.dsPersonId ||
+            parsedResp.dsid ||
+            parsedResp.dsidInstance;
 
         const is2FA =
             failureType === 'MZFinance.BadLogin.Configurator_message' &&
-            (message.includes('mã xác minh') ||
-             message.includes('two-factor') ||
-             message.includes('mfa') ||
-             message.includes('code'));
+            hasDSID &&
+            (
+                parsedResp.securityCode ||
+                parsedResp.extendedLoginResponse ||
+                parsedResp.availableTrustees
+            );
+
+        const isBadCredentials = !hasDSID;
 
         let state = 'failure';
-        if (!parsedResp.failureType && !is2FA && hasToken && parsedResp.dsPersonId) {
+        if (!parsedResp.failureType && hasDSID && !is2FA) {
             state = 'success';
         }
 
