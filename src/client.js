@@ -33,11 +33,17 @@ class Store {
 
     const msg = (parsed.customerMessage || '').toLowerCase();
     const failure = (parsed.failureType || '').toLowerCase();
-    const dsid = parsed.dsPersonId || parsed.dsid || 'unknown';
+    const dsid = parsed.dsPersonId || 'unknown';
 
     const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
-    const is2FA = hasToken && parsed['m-allowed'] === false;
-    const isBadLogin = !hasToken && dsid === 'unknown' && msg.includes('badlogin');
+
+    // ✅ Chính xác hoá điều kiện cần 2FA
+    const is2FA = parsed?.authType === 'hsa2' ||
+                  msg.includes('verification') ||
+                  parsed?.requestUrl?.includes('/verify/trusteddevice');
+
+    // ✅ Sai tài khoản nếu không có token và không cần 2FA
+    const isBadLogin = !hasToken && !is2FA;
 
     console.log('[DEBUG Apple Response]', {
       dsid,
@@ -92,6 +98,7 @@ class Store {
   }
 }
 
+// Cookie + Fetch + Headers
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
 Store.Headers = {
