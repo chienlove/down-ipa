@@ -35,14 +35,15 @@ class Store {
     const failure = (parsed.failureType || '').toLowerCase();
     const dsid = parsed.dsPersonId || 'unknown';
 
-    const passwordToken = parsed.passwordToken;
-    const clearToken = parsed.clearToken;
-    const altDsid = parsed.altDsid;
+    const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
+    const is2FA = hasToken && !parsed.dsPersonId && !code;
 
-    const hasToken = !!(passwordToken || clearToken || altDsid);
-
-    const is2FA = !code && hasToken && msg.includes('badlogin'); // đây là điểm mấu chốt
-    const isBadLogin = !hasToken && msg.includes('badlogin');
+    const isBadLogin = !hasToken && (
+      msg.includes('badlogin') ||
+      msg.includes('incorrect') ||
+      msg.includes('invalid') ||
+      !parsed.appleId
+    );
 
     console.log('[DEBUG Apple Response]', {
       dsid,
@@ -51,15 +52,15 @@ class Store {
       is2FA,
       isBadLogin,
       hasToken,
-      passwordToken,
-      clearToken,
-      altDsid,
+      passwordToken: parsed.passwordToken,
+      clearToken: parsed.clearToken,
+      altDsid: parsed.altDsid,
       rawText
     });
 
     return {
       ...parsed,
-      _state: failure ? 'failure' : 'success',
+      _state: parsed.failureType ? 'failure' : 'success',
       require2FA: is2FA,
       isBadLogin,
       hasToken,
