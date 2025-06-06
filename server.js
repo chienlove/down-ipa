@@ -105,13 +105,29 @@ class IPATool {
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
-      if (user._state !== 'success') {
-        if (user.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: user.customerMessage || '2FA verification required'
-          };
-        }
+      if (!user.dsPersonId && !user.dsid && !user.dsidInstance) {
+  return res.status(401).json({
+    success: false,
+    error: '❌ Sai Apple ID hoặc mật khẩu'
+  });
+}
+
+if (user.authType === '2fa') {
+  return res.json({
+    require2FA: true,
+    message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+    dsid: user.dsPersonId,
+    authType: user.authType,
+    debug: debugLog
+  });
+}
+
+return res.json({
+  success: true,
+  dsid: user.dsPersonId,
+  authType: user.authType,
+  debug: debugLog
+});
         throw new Error(user.customerMessage || 'Authentication failed');
       }
 
