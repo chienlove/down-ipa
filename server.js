@@ -224,15 +224,33 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
+    // Nếu không có dsid hoặc có lỗi rõ ràng => báo sai tài khoản
+    const isInvalidLogin =
+      !user.dsPersonId ||
+      user.customerMessage?.includes('MZFinance.BadLogin') ||
+      user.customerMessage?.includes('Configurator_message');
+
+    if (isInvalidLogin) {
+      return res.status(401).json({
+        success: false,
+        error: '❌ Sai Apple ID hoặc mật khẩu',
+        debug: debugLog
+      });
+    }
+
+    // Xác định có cần 2FA không
     const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
+      user.dsPersonId &&
+      (
+        user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+        user.customerMessage?.toLowerCase().includes('two-factor') ||
+        user.customerMessage?.toLowerCase().includes('mfa') ||
+        user.customerMessage?.toLowerCase().includes('code') ||
+        user.customerMessage?.includes('Configurator_message')
+      )
     );
 
-    if ((needs2FA || user.failureType?.toLowerCase().includes('mfa')) && user.dsPersonId) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -241,15 +259,12 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
-
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    // Nếu đăng nhập thành công và không cần 2FA
+    return res.json({
+      success: true,
+      dsid: user.dsPersonId,
+      debug: debugLog
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
