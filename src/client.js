@@ -18,7 +18,6 @@ class Store {
             rmp: 0,
             why: 'signIn',
         };
-
         const body = plist.build(dataJson);
         const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
         const resp = await this.fetch(url, {
@@ -26,37 +25,9 @@ class Store {
             body,
             headers: this.Headers
         });
-
         const parsedResp = plist.parse(await resp.text());
-        const failureType = parsedResp.failureType || '';
-        const message = parsedResp.customerMessage?.toLowerCase() || '';
-
-        const hasDSID =
-            parsedResp.dsPersonId ||
-            parsedResp.dsid ||
-            parsedResp.dsidInstance;
-
-        const is2FA =
-            failureType === 'MZFinance.BadLogin.Configurator_message' &&
-            hasDSID &&
-            (
-                parsedResp.securityCode ||
-                parsedResp.extendedLoginResponse ||
-                parsedResp.availableTrustees
-            );
-
-        const isBadCredentials = !hasDSID;
-
-        let state = 'failure';
-        if (!parsedResp.failureType && hasDSID && !is2FA) {
-            state = 'success';
-        }
-
-        return {
-            ...parsedResp,
-            _state: state,
-            authType: is2FA ? '2fa' : 'normal'
-        };
+        //console.log(JSON.stringify(parsedResp));
+        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
@@ -66,7 +37,6 @@ class Store {
             salableAdamId: appIdentifier,
             ...(appVerId && { externalVersionId: appVerId })
         };
-
         const body = plist.build(dataJson);
         const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
         const resp = await this.fetch(url, {
@@ -76,14 +46,12 @@ class Store {
                 ...this.Headers,
                 'X-Dsid': Cookie.dsPersonId,
                 'iCloud-DSID': Cookie.dsPersonId
+                // 'X-Token': Cookie.passwordToken
             }
         });
-
         const parsedResp = plist.parse(await resp.text());
-        return {
-            ...parsedResp,
-            _state: parsedResp.failureType ? 'failure' : 'success'
-        };
+        //console.log(JSON.stringify(parsedResp));
+        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 }
 

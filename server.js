@@ -105,12 +105,14 @@ class IPATool {
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
-      if (!user.dsPersonId && !user.dsid && !user.dsidInstance) {
-        throw new Error('❌ Sai Apple ID hoặc mật khẩu');
-      }
-
-      if (user.authType === '2fa') {
-        throw new Error('🔐 Tài khoản yêu cầu mã xác minh 2FA');
+      if (user._state !== 'success') {
+        if (user.failureType?.toLowerCase().includes('mfa')) {
+          return {
+            require2FA: true,
+            message: user.customerMessage || '2FA verification required'
+          };
+        }
+        throw new Error(user.customerMessage || 'Authentication failed');
       }
 
       console.log('Fetching app info...');
@@ -119,7 +121,10 @@ class IPATool {
 
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
-          throw new Error(app.customerMessage || '2FA verification required');
+          return {
+            require2FA: true,
+            message: app.customerMessage || '2FA verification required'
+          };
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
       }
@@ -142,23 +147,31 @@ class IPATool {
       await clearCache(cacheDir);
 
       console.log('Downloading IPA file...');
-      const resp = await fetch(songList0.URL, { agent: new Agent({ rejectUnauthorized: false }) });
+      const resp = await fetch(songList0.URL, { 
+        agent: new Agent({ rejectUnauthorized: false }) 
+      });
+      
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
-      const numChunks = Math.ceil(fileSize / (5 * 1024 * 1024));
+      const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
-        const start = i * (5 * 1024 * 1024);
-        const end = Math.min(start + (5 * 1024 * 1024) - 1, fileSize - 1);
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
         const tempOutput = path.join(cacheDir, `part${i}`);
-        return () => downloadChunk({ url: songList0.URL, start, end, output: tempOutput });
+        return () => downloadChunk({ 
+          url: songList0.URL, 
+          start, 
+          end, 
+          output: tempOutput 
+        });
       });
 
-      for (let i = 0; i < downloadQueue.length; i += 10) {
-        await Promise.all(downloadQueue.slice(i, i + 10).map(fn => fn()));
+      for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
+        await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
       }
 
       console.log('Merging chunks...');
@@ -201,7 +214,6 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
@@ -212,38 +224,33 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const hasDSID = user.dsPersonId || user.dsid || user.dsidInstance;
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
 
-    // ❌ Nếu không có dsid => sai tài khoản hoặc mật khẩu
-    if (!hasDSID) {
-      return res.status(401).json({
-        success: false,
-        error: '❌ Sai Apple ID hoặc mật khẩu',
-        debug: debugLog
-      });
-    }
-
-    // 🔐 Nếu tài khoản bật 2FA
-    if (user.authType === '2fa') {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
-        authType: user.authType,
         debug: debugLog
       });
     }
 
-    // ✅ Đăng nhập thành công không cần 2FA
-    return res.json({
-      success: true,
-      dsid: user.dsPersonId,
-      authType: user.authType,
-      debug: debugLog
-    });
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
 
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    console.error('Auth error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
