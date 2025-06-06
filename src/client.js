@@ -9,63 +9,65 @@ class Store {
   }
 
   static async authenticate(email, password, code) {
-  const payload = {
-    appleId: email,
-    attempt: code ? 2 : 4,
-    createSession: 'true',
-    guid: this.guid,
-    password: code ? `${password}${code}` : password,
-    rmp: 0,
-    why: 'signIn'
-  };
+    const payload = {
+      appleId: email,
+      attempt: code ? 2 : 4,
+      createSession: 'true',
+      guid: this.guid,
+      password: code ? `${password}${code}` : password,
+      rmp: 0,
+      why: 'signIn'
+    };
 
-  const body = plist.build(payload);
-  const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+    const body = plist.build(payload);
+    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
 
-  const response = await this.fetch(url, {
-    method: 'POST',
-    body,
-    headers: this.Headers
-  });
+    const response = await this.fetch(url, {
+      method: 'POST',
+      body,
+      headers: this.Headers
+    });
 
-  const rawText = await response.text();
-  const parsed = plist.parse(rawText);
+    const rawText = await response.text();
+    const parsed = plist.parse(rawText);
 
-  const msg = (parsed.customerMessage || '').toLowerCase();
-  const failure = (parsed.failureType || '').toLowerCase();
-  const dsid = parsed.dsPersonId || 'unknown';
+    const msg = (parsed.customerMessage || '').toLowerCase();
+    const failure = (parsed.failureType || '').toLowerCase();
+    const dsid = parsed.dsPersonId || 'unknown';
 
-  const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
+    // 🟨 Phân biệt rõ tài khoản yêu cầu 2FA
+    const is2FA =
+      parsed.authType === 'hsa2' ||
+      parsed["2faEnabled"] === true ||
+      (parsed.authType && parsed.authType.toLowerCase().includes('hsa2')) ||
+      (parsed.customerMessage && parsed.customerMessage.toLowerCase().includes('two-factor')) ||
+      (parsed.requestUrl && parsed.requestUrl.includes('verify/trusteddevice'));
 
-  const is2FA =
-    parsed.authType === 'hsa2' ||
-    (msg.includes('verification') || parsed.requestUrl?.includes('/verify/trusteddevice'));
+    const hasToken = !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
+    const isBadLogin = !hasToken && dsid === 'unknown';
 
-  // 👇 Đây là điểm quan trọng
-  const isBadLogin = !hasToken && (dsid === 'unknown' || msg.includes('badlogin') || failure.includes('badlogin'));
+    console.log('[DEBUG Apple Response]', {
+      dsid,
+      failure,
+      msg,
+      is2FA,
+      isBadLogin,
+      hasToken,
+      passwordToken: parsed.passwordToken,
+      clearToken: parsed.clearToken,
+      altDsid: parsed.altDsid,
+      rawText
+    });
 
-  console.log('[DEBUG Apple Response]', {
-    dsid,
-    failure,
-    msg,
-    is2FA,
-    isBadLogin,
-    hasToken,
-    passwordToken: parsed.passwordToken,
-    clearToken: parsed.clearToken,
-    altDsid: parsed.altDsid,
-    rawText
-  });
-
-  return {
-    ...parsed,
-    _state: parsed.failureType ? 'failure' : 'success',
-    require2FA: is2FA,
-    isBadLogin,
-    dsid,
-    rawText
-  };
-}
+    return {
+      ...parsed,
+      _state: parsed.failureType ? 'failure' : 'success',
+      require2FA: is2FA,
+      isBadLogin,
+      dsid,
+      rawText
+    };
+  }
 
   static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
