@@ -231,25 +231,49 @@ app.post('/auth', async (req, res) => {
       headers
     };
 
-    // ✅ Nếu có authOptions, cookie, hoặc dsid → tài khoản đúng
-    if (hasAuthOptions || hasCookies || hasDsid) {
-      // Nếu cần mã xác minh 2FA
+    // ✅ Nếu có dsid → đăng nhập thành công
+    if (hasDsid) {
       return res.json({
-        require2FA: !hasDsid,
-        success: hasDsid,
-        message: user.customerMessage || (hasDsid ? 'Đăng nhập thành công' : 'Tài khoản cần xác minh 2FA'),
-        dsid: user.dsPersonId || null,
-        authOptions: user.authOptions || null,
+        success: true,
+        require2FA: false,
+        message: 'Đăng nhập thành công',
+        dsid: user.dsPersonId,
         debug: debugLog
       });
     }
 
-    // ❌ Nếu không có bất kỳ dấu hiệu nào ở trên → sai tài khoản hoặc mật khẩu
+    // ✅ Nếu có authOptions hoặc cookie → cần 2FA
+    if (hasAuthOptions || hasCookies) {
+      return res.json({
+        require2FA: true,
+        success: false,
+        message: 'Tài khoản yêu cầu mã xác minh',
+        dsid: null,
+        debug: debugLog
+      });
+    }
+
+    // ✅ Nếu _state === 'success' nhưng không có dsid, authOptions, cookie → có thể là tài khoản bật 2FA
+    if (
+      user._state === 'success' &&
+      user.customerMessage?.includes('MZFinance.BadLogin.Configurator_message')
+    ) {
+      return res.json({
+        require2FA: true,
+        success: false,
+        message: 'Tài khoản đúng nhưng cần xác minh 2FA',
+        dsid: null,
+        debug: debugLog
+      });
+    }
+
+    // ❌ Trường hợp còn lại: coi là sai
     return res.status(401).json({
       success: false,
       error: '❌ Sai Apple ID hoặc mật khẩu',
       debug: debugLog
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
