@@ -26,8 +26,11 @@ class Store {
             headers: this.Headers
         });
         const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+        return {
+            ...parsedResp,
+            _state: parsedResp.failureType ? 'failure' : 'success',
+            headers: resp.headers.raw()
+        };
     }
 
     static async download(appIdentifier, appVerId, Cookie) {
@@ -46,11 +49,9 @@ class Store {
                 ...this.Headers,
                 'X-Dsid': Cookie.dsPersonId,
                 'iCloud-DSID': Cookie.dsPersonId
-                // 'X-Token': Cookie.passwordToken
             }
         });
         const parsedResp = plist.parse(await resp.text());
-        //console.log(JSON.stringify(parsedResp));
         return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 }

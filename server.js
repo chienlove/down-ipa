@@ -216,34 +216,31 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
+    const headers = user.headers || {};
+    const cookies = headers['set-cookie'] || [];
+    const hasCookies = cookies.length > 0;
+    const hasAuthOptions = !!user.authOptions;
+
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
       customerMessage: user.customerMessage,
       authOptions: user.authOptions,
-      dsid: user.dsPersonId
+      dsid: user.dsPersonId,
+      headers
     };
 
-    // Nếu phản hồi cho biết yêu cầu mã xác minh (2FA)
-    const needs2FA = (
-      user.failureType?.toLowerCase().includes('mfa') ||
-      user.authOptions ||
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
-
-    if (needs2FA) {
+    if (hasCookies || hasAuthOptions || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
+        dsid: user.dsPersonId || null,
+        authOptions: user.authOptions || null,
         debug: debugLog
       });
     }
 
-    // Nếu không có lỗi và không cần 2FA → đăng nhập thành công
-    if (user._state === 'success') {
+    if (user._state === 'success' && user.dsPersonId) {
       return res.json({
         success: true,
         dsid: user.dsPersonId,
@@ -251,7 +248,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Còn lại là lỗi đăng nhập
     return res.status(401).json({
       success: false,
       error: '❌ Sai Apple ID hoặc mật khẩu',
