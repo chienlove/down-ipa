@@ -224,13 +224,8 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Nếu không có dsid hoặc có lỗi rõ ràng => báo sai tài khoản
-    const isInvalidLogin =
-      !user.dsPersonId ||
-      user.customerMessage?.includes('MZFinance.BadLogin') ||
-      user.customerMessage?.includes('Configurator_message');
-
-    if (isInvalidLogin) {
+    // Nếu không có dsid → chắc chắn sai tài khoản hoặc mật khẩu
+    if (!user.dsPersonId) {
       return res.status(401).json({
         success: false,
         error: '❌ Sai Apple ID hoặc mật khẩu',
@@ -238,16 +233,13 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Xác định có cần 2FA không
+    // Nếu có dsid → phân biệt 2FA hay không
     const needs2FA = (
-      user.dsPersonId &&
-      (
-        user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-        user.customerMessage?.toLowerCase().includes('two-factor') ||
-        user.customerMessage?.toLowerCase().includes('mfa') ||
-        user.customerMessage?.toLowerCase().includes('code') ||
-        user.customerMessage?.includes('Configurator_message')
-      )
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
     );
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
@@ -259,7 +251,6 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Nếu đăng nhập thành công và không cần 2FA
     return res.json({
       success: true,
       dsid: user.dsPersonId,
