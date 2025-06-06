@@ -220,7 +220,7 @@ app.post('/auth', async (req, res) => {
     const cookies = headers['set-cookie'] || [];
     const hasCookies = cookies.length > 0;
     const hasAuthOptions = !!user.authOptions;
-    const isTrusted = headers['apple-tk']?.[0] === 'true';
+    const hasDsid = !!user.dsPersonId;
 
     const debugLog = {
       _state: user._state,
@@ -231,27 +231,20 @@ app.post('/auth', async (req, res) => {
       headers
     };
 
-    // ✅ Nếu Apple phản hồi 'apple-tk: true' hoặc authOptions → tài khoản đúng, yêu cầu 2FA
-    if (isTrusted || hasCookies || hasAuthOptions || user.failureType?.toLowerCase().includes('mfa')) {
+    // ✅ Nếu có authOptions, cookie, hoặc dsid → tài khoản đúng
+    if (hasAuthOptions || hasCookies || hasDsid) {
+      // Nếu cần mã xác minh 2FA
       return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        require2FA: !hasDsid,
+        success: hasDsid,
+        message: user.customerMessage || (hasDsid ? 'Đăng nhập thành công' : 'Tài khoản cần xác minh 2FA'),
         dsid: user.dsPersonId || null,
         authOptions: user.authOptions || null,
         debug: debugLog
       });
     }
 
-    // ✅ Nếu đăng nhập hoàn toàn thành công (không cần 2FA)
-    if (user._state === 'success' && user.dsPersonId) {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
-
-    // ❌ Các trường hợp còn lại: báo sai tài khoản hoặc mật khẩu
+    // ❌ Nếu không có bất kỳ dấu hiệu nào ở trên → sai tài khoản hoặc mật khẩu
     return res.status(401).json({
       success: false,
       error: '❌ Sai Apple ID hoặc mật khẩu',
