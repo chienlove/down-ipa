@@ -106,29 +106,11 @@ class IPATool {
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
       if (!user.dsPersonId && !user.dsid && !user.dsidInstance) {
-  return res.status(401).json({
-    success: false,
-    error: '❌ Sai Apple ID hoặc mật khẩu'
-  });
-}
+        throw new Error('❌ Sai Apple ID hoặc mật khẩu');
+      }
 
-if (user.authType === '2fa') {
-  return res.json({
-    require2FA: true,
-    message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-    dsid: user.dsPersonId,
-    authType: user.authType,
-    debug: debugLog
-  });
-}
-
-return res.json({
-  success: true,
-  dsid: user.dsPersonId,
-  authType: user.authType,
-  debug: debugLog
-});
-        throw new Error(user.customerMessage || 'Authentication failed');
+      if (user.authType === '2fa') {
+        throw new Error('🔐 Tài khoản yêu cầu mã xác minh 2FA');
       }
 
       console.log('Fetching app info...');
@@ -137,10 +119,7 @@ return res.json({
 
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: app.customerMessage || '2FA verification required'
-          };
+          throw new Error(app.customerMessage || '2FA verification required');
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
       }
@@ -163,31 +142,23 @@ return res.json({
       await clearCache(cacheDir);
 
       console.log('Downloading IPA file...');
-      const resp = await fetch(songList0.URL, { 
-        agent: new Agent({ rejectUnauthorized: false }) 
-      });
-      
+      const resp = await fetch(songList0.URL, { agent: new Agent({ rejectUnauthorized: false }) });
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
-      const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
+      const numChunks = Math.ceil(fileSize / (5 * 1024 * 1024));
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+        const start = i * (5 * 1024 * 1024);
+        const end = Math.min(start + (5 * 1024 * 1024) - 1, fileSize - 1);
         const tempOutput = path.join(cacheDir, `part${i}`);
-        return () => downloadChunk({ 
-          url: songList0.URL, 
-          start, 
-          end, 
-          output: tempOutput 
-        });
+        return () => downloadChunk({ url: songList0.URL, start, end, output: tempOutput });
       });
 
-      for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
-        await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
+      for (let i = 0; i < downloadQueue.length; i += 10) {
+        await Promise.all(downloadQueue.slice(i, i + 10).map(fn => fn()));
       }
 
       console.log('Merging chunks...');
