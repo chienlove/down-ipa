@@ -1,4 +1,3 @@
-
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -19,6 +18,7 @@ class Store {
             rmp: 0,
             why: 'signIn',
         };
+
         const body = plist.build(dataJson);
         const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
         const resp = await this.fetch(url, {
@@ -26,28 +26,33 @@ class Store {
             body,
             headers: this.Headers
         });
-        const parsedResp = plist.parse(await resp.text());
 
+        const parsedResp = plist.parse(await resp.text());
         const message = parsedResp.customerMessage?.toLowerCase() || '';
         const failureType = parsedResp.failureType || '';
+        const hasToken =
+            parsedResp.passwordToken ||
+            parsedResp.password ||
+            parsedResp.clearToken;
 
-        const isBadCredentials = (
+        const isBadCredentials =
             failureType.includes('MZFinance.BadLogin') ||
-            message.includes('id') || 
+            message.includes('id') ||
             message.includes('mật khẩu') ||
             message.includes('incorrect') ||
-            message.includes('invalid')
-        );
+            message.includes('invalid');
 
-        const is2FA = (
+        const is2FA =
             failureType === 'MZFinance.BadLogin.Configurator_message' &&
             (message.includes('mã xác minh') ||
              message.includes('two-factor') ||
              message.includes('mfa') ||
-             message.includes('code'))
-        );
+             message.includes('code'));
 
-        const state = isBadCredentials ? 'failure' : (parsedResp.failureType ? 'failure' : 'success');
+        let state = 'failure';
+        if (!parsedResp.failureType && !is2FA && hasToken && parsedResp.dsPersonId) {
+            state = 'success';
+        }
 
         return {
             ...parsedResp,
@@ -63,6 +68,7 @@ class Store {
             salableAdamId: appIdentifier,
             ...(appVerId && { externalVersionId: appVerId })
         };
+
         const body = plist.build(dataJson);
         const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
         const resp = await this.fetch(url, {
@@ -74,8 +80,12 @@ class Store {
                 'iCloud-DSID': Cookie.dsPersonId
             }
         });
+
         const parsedResp = plist.parse(await resp.text());
-        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+        return {
+            ...parsedResp,
+            _state: parsedResp.failureType ? 'failure' : 'success'
+        };
     }
 }
 
