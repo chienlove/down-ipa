@@ -36,17 +36,21 @@ class Store {
     const dsid = parsed.dsPersonId || 'unknown';
 
     const hasToken =
-      !!parsed.passwordToken || !!parsed.clearToken || !!parsed.altDsid;
+      !!parsed.passwordToken ||
+      !!parsed.clearToken ||
+      !!parsed.altDsid;
 
     const is2FA =
       parsed.authType === 'hsa2' ||
-      msg.includes('verification') ||
+      (parsed.requestUrl && parsed.requestUrl.includes('/verify')) ||
+      msg.includes('verification code') ||
       msg.includes('two-factor') ||
-      rawText.includes('trusteddevice') ||
-      rawText.includes('verify/trusteddevice');
+      !!parsed.securityCode;
 
     const isBadLogin =
-      !hasToken && !is2FA && (!parsed.dsPersonId || parsed.dsPersonId === 'unknown');
+      !hasToken &&
+      !is2FA &&
+      (msg.includes('badlogin') || msg.includes('incorrect') || msg.includes('not recognized'));
 
     console.log('[DEBUG Apple Response]', {
       dsid,
@@ -58,14 +62,17 @@ class Store {
       passwordToken: parsed.passwordToken,
       clearToken: parsed.clearToken,
       altDsid: parsed.altDsid,
+      requestUrl: parsed.requestUrl,
+      authType: parsed.authType,
       rawText
     });
 
     return {
       ...parsed,
-      _state: parsed.failureType ? 'failure' : 'success',
+      _state: failure ? 'failure' : 'success',
       require2FA: is2FA,
       isBadLogin,
+      hasToken,
       dsid,
       rawText
     };
