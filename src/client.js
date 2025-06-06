@@ -4,11 +4,36 @@ import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
 class Store {
+    static async check2FAStatus(email) {
+        const url = 'https://idmsa.apple.com/appleauth/auth/signin';
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Apple-Widget-Key': 'd9d6d97a1e7c4f2ebc4ef5f2f5e1a3c6',
+            'User-Agent': 'Asspp/1.2.10 (iPhone; iOS 17.0)',
+        };
+        const body = JSON.stringify({
+            accountName: email,
+            password: 'invalidpassword123!',
+            rememberMe: true
+        });
+
+        try {
+            const res = await nodeFetch(url, { method: 'POST', headers, body });
+            const json = await res.json();
+            if (res.status === 409 && json.authType === 'hsa2') {
+                return '2fa';
+            }
+        } catch (_) {}
+        return 'normal';
+    }
+    
     static get guid() {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
     static async authenticate(email, password, mfa) {
+        const authType = await this.check2FAStatus(email);
         const dataJson = {
             appleId: email,
             attempt: mfa ? 2 : 4,

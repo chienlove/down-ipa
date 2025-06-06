@@ -225,6 +225,7 @@ app.post('/auth', async (req, res) => {
     };
 
     const needs2FA = (
+      user.authType === '2fa' ||
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
@@ -237,6 +238,7 @@ app.post('/auth', async (req, res) => {
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
+        authType: user.authType,
         debug: debugLog
       });
     }
@@ -245,6 +247,7 @@ app.post('/auth', async (req, res) => {
       return res.json({
         success: true,
         dsid: user.dsPersonId,
+        authType: user.authType,
         debug: debugLog
       });
     }
