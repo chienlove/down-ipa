@@ -395,6 +395,31 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
+
+const downloadLink = document.getElementById('downloadLink');
+downloadLink.href = data.downloadUrl;
+downloadLink.download = data.fileName;
+
+let installBtn = document.getElementById('installBtn');
+if (!installBtn) {
+  installBtn = document.createElement('a');
+  installBtn.id = 'installBtn';
+  installBtn.className = downloadLink.className + ' bg-indigo-600 hover:from-indigo-700 hover:to-indigo-600 mt-2';
+  installBtn.textContent = '📲 Cài trực tiếp';
+  installBtn.target = '_blank';
+  downloadLink.parentNode.appendChild(installBtn);
+}
+installBtn.href = data.installUrl;
+
+let resetBtn = document.getElementById('resetBtn');
+if (!resetBtn) {
+  resetBtn = document.createElement('button');
+  resetBtn.id = 'resetBtn';
+  resetBtn.textContent = '🔁 Tải ứng dụng khác';
+  resetBtn.className = downloadLink.className + ' bg-gray-500 hover:from-gray-600 hover:to-gray-500 mt-2';
+  resetBtn.addEventListener('click', () => location.reload());
+  downloadLink.parentNode.appendChild(resetBtn);
+}
         transition(elements.step3, elements.result);
         setProgress(4);
       } else {
