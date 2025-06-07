@@ -2,74 +2,92 @@ import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
+import { parseStringPromise } from 'xml2js';
 
 class Store {
     static get guid() {
         return getMAC().replace(/:/g, '').toUpperCase();
     }
 
-    static async authenticate(email, password, mfa) {
-        const dataJson = {
+    static async authenticate(email, password, code) {
+        const form = new URLSearchParams({
             appleId: email,
-            attempt: mfa ? 2 : 4,
-            createSession: 'true',
-            guid: this.guid,
-            password: `${password}${mfa ?? ''}`,
-            rmp: 0,
-            why: 'signIn',
-        };
-        const body = plist.build(dataJson);
-        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-        const resp = await this.fetch(url, {
-            method: 'POST',
-            body,
-            headers: this.Headers
+            password: password,
         });
 
-        const parsedResp = plist.parse(await resp.text());
-        const headers = resp.headers.raw();
+        if (code) {
+            form.set('oneTimePassword', code);
+        }
 
-        const isAmbiguous = (
-            parsedResp._state === 'success' &&
-            !parsedResp.dsPersonId &&
-            parsedResp.customerMessage?.includes('MZFinance.BadLogin.Configurator_message')
-        );
+        const url = 'https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate';
 
-        if (isAmbiguous) {
-            const sessionId = parsedResp.sessionId || '';
-            const cookieHeader = headers['set-cookie']?.map(c => c.split(';')[0]).join('; ') || '';
+        const resp = await this.fetch(url, {
+            method: 'POST',
+            body: form.toString(),
+            headers: {
+                ...this.Headers,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            }
+        });
 
-            const checkResp = await this.fetch('https://setup.icloud.com/setup/fetch', {
-                method: 'GET',
-                headers: {
-                    'User-Agent': this.Headers['User-Agent'],
-                    'X-Apple-ID-Session-Id': sessionId,
-                    'Cookie': cookieHeader
-                }
-            });
+        const xml = await resp.text();
+        const parsed = await parseStringPromise(xml, { explicitArray: false });
+        const plistContent = parsed['plist']['dict'];
 
-            if (checkResp.status === 200) {
-                parsedResp._state = '2fa_required';
-            } else if (checkResp.status === 401) {
-                parsedResp._state = 'failure';
-                parsedResp.failureType = 'bad_credentials';
-                parsedResp.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
+        // Extract dsid
+        let dsid = null;
+        let failureType = null;
+
+        const keys = Array.isArray(plistContent.key) ? plistContent.key : [plistContent.key];
+        const values = Array.isArray(plistContent.string) ? plistContent.string : [plistContent.string];
+
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            const value = values[i];
+            if (key === 'dsPersonId') {
+                dsid = value;
+            }
+            if (key === 'failureType') {
+                failureType = value;
             }
         }
 
-        return {
-            ...parsedResp,
-            _state: parsedResp._state || (parsedResp.failureType ? 'failure' : 'success'),
-            headers
+        if (dsid) {
+            return { _state: 'success', dsPersonId: dsid, raw: plistContent };
+        } else if (!dsid && code == null) {
+            return { _state: '2fa_required', raw: plistContent };
+        } else {
+            return { _state: 'failure', failureType: failureType, raw: plistContent };
+        }
+    }
+
+    static async download(appIdentifier, appVerId, Cookie) {
+        const dataJson = {
+            creditDisplay: '',
+            guid: this.guid,
+            salableAdamId: appIdentifier,
+            ...(appVerId && { externalVersionId: appVerId })
         };
+        const body = plist.build(dataJson);
+        const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
+        const resp = await this.fetch(url, {
+            method: 'POST',
+            body,
+            headers: {
+                ...this.Headers,
+                'X-Dsid': Cookie.dsPersonId,
+                'iCloud-DSID': Cookie.dsPersonId
+            }
+        });
+        const parsedResp = plist.parse(await resp.text());
+        return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
     }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
 Store.Headers = {
-    'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': 'iTunes/12.10.1 (Macintosh; OS X 10.14.6) AppleWebKit/7607.1.40.1.5',
 };
 
 export { Store };

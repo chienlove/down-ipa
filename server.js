@@ -211,50 +211,39 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-app.post('/auth', async (req, res) => {
-  try {
+try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
-
-    const headers = user.headers || {};
-    const cookies = headers['set-cookie'] || [];
-    const cookieString = cookies.join(';');
-    const hasRealToken = /mz_at0_fr|X-Dsid|mz_at_ssl/.test(cookieString);
-    const hasAuthOptions = !!user.authOptions;
-    const hasDsid = !!user.dsPersonId;
 
     const debugLog = {
       _state: user._state,
       failureType: user.failureType,
       customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
       dsid: user.dsPersonId,
-      headers
+      raw: user.raw
     };
 
     if (user._state === '2fa_required') {
       return res.json({
         require2FA: true,
-        success: false,
         message: 'Tài khoản đúng, yêu cầu mã xác minh 2FA',
         dsid: null,
         debug: debugLog
       });
     }
 
-    if (hasDsid) {
+    if (user._state === 'success') {
       return res.json({
         success: true,
-        require2FA: false,
-        message: 'Đăng nhập thành công',
         dsid: user.dsPersonId,
+        message: 'Đăng nhập thành công',
         debug: debugLog
       });
     }
 
     return res.status(401).json({
       success: false,
-      error: '❌ Sai Apple ID hoặc mật khẩu',
+      error: user.customerMessage || '❌ Sai Apple ID hoặc mật khẩu',
       debug: debugLog
     });
 
@@ -262,6 +251,35 @@ app.post('/auth', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
+});
+
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
     });
   }
 });
