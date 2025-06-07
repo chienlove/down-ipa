@@ -250,14 +250,9 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Kiểm tra thông báo lỗi sai tài khoản hoặc mật khẩu
-    const isInvalidAccount = (
-      user.customerMessage?.toLowerCase().includes('incorrect') ||
-      user.failureType?.toLowerCase().includes('invalid_credentials') ||
-      user._state === 'fail' && !needs2FA
-    );
-
-    if (isInvalidAccount) {
+    // Kiểm tra lỗi sai thông tin đăng nhập dựa trên failureType
+    if (user.failureType === 'invalid_credentials' || 
+        (user._state === 'fail' && user.customerMessage?.toLowerCase().includes('incorrect'))) {
       return res.status(401).json({
         success: false,
         error: 'Sai tài khoản hoặc mật khẩu',
@@ -273,8 +268,18 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // Xử lý các trường hợp lỗi khác
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
+    // Kiểm tra nếu lỗi là invalid_credentials
+    if (error.message.includes('invalid_credentials') || 
+        error.message.toLowerCase().includes('incorrect')) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sai tài khoản hoặc mật khẩu'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
