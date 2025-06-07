@@ -239,9 +239,11 @@ app.post('/auth', async (req, res) => {
     dsid: user.dsPersonId,
     debug: debugLog
   });
-}   
-    
-    if (user._state === 'success') {
+} else {
+  console.log('❌ Không cần 2FA hoặc không xác định được failureType liên quan đến MFA');
+}
+
+if (user._state === 'success') {
   return res.json({
     success: true,
     dsid: user.dsPersonId,
@@ -250,8 +252,7 @@ app.post('/auth', async (req, res) => {
 } else {
   return res.json({
     success: false,
-    require2FA: false,
-    error: '❌ Đăng nhập thất bại',
+    error: user.customerMessage || '❌ Sai Apple ID hoặc mật khẩu',
     debug: debugLog
   });
 }
