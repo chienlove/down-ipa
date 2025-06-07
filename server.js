@@ -227,6 +227,7 @@ app.post('/auth', async (req, res) => {
     if (!user.dsPersonId) {
   return res.json({
     success: false,
+    require2FA: false,
     error: 'Sai Apple ID hoặc mật khẩu',
     debug: debugLog
   });
@@ -240,7 +241,7 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.includes('Configurator_message')
     );
 
-    else if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
