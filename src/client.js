@@ -34,17 +34,14 @@ class Store {
     const parsed = await parseStringPromise(xml, { explicitArray: false });
     const plistContent = parsed?.plist?.dict;
 
-    // Convert XML dict to object
     const result = {};
-    const keys = plistContent.key;
-    const values = plistContent.string;
+    if (plistContent && plistContent.key && plistContent.string) {
+      const keys = Array.isArray(plistContent.key) ? plistContent.key : [plistContent.key];
+      const values = Array.isArray(plistContent.string) ? plistContent.string : [plistContent.string];
 
-    if (Array.isArray(keys) && Array.isArray(values)) {
       for (let i = 0; i < keys.length; i++) {
-        result[keys[i]] = values[i];
+        result[keys[i]] = values[i] || '';
       }
-    } else if (typeof keys === 'string' && typeof values === 'string') {
-      result[keys] = values;
     }
 
     const dsid = result['dsPersonId'] || null;
