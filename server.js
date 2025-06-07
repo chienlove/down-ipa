@@ -232,7 +232,7 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Điều kiện đặc biệt để phát hiện sai tài khoản/mật khẩu
+    // Điều kiện phát hiện sai tài khoản/mật khẩu
     const isInvalidCredentials = (
       user._state === 'fail' && 
       (
@@ -244,7 +244,7 @@ app.post('/auth', async (req, res) => {
           /incorrect|invalid|wrong|sai/i.test(user.customerMessage)
         )
       ) &&
-      !user.dsPersonId // Thường không có dsid khi sai thông tin đăng nhập
+      !user.dsPersonId
     );
 
     if (isInvalidCredentials) {
@@ -257,7 +257,7 @@ app.post('/auth', async (req, res) => {
 
     // Điều kiện cho 2FA
     const needs2FA = (
-      (user._state === 'success' && user.authOptions?.length > 0) || // Có authOptions khi cần 2FA
+      (user._state === 'success' && user.authOptions?.length > 0) ||
       (user.customerMessage && (
         user.customerMessage.includes('mã xác minh') ||
         user.customerMessage.includes('two-factor') ||
@@ -286,7 +286,6 @@ app.post('/auth', async (req, res) => {
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    // Kiểm tra thông báo lỗi từ Apple
     const isInvalid = (
       error.message.includes('invalid_credentials') ||
       /incorrect|invalid|wrong|sai|apple id|password/i.test(error.message)
