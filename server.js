@@ -248,6 +248,7 @@ app.post('/auth', async (req, res) => {
 } else {
   return res.json({
     success: false,
+    require2FA: false,
     error: '❌ Đăng nhập thất bại',
     debug: debugLog
   });
