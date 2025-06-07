@@ -220,36 +220,22 @@ app.post('/auth', async (req, res) => {
       _state: user._state,
       failureType: user.failureType,
       customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
       dsid: user.dsPersonId
     };
 
-    // 1. Kiểm tra thông tin đăng nhập sai
-    const isBadLogin = (
-      user.customerMessage === 'MZFinance.BadLogin.Configurator_message' ||
-      (user._state === 'success' && !user.dsid) ||
-      user.failureType?.toLowerCase().includes('invalid')
-    );
-
-    // 2. Kiểm tra cần 2FA
     const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('verification') ||
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.authOptions?.length > 0
+      user.customerMessage?.includes('Configurator_message')
     );
 
-    // Xử lý theo thứ tự ưu tiên
-    if (isBadLogin) {
-      return res.status(401).json({
-        success: false,
-        message: 'Sai Apple ID hoặc mật khẩu',
-        debug: debugLog
-      });
-    }
-
-    if (needs2FA) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
-        message: 'Vui lòng nhập mã xác minh 2 bước',
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
         debug: debugLog
       });
@@ -263,11 +249,11 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    throw new Error(user.customerMessage || 'Lỗi không xác định');
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực'
+      error: error.message || 'Lỗi xác thực Apple ID'
     });
   }
 });
