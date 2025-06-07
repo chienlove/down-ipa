@@ -220,15 +220,23 @@ app.post('/auth', async (req, res) => {
       _state: user._state,
       failureType: user.failureType,
       customerMessage: user.customerMessage,
-      dsid: user.dsPersonId,
-      raw: user.raw
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
     };
 
-    if (user._state === '2fa_required') {
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
-        message: 'Tài khoản đúng, yêu cầu mã xác minh 2FA',
-        dsid: null,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
         debug: debugLog
       });
     }
@@ -237,79 +245,15 @@ app.post('/auth', async (req, res) => {
       return res.json({
         success: true,
         dsid: user.dsPersonId,
-        message: 'Đăng nhập thành công',
         debug: debugLog
       });
     }
 
-    return res.status(401).json({
-      success: false,
-      error: user.customerMessage || '❌ Sai Apple ID hoặc mật khẩu',
-      debug: debugLog
-    });
-
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
-    });
-  }
-});
-
-app.post('/verify', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE } = req.body;
-
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Verification failed');
-    }
-
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
-    });
-  }
-});
-
-app.post('/verify', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE } = req.body;
-
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Verification failed');
-    }
-
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
     });
   }
 });
