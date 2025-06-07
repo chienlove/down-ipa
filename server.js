@@ -249,7 +249,7 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    if (user._state !== 'success' && (!user.dsPersonId || user.customerMessage === 'MZFinance.BadLogin.Configurator_message') && !user.authOptions) {
+    if (!user.dsPersonId) {
   return res.json({
     success: false,
     error: '❌ Sai Apple ID hoặc mật khẩu',
