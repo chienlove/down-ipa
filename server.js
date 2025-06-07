@@ -211,7 +211,6 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
@@ -225,11 +224,19 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    if (user._state === '2fa_required') {
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: null,
+        dsid: user.dsPersonId,
         debug: debugLog
       });
     }
@@ -254,7 +261,7 @@ app.post('/auth', async (req, res) => {
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-
+    
     if (!APPLE_ID || !PASSWORD || !CODE) {
       return res.status(400).json({ 
         success: false, 
@@ -262,6 +269,7 @@ app.post('/verify', async (req, res) => {
       });
     }
 
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
@@ -273,12 +281,14 @@ app.post('/verify', async (req, res) => {
       dsid: user.dsPersonId
     });
   } catch (error) {
+    console.error('Verify error:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message || 'Verification error' 
     });
   }
 });
+
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
