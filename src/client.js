@@ -31,7 +31,17 @@ class Store {
         });
 
         const xml = await resp.text();
-        const parsed = await parseStringPromise(xml, { explicitArray: false });
+let parsed;
+try {
+  parsed = await parseStringPromise(xml, { explicitArray: false });
+} catch (e) {
+  return {
+    _state: 'failure',
+    customerMessage: '❌ Không thể phân tích phản hồi từ Apple (invalid XML)',
+    failureType: 'parse_error',
+    raw: xml
+  };
+}
         const plistContent = parsed['plist']['dict'];
 
         // Extract dsid
