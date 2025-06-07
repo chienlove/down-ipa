@@ -231,8 +231,15 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.toLowerCase().includes('code') ||
       user.customerMessage?.includes('Configurator_message')
     );
-
-    if (user._state === 'success') {
+    
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+  return res.json({
+    require2FA: true,
+    message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+    dsid: user.dsPersonId,
+    debug: debugLog
+  });
+} else if (user._state === 'success') {
   return res.json({
     success: true,
     dsid: user.dsPersonId,
@@ -245,15 +252,6 @@ app.post('/auth', async (req, res) => {
     debug: debugLog
   });
 }
-    
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
