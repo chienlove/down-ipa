@@ -214,14 +214,6 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD) {
-      return res.status(400).json({
-        success: false,
-        error: 'Vui lòng nhập đầy đủ Apple ID và mật khẩu'
-      });
-    }
-
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
@@ -232,42 +224,15 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    // Điều kiện phát hiện sai tài khoản/mật khẩu
-    const isInvalidCredentials = (
-      user._state === 'fail' && 
-      (
-        user.failureType === 'invalid_credentials' ||
-        (user.customerMessage && (
-          user.customerMessage.includes('Apple ID hoặc mật khẩu') ||
-          user.customerMessage.includes('Incorrect Apple ID') ||
-          user.customerMessage.includes('Your Apple ID or password') ||
-          /incorrect|invalid|wrong|sai/i.test(user.customerMessage)
-        )
-      ) &&
-      !user.dsPersonId
-    );
-
-    if (isInvalidCredentials) {
-      return res.status(401).json({
-        success: false,
-        error: 'Sai tài khoản hoặc mật khẩu',
-        debug: debugLog
-      });
-    }
-
-    // Điều kiện cho 2FA
     const needs2FA = (
-      (user._state === 'success' && user.authOptions?.length > 0) ||
-      (user.customerMessage && (
-        user.customerMessage.includes('mã xác minh') ||
-        user.customerMessage.includes('two-factor') ||
-        user.customerMessage.includes('verification code') ||
-        /code|mfa|2fa|verify/i.test(user.customerMessage)
-      ) ||
-      user.failureType?.includes('mfa')
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
     );
 
-    if (needs2FA) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -286,18 +251,6 @@ app.post('/auth', async (req, res) => {
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    const isInvalid = (
-      error.message.includes('invalid_credentials') ||
-      /incorrect|invalid|wrong|sai|apple id|password/i.test(error.message)
-    );
-    
-    if (isInvalid) {
-      return res.status(401).json({
-        success: false,
-        error: 'Sai tài khoản hoặc mật khẩu'
-      });
-    }
-    
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
