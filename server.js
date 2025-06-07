@@ -240,7 +240,11 @@ app.post('/auth', async (req, res) => {
     debug: debugLog
   });
 } else {
-  console.log('❌ Không cần 2FA hoặc không xác định được failureType liên quan đến MFA');
+  return res.json({
+    success: false,
+    error: user.customerMessage || '❌ Sai Apple ID hoặc mật khẩu',
+    debug: debugLog
+  });
 }
 
 if (user._state === 'success') {
