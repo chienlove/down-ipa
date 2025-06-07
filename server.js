@@ -232,18 +232,18 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.includes('Configurator_message')
     );
 
+if (user.failureType?.toLowerCase().includes('invalidcredentials')) {
+  return res.status(401).json({
+    success: false,
+    message: 'Sai Apple ID hoặc mật khẩu. Vui lòng thử lại.',
+    debug: debugLog
+  });    
+
 if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
   return res.json({
     require2FA: true,
     message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
     dsid: user.dsPersonId,
-    debug: debugLog
-  });
-}
-
-    if (dsPersonId === 'null') {
-  return res.json({
-    success: false,
     debug: debugLog
   });
 }
