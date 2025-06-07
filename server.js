@@ -214,6 +214,15 @@ const ipaTool = new IPATool();
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
+    
+    // Kiểm tra nếu thiếu thông tin đăng nhập
+    if (!APPLE_ID || !PASSWORD) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vui lòng nhập đầy đủ Apple ID và mật khẩu'
+      });
+    }
+
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
@@ -237,6 +246,21 @@ app.post('/auth', async (req, res) => {
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    // Kiểm tra thông báo lỗi sai tài khoản hoặc mật khẩu
+    const isInvalidAccount = (
+      user.customerMessage?.toLowerCase().includes('incorrect') ||
+      user.failureType?.toLowerCase().includes('invalid_credentials') ||
+      user._state === 'fail' && !needs2FA
+    );
+
+    if (isInvalidAccount) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sai tài khoản hoặc mật khẩu',
         debug: debugLog
       });
     }
