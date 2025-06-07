@@ -1,4 +1,3 @@
-import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
@@ -232,7 +231,14 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.includes('Configurator_message')
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if ((needs2FA || user.failureType?.toLowerCase().includes('mfa')) && !user.dsPersonId) {
+  return res.json({
+    success: false,
+    error: '❌ Sai Apple ID hoặc mật khẩu',
+    debug: debugLog
+  });
+}
+if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
