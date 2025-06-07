@@ -224,15 +224,6 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    if (!user.dsPersonId) {
-  return res.json({
-    success: false,
-    require2FA: false,
-    error: 'Sai Apple ID hoặc mật khẩu',
-    debug: debugLog
-  });
-}
-
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
@@ -241,7 +232,15 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.includes('Configurator_message')
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (!user.dsPersonId) {
+  return res.json({
+    success: false,
+    require2FA: false,
+    error: 'Sai Apple ID hoặc mật khẩu',
+    debug: debugLog
+  });
+}
+    else if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
