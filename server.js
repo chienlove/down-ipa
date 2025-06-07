@@ -231,16 +231,8 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.toLowerCase().includes('code') ||
       user.customerMessage?.includes('Configurator_message')
     );
-
-    if (!user.dsPersonId) {
-  return res.json({
-    success: false,
-    require2FA: false,
-    error: 'Sai Apple ID hoặc mật khẩu',
-    debug: debugLog
-  });
-}
-    else if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -250,12 +242,18 @@ app.post('/auth', async (req, res) => {
     }
 
     if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
+  return res.json({
+    success: true,
+    dsid: user.dsPersonId,
+    debug: debugLog
+  });
+} else {
+  return res.json({
+    success: false,
+    error: '❌ Đăng nhập thất bại',
+    debug: debugLog
+  });
+}
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
