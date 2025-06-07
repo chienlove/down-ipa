@@ -239,13 +239,15 @@ app.post('/auth', async (req, res) => {
     dsid: user.dsPersonId,
     debug: debugLog
   });
-} else if (user._state === 'success') {
+}   
+    
+    if (user._state === 'success') {
   return res.json({
     success: true,
     dsid: user.dsPersonId,
     debug: debugLog
   });
-} else {
+} else if {
   return res.json({
     success: false,
     require2FA: false,
