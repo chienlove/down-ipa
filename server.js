@@ -224,6 +224,13 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
+    if (!user.dsPersonId) {
+  return res.json({
+    success: false,
+    error: '❌ Sai Apple ID hoặc mật khẩu',
+    debug: debugLog
+  });
+}
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
@@ -248,14 +255,6 @@ app.post('/auth', async (req, res) => {
         debug: debugLog
       });
     }
-
-    if (!user.dsPersonId) {
-  return res.json({
-    success: false,
-    error: '❌ Sai Apple ID hoặc mật khẩu',
-    debug: debugLog
-  });
-}
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
