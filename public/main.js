@@ -204,65 +204,74 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
 
   // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    if (isLoading) return;
-    
-    hideError();
-    setLoading(true);
+  e.preventDefault();
+  if (isLoading) return;
+  
+  hideError();
+  setLoading(true);
 
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
-    
-    if (!APPLE_ID || !PASSWORD) {
-      showError('Vui lòng nhập Apple ID và mật khẩu.');
+  const APPLE_ID = elements.appleIdInput.value.trim();
+  const PASSWORD = elements.passwordInput.value;
+  
+  if (!APPLE_ID || !PASSWORD) {
+    showError('Vui lòng nhập Apple ID và mật khẩu.');
+    setLoading(false);
+    return;
+  }
+
+  state.APPLE_ID = APPLE_ID;
+  state.PASSWORD = PASSWORD;
+
+  setProgress(1);
+
+  try {
+    const response = await fetch('/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ APPLE_ID, PASSWORD })
+    });
+
+    const data = await response.json();
+    console.log('Auth response:', data);
+
+    if (!response.ok) {
+      showError(data.error || 'Lỗi từ máy chủ.');
       setLoading(false);
       return;
     }
 
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-
-    setProgress(1);
-
-    try {
-      const response = await fetch('/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ APPLE_ID, PASSWORD })
-      });
-
-      const data = await response.json();
-      console.log('Auth response:', data);
-
-      if (!response.ok) {
-        showError(data.error || 'Lỗi từ máy chủ.');
-        return;
-      }
-
-      // Xử lý 2FA bắt buộc
-      if (data.require2FA || data.authType === '2fa') {
-        handle2FARedirect(data);
-        return;
-      }
-
-      // Xử lý đăng nhập thành công không cần 2FA
-      if (data.success) {
-        state.requires2FA = false;
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
-      } else {
-        showError(data.error || 'Đăng nhập thất bại');
-      }
-    } catch (error) {
-      console.error('Auth error:', error);
-      showError('Không thể kết nối tới máy chủ.');
-    } finally {
-      setLoading(false);
+    // Chỉ xử lý 2FA khi response có require2FA = true VÀ _state không phải 'failure'
+    if ((data.require2FA || data.authType === '2fa') && data._state !== 'failure') {
+      handle2FARedirect(data);
+      return;
     }
-  });
+
+    // Nếu _state là 'failure' thì hiển thị lỗi
+    if (data._state === 'failure') {
+      showError(data.message || data.customerMessage || 'Đăng nhập thất bại');
+      setLoading(false);
+      return;
+    }
+
+    // Xử lý đăng nhập thành công không cần 2FA
+    if (data.success) {
+      state.requires2FA = false;
+      state.verified2FA = true;
+      state.dsid = data.dsid || null;
+      showToast('Đăng nhập thành công!');
+      transition(elements.step1, elements.step3);
+      setProgress(3);
+    } else {
+      showError(data.error || 'Đăng nhập thất bại');
+    }
+  } catch (error) {
+    console.error('Auth error:', error);
+    showError('Không thể kết nối tới máy chủ.');
+  } finally {
+    setLoading(false);
+  }
+});
+
 
   // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
@@ -386,21 +395,57 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
-        // Thêm nút Cài trực tiếp
-        const installBtn = document.createElement('a');
-        installBtn.textContent = '📲 Cài trực tiếp';
-        installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
-        installBtn.href = data.installUrl;
-        installBtn.target = '_blank';
-        downloadLink.parentNode.appendChild(installBtn);
+      const installBtn = document.createElement('a');
+      installBtn.textContent = '📲 Cài trực tiếp';
+      installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      installBtn.href = data.installUrl;
+      installBtn.target = '_blank';
+      downloadLink.parentNode.appendChild(installBtn);
 
-        // Thêm nút Tải ứng dụng khác
-        const resetBtn = document.createElement('button');
-        resetBtn.textContent = '🔁 Tải ứng dụng khác';
-        resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
-        resetBtn.addEventListener('click', () => location.reload());
-        downloadLink.parentNode.appendChild(resetBtn);
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = '🔁 Tải ứng dụng khác';
+      resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      resetBtn.addEventListener('click', () => location.reload());
+      downloadLink.parentNode.appendChild(resetBtn);
+    
 
+const downloadLink = document.getElementById('downloadLink');
+downloadLink.href = data.downloadUrl;
+downloadLink.download = data.fileName;
+      const installBtn = document.createElement('a');
+      installBtn.textContent = '📲 Cài trực tiếp';
+      installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      installBtn.href = data.installUrl;
+      installBtn.target = '_blank';
+      downloadLink.parentNode.appendChild(installBtn);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = '🔁 Tải ứng dụng khác';
+      resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      resetBtn.addEventListener('click', () => location.reload());
+      downloadLink.parentNode.appendChild(resetBtn);
+    
+
+let installBtn = document.getElementById('installBtn');
+if (!installBtn) {
+  installBtn = document.createElement('a');
+  installBtn.id = 'installBtn';
+  installBtn.className = downloadLink.className + ' bg-indigo-600 hover:from-indigo-700 hover:to-indigo-600 mt-2';
+  installBtn.textContent = '📲 Cài trực tiếp';
+  installBtn.target = '_blank';
+  downloadLink.parentNode.appendChild(installBtn);
+}
+installBtn.href = data.installUrl;
+
+let resetBtn = document.getElementById('resetBtn');
+if (!resetBtn) {
+  resetBtn = document.createElement('button');
+  resetBtn.id = 'resetBtn';
+  resetBtn.textContent = '🔁 Tải ứng dụng khác';
+  resetBtn.className = downloadLink.className + ' bg-gray-500 hover:from-gray-600 hover:to-gray-500 mt-2';
+  resetBtn.addEventListener('click', () => location.reload());
+  downloadLink.parentNode.appendChild(resetBtn);
+}
         transition(elements.step3, elements.result);
         setProgress(4);
       } else {
