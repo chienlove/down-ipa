@@ -247,7 +247,7 @@ app.post('/auth', async (req, res) => {
     dsid: user.dsPersonId,
     debug: debugLog
   });
-} else if {
+} else {
   return res.json({
     success: false,
     require2FA: false,
