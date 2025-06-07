@@ -238,6 +238,7 @@ if (user.failureType?.toLowerCase().includes('invalidcredentials')) {
     message: 'Sai Apple ID hoặc mật khẩu. Vui lòng thử lại.',
     debug: debugLog
   });    
+}  
 
 if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
   return res.json({
