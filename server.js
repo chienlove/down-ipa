@@ -215,6 +215,7 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
+    console.log('Apple API Response:', JSON.stringify(user, null, 2));
 
     const debugLog = {
       _state: user._state,
