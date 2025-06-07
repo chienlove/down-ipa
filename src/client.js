@@ -33,6 +33,7 @@ class Store {
         const xml = await resp.text();
 let parsed;
 try {
+console.log('[DEBUG] Raw Apple response (first 500 chars):', xml?.slice?.(0, 500));
   parsed = await parseStringPromise(xml, { explicitArray: false });
 } catch (e) {
   return {
