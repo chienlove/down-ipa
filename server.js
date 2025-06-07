@@ -211,7 +211,8 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-try {
+app.post('/auth', async (req, res) => {
+  try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
@@ -251,6 +252,35 @@ try {
     res.status(500).json({
       success: false,
       error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
+});
+
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
     });
   }
 });
