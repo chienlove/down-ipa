@@ -215,7 +215,6 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    // Kiểm tra nếu thiếu thông tin đăng nhập
     if (!APPLE_ID || !PASSWORD) {
       return res.status(400).json({
         success: false,
@@ -233,29 +232,46 @@ app.post('/auth', async (req, res) => {
       dsid: user.dsPersonId
     };
 
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
+    // Điều kiện đặc biệt để phát hiện sai tài khoản/mật khẩu
+    const isInvalidCredentials = (
+      user._state === 'fail' && 
+      (
+        user.failureType === 'invalid_credentials' ||
+        (user.customerMessage && (
+          user.customerMessage.includes('Apple ID hoặc mật khẩu') ||
+          user.customerMessage.includes('Incorrect Apple ID') ||
+          user.customerMessage.includes('Your Apple ID or password') ||
+          /incorrect|invalid|wrong|sai/i.test(user.customerMessage)
+        )
+      ) &&
+      !user.dsPersonId // Thường không có dsid khi sai thông tin đăng nhập
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
+    if (isInvalidCredentials) {
+      return res.status(401).json({
+        success: false,
+        error: 'Sai tài khoản hoặc mật khẩu',
         debug: debugLog
       });
     }
 
-    // Kiểm tra lỗi sai thông tin đăng nhập dựa trên failureType
-    if (user.failureType === 'invalid_credentials' || 
-        (user._state === 'fail' && user.customerMessage?.toLowerCase().includes('incorrect'))) {
-      return res.status(401).json({
-        success: false,
-        error: 'Sai tài khoản hoặc mật khẩu',
+    // Điều kiện cho 2FA
+    const needs2FA = (
+      (user._state === 'success' && user.authOptions?.length > 0) || // Có authOptions khi cần 2FA
+      (user.customerMessage && (
+        user.customerMessage.includes('mã xác minh') ||
+        user.customerMessage.includes('two-factor') ||
+        user.customerMessage.includes('verification code') ||
+        /code|mfa|2fa|verify/i.test(user.customerMessage)
+      ) ||
+      user.failureType?.includes('mfa')
+    );
+
+    if (needs2FA) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
         debug: debugLog
       });
     }
@@ -268,12 +284,15 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    // Xử lý các trường hợp lỗi khác
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
-    // Kiểm tra nếu lỗi là invalid_credentials
-    if (error.message.includes('invalid_credentials') || 
-        error.message.toLowerCase().includes('incorrect')) {
+    // Kiểm tra thông báo lỗi từ Apple
+    const isInvalid = (
+      error.message.includes('invalid_credentials') ||
+      /incorrect|invalid|wrong|sai|apple id|password/i.test(error.message)
+    );
+    
+    if (isInvalid) {
       return res.status(401).json({
         success: false,
         error: 'Sai tài khoản hoặc mật khẩu'
