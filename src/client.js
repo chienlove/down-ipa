@@ -9,61 +9,60 @@ class Store {
     }
 
     static async authenticate(email, password, mfa) {
-    const dataJson = {
-        appleId: email,
-        attempt: mfa ? 2 : 4,
-        createSession: 'true',
-        guid: this.guid,
-        password: `${password}${mfa ?? ''}`,
-        rmp: 0,
-        why: 'signIn',
-    };
-    const body = plist.build(dataJson);
-    const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-
-    const resp = await this.fetch(url, {
-        method: 'POST',
-        body,
-        headers: this.Headers
-    });
-
-    const parsedResp = plist.parse(await resp.text());
-    const headers = resp.headers.raw();
-
-    // ⚠️ Kiểm tra phản hồi ambiguous (có thể là tài khoản bật 2FA hoặc sai)
-    const isAmbiguous = (
-        parsedResp._state === 'success' &&
-        !parsedResp.dsPersonId &&
-        parsedResp.customerMessage?.includes('MZFinance.BadLogin.Configurator_message')
-    );
-
-    if (isAmbiguous) {
-        const sessionId = parsedResp.sessionId || '';
-        const cookieHeader = headers['set-cookie']?.map(c => c.split(';')[0]).join('; ') || '';
-
-        const checkResp = await this.fetch('https://setup.icloud.com/setup/fetch', {
-            method: 'GET',
-            headers: {
-                'User-Agent': this.Headers['User-Agent'],
-                'X-Apple-ID-Session-Id': sessionId,
-                'Cookie': cookieHeader
-            }
+        const dataJson = {
+            appleId: email,
+            attempt: mfa ? 2 : 4,
+            createSession: 'true',
+            guid: this.guid,
+            password: `${password}${mfa ?? ''}`,
+            rmp: 0,
+            why: 'signIn',
+        };
+        const body = plist.build(dataJson);
+        const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
+        const resp = await this.fetch(url, {
+            method: 'POST',
+            body,
+            headers: this.Headers
         });
 
-        if (checkResp.status === 200) {
-            parsedResp._state = '2fa_required';
-        } else if (checkResp.status === 401) {
-            parsedResp._state = 'failure';
-            parsedResp.failureType = 'bad_credentials';
-            parsedResp.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
-        }
-    }
+        const parsedResp = plist.parse(await resp.text());
+        const headers = resp.headers.raw();
 
-    return {
-        ...parsedResp,
-        _state: parsedResp._state || (parsedResp.failureType ? 'failure' : 'success'),
-        headers
-    };
+        const isAmbiguous = (
+            parsedResp._state === 'success' &&
+            !parsedResp.dsPersonId &&
+            parsedResp.customerMessage?.includes('MZFinance.BadLogin.Configurator_message')
+        );
+
+        if (isAmbiguous) {
+            const sessionId = parsedResp.sessionId || '';
+            const cookieHeader = headers['set-cookie']?.map(c => c.split(';')[0]).join('; ') || '';
+
+            const checkResp = await this.fetch('https://setup.icloud.com/setup/fetch', {
+                method: 'GET',
+                headers: {
+                    'User-Agent': this.Headers['User-Agent'],
+                    'X-Apple-ID-Session-Id': sessionId,
+                    'Cookie': cookieHeader
+                }
+            });
+
+            if (checkResp.status === 200) {
+                parsedResp._state = '2fa_required';
+            } else if (checkResp.status === 401) {
+                parsedResp._state = 'failure';
+                parsedResp.failureType = 'bad_credentials';
+                parsedResp.customerMessage = '❌ Sai Apple ID hoặc mật khẩu';
+            }
+        }
+
+        return {
+            ...parsedResp,
+            _state: parsedResp._state || (parsedResp.failureType ? 'failure' : 'success'),
+            headers
+        };
+    }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
