@@ -25,48 +25,45 @@ const s3Client = new S3Client({
 });
 
 // Middleware
-app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
-});
-
-// Serve index.html
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// Auth endpoint
+// Auth endpoint (giữ nguyên)
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
+
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
 
     const needs2FA = (
       user.customerMessage?.toLowerCase().includes('mã xác minh') ||
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.failureType?.toLowerCase().includes('mfa')
+      user.customerMessage?.includes('Configurator_message')
     );
 
-    // SỬA LỖI: Luôn trả về require2FA nếu cần
-    if (needs2FA) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
-        require2FA: true,  // Đảm bảo có trường này
+        require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
     if (user._state === 'success') {
       return res.json({
         success: true,
-        require2FA: false,  // Thêm trường này để rõ ràng
-        dsid: user.dsPersonId
+        dsid: user.dsPersonId,
+        debug: debugLog
       });
     }
 
@@ -79,92 +76,130 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-// Verify 2FA endpoint
+// Verify endpoint (GIỮ NGUYÊN từ file gốc)
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    res.json({ success: true, dsid: user.dsPersonId });
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
+    });
   }
 });
 
-// Download endpoint with R2 integration
+// Download endpoint (TÍCH HỢP R2)
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     
-    // Authenticate and get app info
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE || undefined);
-    const app = await Store.download(APPID, appVerId, user);
-    
-    if (!app.songList?.[0]?.metadata) {
-      throw new Error('Failed to get app information');
+    if (!APPLE_ID || !PASSWORD || !APPID) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Required fields are missing' 
+      });
     }
 
-    const appInfo = {
-      name: app.songList[0].metadata.bundleDisplayName,
-      artist: app.songList[0].metadata.artistName,
-      version: app.songList[0].metadata.bundleShortVersionString,
-      bundleId: app.songList[0].metadata.softwareVersionBundleId,
-      releaseDate: app.songList[0].metadata.releaseDate
-    };
+    // Tạo thư mục tạm
+    const tempDir = path.join(__dirname, 'temp', uuidv4());
+    await fsPromises.mkdir(tempDir, { recursive: true });
 
-    // Generate unique filename
-    const fileName = `${appInfo.name.replace(/[^a-z0-9]/gi, '_')}_${appInfo.version}_${uuidv4().slice(0, 8)}.ipa`;
-    
-    // Upload to R2
-    const ipaResponse = await fetch(app.songList[0].URL, { agent: new Agent({ rejectUnauthorized: false }) });
+    // Gọi hàm downipa gốc
+    const result = await ipaTool.downipa({
+      path: tempDir,
+      APPLE_ID,
+      PASSWORD,
+      CODE,
+      APPID,
+      appVerId
+    });
+
+    // Xử lý 2FA nếu cần (GIỮ NGUYÊN từ file gốc)
+    if (result.require2FA) {
+      return res.json({
+        success: false,
+        require2FA: true,
+        message: result.message
+      });
+    }
+
+    // Upload lên R2
+    const fileData = await fsPromises.readFile(result.filePath);
+    const r2FileName = `${result.fileName}`;
     await s3Client.send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
-      Key: fileName,
-      Body: ipaResponse.body,
+      Key: r2FileName,
+      Body: fileData,
       ContentType: 'application/octet-stream'
     }));
 
-    // Generate install plist
-    const plistContent = generatePlistContent(fileName, appInfo);
-    const plistFileName = `${fileName.split('.')[0]}.plist`;
+    // Tạo plist
+    const plistContent = generatePlistContent(r2FileName, result.appInfo);
+    const plistName = `${r2FileName.split('.')[0]}.plist`;
     await s3Client.send(new PutObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
-      Key: plistFileName,
+      Key: plistName,
       Body: plistContent,
       ContentType: 'application/xml'
     }));
 
-    // Schedule cleanup after 5 minutes
+    // Tự động xóa sau 5 phút
     setTimeout(async () => {
-      await s3Client.send(new DeleteObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key: fileName
-      }));
-      await s3Client.send(new DeleteObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key: plistFileName
-      }));
+      try {
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME,
+          Key: r2FileName
+        }));
+        await s3Client.send(new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME,
+          Key: plistName
+        }));
+      } catch (err) {
+        console.error('Error cleaning R2:', err);
+      }
     }, 5 * 60 * 1000);
+
+    // Xóa file tạm
+    await fsPromises.rm(tempDir, { recursive: true, force: true });
 
     res.json({
       success: true,
-      downloadUrl: `https://file.storeios.net/${fileName}`,
-      installUrl: `itms-services://?action=download-manifest&url=https://file.storeios.net/${plistFileName}`,
-      fileName,
-      appInfo
+      downloadUrl: `https://file.storeios.net/${r2FileName}`,
+      installUrl: `itms-services://?action=download-manifest&url=https://file.storeios.net/${plistName}`,
+      fileName: result.fileName,
+      appInfo: result.appInfo
     });
 
   } catch (error) {
     console.error('Download error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Download failed'
+    });
   }
 });
 
-// Helper function to generate plist content
+// Hàm phụ tạo plist (giữ nguyên từ code gốc)
 function generatePlistContent(fileName, appInfo) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -198,6 +233,46 @@ function generatePlistContent(fileName, appInfo) {
 </dict>
 </plist>`;
 }
+
+    const plistName = `${r2FileName.split('.')[0]}.plist`;
+    await s3Client.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: plistName,
+      Body: plistContent,
+      ContentType: 'application/xml'
+    }));
+
+    // Tự động xóa sau 5 phút
+    setTimeout(async () => {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: r2FileName
+      }));
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: plistName
+      }));
+    }, 5 * 60 * 1000);
+
+    // Xóa file tạm
+    await fsPromises.rm(tempDir, { recursive: true, force: true });
+
+    res.json({
+      success: true,
+      downloadUrl: `https://file.storeios.net/${r2FileName}`,
+      installUrl: `itms-services://?action=download-manifest&url=https://file.storeios.net/${plistName}`,
+      fileName: result.fileName,
+      appInfo: result.appInfo
+    });
+
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 
 // Reset endpoint
 app.post('/reset', (req, res) => {

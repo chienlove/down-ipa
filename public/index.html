@@ -7,31 +7,31 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
   <style>
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    .slide-up { animation: slideUp 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     .progress-bar {
       height: 4px;
       background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #3b82f6 100%);
       background-size: 200% 100%;
+      transition: width 0.3s;
     }
     .password-toggle { right: 10px; top: 50%; transform: translateY(-50%); }
-    .option-button {
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .toast {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      color: white;
+      z-index: 50;
+      animation: toast-in 0.3s, toast-out 0.5s 2.5s forwards;
     }
-    .option-button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    }
+    .toast-success { background-color: #10B981; }
+    .toast-error { background-color: #EF4444; }
+    @keyframes toast-in { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes toast-out { to { opacity: 0; } }
   </style>
 </head>
-<body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
-  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
-    <!-- Progress bar -->
+<body class="bg-gray-50 min-h-screen p-4">
+  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
     <div id="progressBar" class="progress-bar w-0"></div>
     
     <div class="p-6 space-y-6">
@@ -39,114 +39,68 @@
         🚀 IPADL Pro
       </h1>
 
-      <!-- Security notice -->
-      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg fade-in">
-        <div class="flex">
-          <div class="flex-shrink-0 text-yellow-400">
-            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-          </div>
-          <div class="ml-3">
-            <p class="text-sm text-yellow-700">
-              <strong>Lưu ý bảo mật:</strong> Chúng tôi không lưu trữ thông tin đăng nhập của bạn. Mọi thông tin chỉ được sử dụng để xác thực với Apple và sẽ bị xóa ngay sau khi hoàn tất.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Step 1: Apple ID Login -->
-      <div id="step1" class="space-y-4 animate__animated animate__fadeIn">
+      <!-- Step 1: Login -->
+      <div id="step1" class="space-y-4">
         <div class="space-y-1">
           <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
-          <input id="APPLE_ID" name="APPLE_ID" required type="email"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="your@appleid.com"
-            autocomplete="username">
+          <input id="APPLE_ID" type="email" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="your@appleid.com" autocomplete="username">
         </div>
 
         <div class="space-y-1 relative">
-          <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
+          <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu</label>
           <div class="relative">
-            <input id="PASSWORD" name="PASSWORD" required type="password"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-12"
-              placeholder="••••••••"
-              autocomplete="current-password">
-            <button type="button" id="togglePassword" class="absolute password-toggle text-gray-500 hover:text-gray-700">
+            <input id="PASSWORD" type="password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 pr-12" placeholder="••••••••" autocomplete="current-password">
+            <button id="togglePassword" class="absolute password-toggle text-gray-500">
               <svg id="eyeIcon" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
               </svg>
             </button>
           </div>
-          <p class="text-xs text-gray-500">Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.</p>
         </div>
 
-        <button id="loginBtn"
-          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+        <button id="loginBtn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 font-semibold">
           Đăng nhập
         </button>
       </div>
 
-      <!-- Step 2: 2FA Verification -->
+      <!-- Step 2: 2FA -->
       <div id="step2" class="hidden space-y-4">
-        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg slide-up">
-          <div class="flex">
-            <div class="flex-shrink-0 text-blue-500">
-              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clip-rule="evenodd"/>
-              </svg>
-            </div>
-            <div class="ml-3">
-              <p id="verifyMessage" class="text-sm text-blue-700">
-                Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn
-              </p>
-            </div>
-          </div>
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+          <p id="verifyMessage" class="text-sm text-blue-700">
+            Vui lòng nhập mã xác minh 6 chữ số
+          </p>
         </div>
 
         <div class="space-y-1">
-          <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
-          <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="123456"
-            maxlength="6"
-            inputmode="numeric"
-            pattern="\d{6}">
+          <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh</label>
+          <input id="VERIFICATION_CODE" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="123456" maxlength="6" inputmode="numeric">
         </div>
 
-        <button id="verifyBtn"
-          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+        <button id="verifyBtn" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 font-semibold">
           Xác thực
         </button>
       </div>
 
-      <!-- Step 3: App Download -->
+      <!-- Step 3: Download -->
       <div id="step3" class="hidden space-y-4">
         <div class="space-y-1">
-          <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL App Store</label>
-          <input id="APPID" name="APPID" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789">
-          <p class="text-xs text-gray-500">Nhập ID ứng dụng (số) hoặc URL từ App Store</p>
+          <label for="APPID" class="block text-sm font-medium text-gray-700">App ID</label>
+          <input id="APPID" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="123456789">
         </div>
 
         <div class="space-y-1">
-          <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">Phiên bản ứng dụng (tùy chọn)</label>
-          <input id="APP_VER_ID" name="APP_VER_ID"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="Nhập nếu muốn tải phiên bản cụ thể">
-          <p class="text-xs text-gray-500">Để trống nếu muốn tải phiên bản mới nhất</p>
+          <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">Phiên bản (tùy chọn)</label>
+          <input id="APP_VER_ID" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Để trống nếu muốn bản mới nhất">
         </div>
 
-        <button id="downloadBtn"
-          class="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-green-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+        <button id="downloadBtn" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 font-semibold">
           📥 Tải IPA
         </button>
       </div>
 
-      <!-- Result Display -->
-      <div id="result" class="hidden border-t pt-6 space-y-4 slide-up">
+      <!-- Result -->
+      <div id="result" class="hidden border-t pt-6 space-y-4">
         <h2 class="text-xl font-bold text-gray-800">🎉 Tải thành công!</h2>
         
         <div class="bg-gray-50 p-4 rounded-lg space-y-2">
@@ -173,25 +127,22 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <!-- Tải về IPA -->
-          <a id="downloadIPA" class="option-button bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold">
-            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <a id="downloadIPA" class="bg-blue-600 text-white py-3 px-4 rounded-lg text-center font-semibold hover:bg-blue-700">
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
             </svg>
             Tải IPA
           </a>
 
-          <!-- Cài đặt -->
-          <button id="installBtn" class="option-button bg-green-600 text-white py-3 px-4 rounded-lg font-semibold">
-            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button id="installBtn" class="bg-green-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-green-700">
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
             </svg>
             Cài đặt
           </button>
 
-          <!-- Tải ứng dụng khác -->
-          <button id="resetBtn" class="option-button bg-gray-600 text-white py-3 px-4 rounded-lg font-semibold">
-            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button id="resetBtn" class="bg-gray-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-700">
+            <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
             Tải ứng dụng khác
@@ -199,7 +150,7 @@
         </div>
       </div>
 
-      <!-- Error Display -->
+      <!-- Error -->
       <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
         <div class="flex">
           <div class="flex-shrink-0 text-red-500">
