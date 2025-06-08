@@ -225,7 +225,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
   setProgress(1);
 
   try {
-    const response = await fetch('/auth', {
+    const response = await fetch('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ APPLE_ID, PASSWORD })
