@@ -407,11 +407,37 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
       resetBtn.addEventListener('click', () => location.reload());
       downloadLink.parentNode.appendChild(resetBtn);
+
+      const installBtn = document.createElement('a');
+      installBtn.textContent = '📲 Cài trực tiếp';
+      installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      installBtn.href = data.installUrl;
+      installBtn.target = '_blank';
+      downloadLink.parentNode.appendChild(installBtn);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = '🔁 Tải ứng dụng khác';
+      resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      resetBtn.addEventListener('click', () => location.reload());
+      downloadLink.parentNode.appendChild(resetBtn);
     
 
 const downloadLink = document.getElementById('downloadLink');
 downloadLink.href = data.downloadUrl;
 downloadLink.download = data.fileName;
+      const installBtn = document.createElement('a');
+      installBtn.textContent = '📲 Cài trực tiếp';
+      installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      installBtn.href = data.installUrl;
+      installBtn.target = '_blank';
+      downloadLink.parentNode.appendChild(installBtn);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.textContent = '🔁 Tải ứng dụng khác';
+      resetBtn.className = 'inline-flex items-center justify-center w-full bg-gray-600 text-white py-3 px-4 rounded-lg hover:bg-gray-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
+      resetBtn.addEventListener('click', () => location.reload());
+      downloadLink.parentNode.appendChild(resetBtn);
+
       const installBtn = document.createElement('a');
       installBtn.textContent = '📲 Cài trực tiếp';
       installBtn.className = 'inline-flex items-center justify-center w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 font-semibold shadow-md hover:shadow-lg mt-2';
