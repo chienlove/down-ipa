@@ -16,7 +16,7 @@ const port = process.env.PORT || 5004;
 // R2 Configuration
 const s3Client = new S3Client({
   region: 'auto',
-  endpoint: 'https://file.storeios.net',
+  endpoint: process.env.R2_ENDPOINT || 'https://your.r2.endpoint.com',
   forcePathStyle: true,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY,
@@ -127,7 +127,7 @@ app.post('/download', async (req, res) => {
               <key>kind</key>
               <string>software-package</string>
               <key>url</key>
-              <string>https://file.storeios.net/${r2FileName}</string>
+              <string>${process.env.R2_PUBLIC_URL}/${r2FileName}</string>
             </dict>
           </array>
           <key>metadata</key>
@@ -171,8 +171,8 @@ app.post('/download', async (req, res) => {
 
     res.json({
       success: true,
-      downloadUrl: `https://file.storeios.net/${r2FileName}`,
-      installUrl: `itms-services://?action=download-manifest&url=https://file.storeios.net/${plistName}`,
+      downloadUrl: `${process.env.R2_PUBLIC_URL}/${r2FileName}`,
+      installUrl: `itms-services://?action=download-manifest&url=${process.env.R2_PUBLIC_URL}/${plistName}`,
       fileName: result.fileName,
       appInfo: result.appInfo
     });

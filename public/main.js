@@ -84,7 +84,6 @@ document.addEventListener('DOMContentLoaded', () => {
     state.requires2FA = true;
     state.dsid = responseData.dsid;
     elements.verifyMessage.textContent = responseData.message || 'Vui lòng nhập mã xác minh 6 chữ số';
-    elements.step2.style.display = 'block';
     transition(elements.step1, elements.step2);
     setProgress(2);
   };
