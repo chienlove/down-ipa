@@ -1,4 +1,16 @@
-import express from 'express';
+import express from 'expre
+
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+
+const r2 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ENDPOINT}`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY,
+    secretAccessKey: process.env.R2_SECRET_KEY,
+  },
+});
+ss';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
