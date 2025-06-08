@@ -233,7 +233,10 @@ app.post('/auth', async (req, res) => {
     );
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
+          const plistKey = fileName.replace(/\.ipa$/, '.plist');
+    const installUrl = `https://${process.env.R2_CUSTOM_DOMAIN}/${plistKey}`;
+return res.json({
+      installUrl,
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
@@ -243,6 +246,7 @@ app.post('/auth', async (req, res) => {
 
     if (user._state === 'success') {
       return res.json({
+      installUrl,
         success: true,
         dsid: user.dsPersonId,
         debug: debugLog
@@ -314,6 +318,7 @@ app.post('/download', async (req, res) => {
 
     if (result.require2FA) {
       return res.json({
+      installUrl,
         success: false,
         require2FA: true,
         message: result.message
