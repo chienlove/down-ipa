@@ -205,12 +205,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (state.requires2FA && !state.verified2FA) {
-      showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
-      setLoading(false);
-      elements.step2.style.display = 'block';
-      transition(elements.step3, elements.step2);
-      return;
-    }
+  showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
+  setLoading(false);
+  elements.step2.style.display = 'block';
+  elements.step2.classList.remove('hidden');
+  elements.step3.classList.add('hidden');
+  return;
+}
 
     setProgress(3);
 
