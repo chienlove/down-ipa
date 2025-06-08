@@ -34,61 +34,34 @@ app.post('/auth', async (req, res) => {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId
-    };
-
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
-
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
+        message: user.customerMessage || '2FA verification required',
+        dsid: user.dsPersonId
       });
     }
 
     if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
+      return res.json({ 
+        success: true, 
+        dsid: user.dsPersonId 
       });
     }
 
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    throw new Error(user.customerMessage || 'Authentication failed');
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Lỗi xác thực Apple ID'
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
   }
 });
 
-// Verify endpoint (GIỮ NGUYÊN từ file gốc)
+// Verify endpoint (giữ nguyên)
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
@@ -100,41 +73,28 @@ app.post('/verify', async (req, res) => {
       dsid: user.dsPersonId
     });
   } catch (error) {
-    console.error('Verify error:', error);
     res.status(500).json({ 
       success: false, 
-      error: error.message || 'Verification error' 
+      error: error.message 
     });
   }
 });
 
-// Download endpoint (TÍCH HỢP R2)
+// Download endpoint (tích hợp R2)
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     
-    if (!APPLE_ID || !PASSWORD || !APPID) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Required fields are missing' 
-      });
-    }
-
     // Tạo thư mục tạm
     const tempDir = path.join(__dirname, 'temp', uuidv4());
     await fsPromises.mkdir(tempDir, { recursive: true });
 
     // Gọi hàm downipa gốc
-    const result = await ipaTool.downipa({
-      path: tempDir,
-      APPLE_ID,
-      PASSWORD,
-      CODE,
-      APPID,
-      appVerId
+    const result = await Store.download(APPID, appVerId, {
+      APPLE_ID, PASSWORD, CODE,
+      dsPersonId: req.body.dsid
     });
 
-    // Xử lý 2FA nếu cần (GIỮ NGUYÊN từ file gốc)
     if (result.require2FA) {
       return res.json({
         success: false,
@@ -154,85 +114,37 @@ app.post('/download', async (req, res) => {
     }));
 
     // Tạo plist
-    const plistContent = generatePlistContent(r2FileName, result.appInfo);
-    const plistName = `${r2FileName.split('.')[0]}.plist`;
-    await s3Client.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: plistName,
-      Body: plistContent,
-      ContentType: 'application/xml'
-    }));
-
-    // Tự động xóa sau 5 phút
-    setTimeout(async () => {
-      try {
-        await s3Client.send(new DeleteObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key: r2FileName
-        }));
-        await s3Client.send(new DeleteObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key: plistName
-        }));
-      } catch (err) {
-        console.error('Error cleaning R2:', err);
-      }
-    }, 5 * 60 * 1000);
-
-    // Xóa file tạm
-    await fsPromises.rm(tempDir, { recursive: true, force: true });
-
-    res.json({
-      success: true,
-      downloadUrl: `https://file.storeios.net/${r2FileName}`,
-      installUrl: `itms-services://?action=download-manifest&url=https://file.storeios.net/${plistName}`,
-      fileName: result.fileName,
-      appInfo: result.appInfo
-    });
-
-  } catch (error) {
-    console.error('Download error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Download failed'
-    });
-  }
-});
-
-// Hàm phụ tạo plist (giữ nguyên từ code gốc)
-function generatePlistContent(fileName, appInfo) {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>items</key>
-  <array>
+    const plistContent = `<?xml version="1.0"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
     <dict>
-      <key>assets</key>
+      <key>items</key>
       <array>
         <dict>
-          <key>kind</key>
-          <string>software-package</string>
-          <key>url</key>
-          <string>https://file.storeios.net/${fileName}</string>
+          <key>assets</key>
+          <array>
+            <dict>
+              <key>kind</key>
+              <string>software-package</string>
+              <key>url</key>
+              <string>https://file.storeios.net/${r2FileName}</string>
+            </dict>
+          </array>
+          <key>metadata</key>
+          <dict>
+            <key>bundle-identifier</key>
+            <string>${result.appInfo.bundleId}</string>
+            <key>bundle-version</key>
+            <string>${result.appInfo.version}</string>
+            <key>kind</key>
+            <string>software</string>
+            <key>title</key>
+            <string>${result.appInfo.name}</string>
+          </dict>
         </dict>
       </array>
-      <key>metadata</key>
-      <dict>
-        <key>bundle-identifier</key>
-        <string>${appInfo.bundleId}</string>
-        <key>bundle-version</key>
-        <string>${appInfo.version}</string>
-        <key>kind</key>
-        <string>software</string>
-        <key>title</key>
-        <string>${appInfo.name}</string>
-      </dict>
     </dict>
-  </array>
-</dict>
-</plist>`;
-}
+    </plist>`;
 
     const plistName = `${r2FileName.split('.')[0]}.plist`;
     await s3Client.send(new PutObjectCommand({
