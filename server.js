@@ -10,6 +10,18 @@ import { Agent } from 'https';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+
+const R2 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+  }
+});
+const R2_BUCKET = process.env.R2_BUCKET;
 const app = express();
 const port = process.env.PORT || 5004;
 
@@ -233,10 +245,7 @@ app.post('/auth', async (req, res) => {
     );
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-          const plistKey = fileName.replace(/\.ipa$/, '.plist');
-    const installUrl = `https://${process.env.R2_CUSTOM_DOMAIN}/${plistKey}`;
-return res.json({
-      installUrl,
+      return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
@@ -245,12 +254,60 @@ return res.json({
     }
 
     if (user._state === 'success') {
-      return res.json({
-      installUrl,
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
+      return 
+    const fileStream = fs.createReadStream(result.filePath);
+    const r2Key = `ipas/${result.fileName}`;
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: r2Key,
+      Body: fileStream,
+      ContentType: 'application/octet-stream'
+    }));
+    const r2Url = `${process.env.R2_ENDPOINT}/${r2Key}`;
+
+    setTimeout(async () => {
+      try {
+        await R2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }));
+        console.log(`🗑️ Deleted from R2: ${r2Key}`);
+      } catch (err) {
+        console.error('R2 Delete error:', err.message);
+      }
+    }, 5 * 60 * 1000);
+
+    const plistKey = r2Key.replace('.ipa', '.plist');
+    const plistUrl = `${process.env.R2_ENDPOINT}/${plistKey}`;
+    const installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
+
+    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>items</key><array><dict>
+  <key>assets</key><array><dict>
+    <key>kind</key><string>software-package</string>
+    <key>url</key><string>${r2Url}</string>
+  </dict></array>
+  <key>metadata</key><dict>
+    <key>bundle-identifier</key><string>${result.appInfo.bundleId}</string>
+    <key>bundle-version</key><string>${result.appInfo.version}</string>
+    <key>kind</key><string>software</string>
+    <key>title</key><string>${result.appInfo.name}</string>
+  </dict>
+</dict></array></dict></plist>`;
+
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: plistKey,
+      Body: Buffer.from(plistContent, 'utf-8'),
+      ContentType: 'application/xml'
+    }));
+
+    res.json({
+      success: true,
+      downloadUrl: r2Url,
+      fileName: result.fileName,
+      appInfo: result.appInfo,
+      installUrl
+    });
+
     }
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
@@ -280,10 +337,60 @@ app.post('/verify', async (req, res) => {
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    res.json({ 
+    
+    const fileStream = fs.createReadStream(result.filePath);
+    const r2Key = `ipas/${result.fileName}`;
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: r2Key,
+      Body: fileStream,
+      ContentType: 'application/octet-stream'
+    }));
+    const r2Url = `${process.env.R2_ENDPOINT}/${r2Key}`;
+
+    setTimeout(async () => {
+      try {
+        await R2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }));
+        console.log(`🗑️ Deleted from R2: ${r2Key}`);
+      } catch (err) {
+        console.error('R2 Delete error:', err.message);
+      }
+    }, 5 * 60 * 1000);
+
+    const plistKey = r2Key.replace('.ipa', '.plist');
+    const plistUrl = `${process.env.R2_ENDPOINT}/${plistKey}`;
+    const installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
+
+    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>items</key><array><dict>
+  <key>assets</key><array><dict>
+    <key>kind</key><string>software-package</string>
+    <key>url</key><string>${r2Url}</string>
+  </dict></array>
+  <key>metadata</key><dict>
+    <key>bundle-identifier</key><string>${result.appInfo.bundleId}</string>
+    <key>bundle-version</key><string>${result.appInfo.version}</string>
+    <key>kind</key><string>software</string>
+    <key>title</key><string>${result.appInfo.name}</string>
+  </dict>
+</dict></array></dict></plist>`;
+
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: plistKey,
+      Body: Buffer.from(plistContent, 'utf-8'),
+      ContentType: 'application/xml'
+    }));
+
+    res.json({
       success: true,
-      dsid: user.dsPersonId
+      downloadUrl: r2Url,
+      fileName: result.fileName,
+      appInfo: result.appInfo,
+      installUrl
     });
+
   } catch (error) {
     console.error('Verify error:', error);
     res.status(500).json({ 
@@ -318,7 +425,6 @@ app.post('/download', async (req, res) => {
 
     if (result.require2FA) {
       return res.json({
-      installUrl,
         success: false,
         require2FA: true,
         message: result.message
@@ -335,12 +441,60 @@ app.post('/download', async (req, res) => {
       }
     }, 30 * 60 * 1000);
 
+    
+    const fileStream = fs.createReadStream(result.filePath);
+    const r2Key = `ipas/${result.fileName}`;
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: r2Key,
+      Body: fileStream,
+      ContentType: 'application/octet-stream'
+    }));
+    const r2Url = `${process.env.R2_ENDPOINT}/${r2Key}`;
+
+    setTimeout(async () => {
+      try {
+        await R2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }));
+        console.log(`🗑️ Deleted from R2: ${r2Key}`);
+      } catch (err) {
+        console.error('R2 Delete error:', err.message);
+      }
+    }, 5 * 60 * 1000);
+
+    const plistKey = r2Key.replace('.ipa', '.plist');
+    const plistUrl = `${process.env.R2_ENDPOINT}/${plistKey}`;
+    const installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
+
+    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>items</key><array><dict>
+  <key>assets</key><array><dict>
+    <key>kind</key><string>software-package</string>
+    <key>url</key><string>${r2Url}</string>
+  </dict></array>
+  <key>metadata</key><dict>
+    <key>bundle-identifier</key><string>${result.appInfo.bundleId}</string>
+    <key>bundle-version</key><string>${result.appInfo.version}</string>
+    <key>kind</key><string>software</string>
+    <key>title</key><string>${result.appInfo.name}</string>
+  </dict>
+</dict></array></dict></plist>`;
+
+    await R2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: plistKey,
+      Body: Buffer.from(plistContent, 'utf-8'),
+      ContentType: 'application/xml'
+    }));
+
     res.json({
       success: true,
-      downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
+      downloadUrl: r2Url,
       fileName: result.fileName,
-      appInfo: result.appInfo
+      appInfo: result.appInfo,
+      installUrl
     });
+
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({
