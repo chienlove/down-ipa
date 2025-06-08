@@ -1,16 +1,4 @@
-import express from 'expre
-
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
-
-const r2 = new S3Client({
-  region: "auto",
-  endpoint: `https://${process.env.R2_ENDPOINT}`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY,
-    secretAccessKey: process.env.R2_SECRET_KEY,
-  },
-});
-ss';
+import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
@@ -342,14 +330,11 @@ app.post('/download', async (req, res) => {
       }
     }, 30 * 60 * 1000);
 
-        const plistKey = result.fileName.replace(/\.ipa$/, '.plist');
-    const installUrl = `https://${process.env.R2_ENDPOINT}/${plistKey}`;
     res.json({
       success: true,
       downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
       fileName: result.fileName,
-      appInfo: result.appInfo,
-      installUrl
+      appInfo: result.appInfo
     });
   } catch (error) {
     console.error('Download error:', error);
