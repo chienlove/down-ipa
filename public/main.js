@@ -240,7 +240,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       }
 
       // Xử lý 2FA bắt buộc
-      if ((data.require2FA || data.authType === '2fa') && data.success) {
+      if (data.success && (data.require2FA || data.authType === '2fa')) {
         handle2FARedirect(data);
         return;
       }
