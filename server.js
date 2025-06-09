@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 5004;
 
-// R2 Configuration - THÊM VÀO
+// R2 Configuration
 const R2_ENDPOINT = 'https://file.storeios.net';
 const r2Client = new S3Client({
   region: 'auto',
@@ -26,33 +26,51 @@ const r2Client = new S3Client({
   forcePathStyle: true
 });
 
-// R2 Helper Functions - THÊM VÀO
+// R2 Helper Functions
 async function uploadToR2({ key, filePath, contentType }) {
-  const fileContent = await fsPromises.readFile(filePath);
-  const command = new PutObjectCommand({
-    Bucket: 'file',
-    Key: key,
-    Body: fileContent,
-    ContentType: contentType
-  });
-  await r2Client.send(command);
+  try {
+    console.log(`Preparing to upload to R2: ${key}`);
+    const fileContent = await fsPromises.readFile(filePath);
+    console.log(`File read successfully, size: ${fileContent.length} bytes`);
+
+    const command = new PutObjectCommand({
+      Bucket: 'file',
+      Key: key,
+      Body: fileContent,
+      ContentType: contentType
+    });
+
+    console.log('Sending upload command to R2...');
+    const result = await r2Client.send(command);
+    console.log('Upload successful:', result);
+    return result;
+  } catch (error) {
+    console.error('R2 upload error:', error);
+    throw error;
+  }
 }
 
 async function deleteFromR2(key) {
-  const command = new DeleteObjectCommand({
-    Bucket: 'file',
-    Key: key
-  });
-  await r2Client.send(command);
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: 'file',
+      Key: key
+    });
+    await r2Client.send(command);
+    console.log(`Successfully deleted ${key} from R2`);
+  } catch (error) {
+    console.error('R2 delete error:', error);
+    throw error;
+  }
 }
 
-// Middleware - GIỮ NGUYÊN
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// Health check endpoint - GIỮ NGUYÊN
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -61,19 +79,44 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Serve index.html - GIỮ NGUYÊN
+// R2 Connection Test Endpoint
+app.get('/check-r2', async (req, res) => {
+  try {
+    const testKey = `test-${Date.now()}.txt`;
+    const command = new PutObjectCommand({
+      Bucket: 'file',
+      Key: testKey,
+      Body: 'test content',
+      ContentType: 'text/plain'
+    });
+    
+    await r2Client.send(command);
+    await deleteFromR2(testKey);
+    
+    res.json({ success: true, message: 'R2 connection is working' });
+  } catch (error) {
+    console.error('R2 test error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      message: 'Failed to connect to R2' 
+    });
+  }
+});
+
+// Serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Constants - GIỮ NGUYÊN
+// Constants
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_CONCURRENT_DOWNLOADS = 10;
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 3000;
 const REQUEST_TIMEOUT = 15000; // 15 seconds
 
-// Helper functions - GIỮ NGUYÊN
+// Helper functions
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
@@ -221,7 +264,7 @@ class IPATool {
       await sigClient.appendMetadata().appendSignature();
       await sigClient.write();
 
-      // ========== R2 UPLOAD - THÊM VÀO ==========
+      // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
       let installUrl = null;
       let r2Success = false;
@@ -292,7 +335,6 @@ class IPATool {
       } catch (error) {
         console.error('R2 upload failed (using local file):', error);
       }
-      // ========== END R2 UPLOAD ==========
 
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
       console.log('Download completed successfully!');
@@ -314,7 +356,7 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// Authentication routes - GIỮ NGUYÊN
+// Authentication routes
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
@@ -333,10 +375,11 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
+      user.failureType?.toLowerCase().includes('mfa') ||
+      user.authType === '2fa'
     );
 
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+    if (needs2FA) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
@@ -465,6 +508,7 @@ app.use((err, req, res, next) => {
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
+  console.log(`R2 test endpoint: http://localhost:${port}/check-r2`);
 });
 
 const shutdown = () => {

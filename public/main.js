@@ -186,12 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.appIdInput.value = '';
     elements.appVerInput.value = '';
     
-    elements.step1.classList.add('hidden');
+    elements.step1.classList.remove('hidden');
     elements.step2.classList.add('hidden');
+    elements.step3.classList.add('hidden');
     elements.result.classList.add('hidden');
     
-    elements.step3.classList.remove('hidden');
-    setProgress(3);
+    setProgress(0);
   };
 
   const handle2FARedirect = (responseData) => {
@@ -401,7 +401,16 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
         
-        // Thêm nút cài đặt nếu có URL
+        // Clear existing action buttons if any
+        const existingButtons = document.querySelector('.action-buttons');
+        if (existingButtons) {
+          existingButtons.remove();
+        }
+
+        // Add action buttons
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'action-buttons';
+        
         if (data.installUrl) {
           const installButton = document.createElement('button');
           installButton.className = 'w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
@@ -414,29 +423,21 @@ document.addEventListener('DOMContentLoaded', () => {
           installButton.onclick = () => {
             window.location.href = data.installUrl;
           };
-          
-          const anotherAppButton = document.createElement('button');
-          anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
-          anotherAppButton.innerHTML = `
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            Tải ứng dụng khác
-          `;
-          anotherAppButton.onclick = resetForm;
-          
-          const actionButtons = document.createElement('div');
-          actionButtons.className = 'action-buttons';
           actionButtons.appendChild(installButton);
-          actionButtons.appendChild(anotherAppButton);
-          
-          const existingButtons = document.querySelector('.action-buttons');
-          if (existingButtons) {
-            existingButtons.replaceWith(actionButtons);
-          } else {
-            downloadLink.insertAdjacentElement('afterend', actionButtons);
-          }
         }
+
+        const anotherAppButton = document.createElement('button');
+        anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
+        anotherAppButton.innerHTML = `
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Tải ứng dụng khác
+        `;
+        anotherAppButton.onclick = resetForm;
+        actionButtons.appendChild(anotherAppButton);
+
+        document.getElementById('result').appendChild(actionButtons);
 
         transition(elements.step3, elements.result);
         setProgress(4);
