@@ -469,7 +469,9 @@ async function uploadIPAtoR2(ipaUrl, appId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ipaUrl, appId })
     });
+
     const data = await res.json();
+
     if (data.success) {
       document.getElementById("downloadLink").href = data.url;
       document.getElementById("result").classList.remove("hidden");
@@ -477,6 +479,7 @@ async function uploadIPAtoR2(ipaUrl, appId) {
       showError("Tải lên R2 thất bại: " + data.error);
     }
   } catch (e) {
+    console.error("Download error:", e);
     showError("Lỗi khi tải lên R2: " + e.message);
   }
 }
