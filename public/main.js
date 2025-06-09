@@ -109,7 +109,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   addStyles();
 
-  /* ========== CORE FUNCTIONS ========== */
   const showToast = (message, type = 'success') => {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
@@ -158,17 +157,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const setLoading = (loading) => {
     isLoading = loading;
-    const buttons = [elements.loginBtn, elements.verifyBtn, elements.downloadBtn];
-    
     if (loading) {
       elements.progressBar.classList.add('progress-loading');
-      buttons.forEach(btn => {
+      document.querySelectorAll('button').forEach(btn => {
         btn.classList.add('button-loading');
         btn.disabled = true;
       });
     } else {
       elements.progressBar.classList.remove('progress-loading');
-      buttons.forEach(btn => {
+      document.querySelectorAll('button').forEach(btn => {
         btn.classList.remove('button-loading');
         btn.disabled = false;
       });
@@ -189,10 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.appIdInput.value = '';
     elements.appVerInput.value = '';
     
-    // Reset to step 3 (download form) instead of step 1
     elements.step1.classList.add('hidden');
     elements.step2.classList.add('hidden');
     elements.result.classList.add('hidden');
+    
     elements.step3.classList.remove('hidden');
     setProgress(3);
   };
@@ -213,6 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
+    
     transition(elements.step1, elements.step2);
     setProgress(2);
   };
@@ -255,13 +253,14 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       const data = await response.json();
+      console.log('Auth response:', data);
 
       if (!response.ok) {
         showError(data.error || 'Lỗi từ máy chủ.');
         return;
       }
 
-      if (data.require2FA) {
+      if (data.require2FA || data.authType === '2fa') {
         handle2FARedirect(data);
         return;
       }
@@ -277,6 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showError(data.error || 'Đăng nhập thất bại');
       }
     } catch (error) {
+      console.error('Auth error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
@@ -312,6 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       const data = await response.json();
+      console.log('Verify response:', data);
 
       if (!response.ok) {
         showError(data.error || 'Xác minh thất bại.');
@@ -335,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showError(data.error || 'Mã xác minh không đúng.');
       }
     } catch (error) {
+      console.error('Verify error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
@@ -384,27 +386,22 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       const data = await response.json();
+      console.log('Download response:', data);
 
       if (data.require2FA) {
         handle2FARedirect(data);
       } else if (data.success) {
-        // Display app info
         document.getElementById('appName').textContent = data.appInfo.name;
         document.getElementById('appAuthor').textContent = data.appInfo.artist;
         document.getElementById('appVersion').textContent = data.appInfo.version;
         document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
         document.getElementById('appDate').textContent = data.appInfo.releaseDate;
         
-        // Update download link
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
         
-        // Create action buttons container
-        const actionButtons = document.createElement('div');
-        actionButtons.className = 'action-buttons';
-        
-        // Add install button if available
+        // Thêm nút cài đặt nếu có URL
         if (data.installUrl) {
           const installButton = document.createElement('button');
           installButton.className = 'w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
@@ -417,35 +414,37 @@ document.addEventListener('DOMContentLoaded', () => {
           installButton.onclick = () => {
             window.location.href = data.installUrl;
           };
+          
+          const anotherAppButton = document.createElement('button');
+          anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
+          anotherAppButton.innerHTML = `
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Tải ứng dụng khác
+          `;
+          anotherAppButton.onclick = resetForm;
+          
+          const actionButtons = document.createElement('div');
+          actionButtons.className = 'action-buttons';
           actionButtons.appendChild(installButton);
+          actionButtons.appendChild(anotherAppButton);
+          
+          const existingButtons = document.querySelector('.action-buttons');
+          if (existingButtons) {
+            existingButtons.replaceWith(actionButtons);
+          } else {
+            downloadLink.insertAdjacentElement('afterend', actionButtons);
+          }
         }
-        
-        // Add "Download Another App" button
-        const anotherAppButton = document.createElement('button');
-        anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
-        anotherAppButton.innerHTML = `
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Tải ứng dụng khác
-        `;
-        anotherAppButton.onclick = resetForm;
-        actionButtons.appendChild(anotherAppButton);
-        
-        // Update buttons in DOM
-        const existingButtons = document.querySelector('.action-buttons');
-        if (existingButtons) {
-          existingButtons.replaceWith(actionButtons);
-        } else {
-          downloadLink.insertAdjacentElement('afterend', actionButtons);
-        }
-        
+
         transition(elements.step3, elements.result);
         setProgress(4);
       } else {
         showError(data.error || 'Tải ứng dụng thất bại.');
       }
     } catch (error) {
+      console.error('Download error:', error);
       showError('Không thể kết nối tới máy chủ.');
     } finally {
       setLoading(false);
