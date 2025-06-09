@@ -26,7 +26,6 @@ const r2Client = new S3Client({
   forcePathStyle: true
 });
 
-// R2 Helper Functions
 async function uploadToR2({ key, filePath, contentType }) {
   const fileContent = await fsPromises.readFile(filePath);
   const command = new PutObjectCommand({
@@ -46,81 +45,7 @@ async function deleteFromR2(key) {
   await r2Client.send(command);
 }
 
-async function handleR2Upload(result, downloadPath) {
-  try {
-    const ipaKey = `ipas/${result.fileName}`;
-    await uploadToR2({
-      key: ipaKey,
-      filePath: result.filePath,
-      contentType: 'application/octet-stream'
-    });
-
-    const plistName = result.fileName.replace(/\.ipa$/, '.plist');
-    const plistPath = path.join(downloadPath, plistName);
-    const plistKey = `manifests/${plistName}`;
-
-    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>items</key>
-  <array>
-    <dict>
-      <key>assets</key>
-      <array>
-        <dict>
-          <key>kind</key>
-          <string>software-package</string>
-          <key>url</key>
-          <string>${R2_ENDPOINT}/${ipaKey}</string>
-        </dict>
-      </array>
-      <key>metadata</key>
-      <dict>
-        <key>bundle-identifier</key>
-        <string>${result.appInfo.bundleId}</string>
-        <key>bundle-version</key>
-        <string>${result.appInfo.version}</string>
-        <key>kind</key>
-        <string>software</string>
-        <key>title</key>
-        <string>${result.appInfo.name}</string>
-      </dict>
-    </dict>
-  </array>
-</dict>
-</plist>`;
-
-    await fsPromises.writeFile(plistPath, plistContent, 'utf8');
-    await uploadToR2({
-      key: plistKey,
-      filePath: plistPath,
-      contentType: 'application/xml'
-    });
-
-    // Tự xoá sau 5 phút
-    setTimeout(async () => {
-      try {
-        await deleteFromR2(ipaKey);
-        await deleteFromR2(plistKey);
-        console.log(`R2 cleanup done: ${ipaKey}, ${plistKey}`);
-      } catch (err) {
-        console.error('R2 cleanup failed:', err.message);
-      }
-    }, 5 * 60 * 1000);
-
-    return {
-      ipaUrl: `${R2_ENDPOINT}/${ipaKey}`,
-      plistUrl: `${R2_ENDPOINT}/${plistKey}`,
-      installUrl: `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_ENDPOINT}/${plistKey}`)}`
-    };
-  } catch (error) {
-    console.error('R2 upload failed (non-critical):', error);
-    return null;
-  }
-}
-
-// Middleware và các phần còn lại giữ nguyên...
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -186,46 +111,26 @@ async function downloadChunk({ url, start, end, output }) {
   }
 }
 
-async function clearCache(cacheDir) {
-  try {
-    const files = await fsPromises.readdir(cacheDir);
-    await Promise.all(files.map(file => fsPromises.unlink(path.join(cacheDir, file))));
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      console.error(`Cache clearance error: ${error.message}`);
-    }
-  }
-}
-
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}`);
 
     try {
-      console.log('Authenticating with Apple ID...');
+      // Authentication and app info fetching
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
       if (user._state !== 'success') {
         if (user.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: user.customerMessage || '2FA verification required'
-          };
+          return { require2FA: true, message: user.customerMessage || '2FA verification required' };
         }
         throw new Error(user.customerMessage || 'Authentication failed');
       }
 
-      console.log('Fetching app info...');
       const app = await Store.download(APPID, appVerId, user);
       const songList0 = app?.songList?.[0];
-
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: app.customerMessage || '2FA verification required'
-          };
+          return { require2FA: true, message: app.customerMessage || '2FA verification required' };
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
       }
@@ -238,44 +143,36 @@ class IPATool {
         releaseDate: songList0.metadata.releaseDate
       };
 
+      // Prepare download
       await fsPromises.mkdir(downloadPath, { recursive: true });
-      const uniqueString = uuidv4();
-      const outputFileName = `${appInfo.name.replace(/[^a-z0-9]/gi, '_')}_${appInfo.version}_${uniqueString}.ipa`;
+      const cleanAppName = appInfo.name.replace(/[^a-z0-9]/gi, '_');
+      const outputFileName = `${cleanAppName}_${appInfo.version}_${uuidv4()}.ipa`;
       const outputFilePath = path.join(downloadPath, outputFileName);
-      const cacheDir = path.join(downloadPath, 'cache');
 
-      await fsPromises.mkdir(cacheDir, { recursive: true });
-      await clearCache(cacheDir);
-
-      console.log('Downloading IPA file...');
-      const resp = await fetch(songList0.URL, { 
-        agent: new Agent({ rejectUnauthorized: false }) 
-      });
-      
+      // Download IPA
+      const resp = await fetch(songList0.URL, { agent: new Agent({ rejectUnauthorized: false }) });
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
       const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
-
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
+
+      // Download chunks
+      const cacheDir = path.join(downloadPath, 'cache');
+      await fsPromises.mkdir(cacheDir, { recursive: true });
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
         const tempOutput = path.join(cacheDir, `part${i}`);
-        return () => downloadChunk({ 
-          url: songList0.URL, 
-          start, 
-          end, 
-          output: tempOutput 
-        });
+        return () => downloadChunk({ url: songList0.URL, start, end, output: tempOutput });
       });
 
       for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
         await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
       }
 
-      console.log('Merging chunks...');
+      // Merge chunks
       const finalFile = createWriteStream(outputFilePath);
       for (let i = 0; i < numChunks; i++) {
         const tempOutput = path.join(cacheDir, `part${i}`);
@@ -289,113 +186,153 @@ class IPATool {
       }
       finalFile.end();
 
-      console.log('Signing IPA...');
+      // Sign IPA
       const sigClient = new SignatureClient(songList0, APPLE_ID);
       await sigClient.loadFile(outputFilePath);
       await sigClient.appendMetadata().appendSignature();
       await sigClient.write();
 
-      const result = {
-        appInfo,
-        fileName: outputFileName,
-        filePath: outputFilePath
-      };
+      // Upload to R2
+      const r2Result = await this.handleR2Upload(outputFilePath, outputFileName, appInfo);
 
-      // Thêm R2 upload nhưng không ảnh hưởng đến kết quả chính
-      const r2Result = await handleR2Upload(result, downloadPath);
-
+      // Cleanup
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
-      console.log('Download completed successfully!');
 
       return {
-        ...result,
-        ...(r2Result || {}),
-        r2UploadSuccess: !!r2Result
+        success: true,
+        appInfo,
+        fileName: outputFileName,
+        filePath: outputFilePath,
+        downloadUrl: r2Result?.ipaUrl || `/files/${path.basename(downloadPath)}/${outputFileName}`,
+        installUrl: r2Result?.installUrl,
+        hasInstallOption: !!r2Result?.installUrl
       };
     } catch (error) {
       console.error('Download error:', error);
       throw error;
     }
   }
+
+  async handleR2Upload(filePath, fileName, appInfo) {
+    try {
+      const ipaKey = `ipas/${fileName}`;
+      
+      // Upload IPA
+      await uploadToR2({
+        key: ipaKey,
+        filePath,
+        contentType: 'application/octet-stream'
+      });
+
+      // Create and upload PLIST
+      const plistName = fileName.replace(/\.ipa$/, '.plist');
+      const plistKey = `manifests/${plistName}`;
+      const plistContent = this.generatePlistContent(ipaKey, appInfo);
+      
+      const tempPlistPath = path.join(path.dirname(filePath), plistName);
+      await fsPromises.writeFile(tempPlistPath, plistContent, 'utf8');
+      
+      await uploadToR2({
+        key: plistKey,
+        filePath: tempPlistPath,
+        contentType: 'application/xml'
+      });
+
+      // Cleanup
+      await fsPromises.unlink(tempPlistPath);
+
+      // Auto-delete after 5 minutes
+      setTimeout(async () => {
+        try {
+          await deleteFromR2(ipaKey);
+          await deleteFromR2(plistKey);
+        } catch (err) {
+          console.error('R2 cleanup failed:', err.message);
+        }
+      }, 5 * 60 * 1000);
+
+      return {
+        ipaUrl: `${R2_ENDPOINT}/${ipaKey}`,
+        installUrl: `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_ENDPOINT}/${plistKey}`)}`
+      };
+    } catch (error) {
+      console.error('R2 upload failed (non-critical):', error);
+      return null;
+    }
+  }
+
+  generatePlistContent(ipaKey, appInfo) {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>items</key>
+  <array>
+    <dict>
+      <key>assets</key>
+      <array>
+        <dict>
+          <key>kind</key>
+          <string>software-package</string>
+          <key>url</key>
+          <string>${R2_ENDPOINT}/${ipaKey}</string>
+        </dict>
+      </array>
+      <key>metadata</key>
+      <dict>
+        <key>bundle-identifier</key>
+        <string>${appInfo.bundleId}</string>
+        <key>bundle-version</key>
+        <string>${appInfo.version}</string>
+        <key>kind</key>
+        <string>software</string>
+        <key>title</key>
+        <string>${appInfo.name}</string>
+      </dict>
+    </dict>
+  </array>
+</dict>
+</plist>`;
+  }
 }
 
 const ipaTool = new IPATool();
 
+// Routes
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId
-    };
-
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
-
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
+    if (user._state !== 'success') {
+      if (user.failureType?.toLowerCase().includes('mfa')) {
+        return res.json({
+          require2FA: true,
+          message: user.customerMessage || '2FA verification required',
+          dsid: user.dsPersonId
+        });
+      }
+      throw new Error(user.customerMessage || 'Authentication failed');
     }
 
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog
-      });
-    }
-
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+    res.json({ success: true, dsid: user.dsPersonId });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Lỗi xác thực Apple ID'
-    });
+    res.status(500).json({ success: false, error: error.message || 'Authentication error' });
   }
 });
 
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
+    res.json({ success: true, dsid: user.dsPersonId });
   } catch (error) {
-    console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
-    });
+    res.status(500).json({ success: false, error: error.message || 'Verification error' });
   }
 });
 
@@ -404,15 +341,10 @@ app.post('/download', async (req, res) => {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
     
     if (!APPLE_ID || !PASSWORD || !APPID) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Required fields are missing' 
-      });
+      return res.status(400).json({ success: false, error: 'Required fields are missing' });
     }
 
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
-    console.log(`Download request for app: ${APPID}`);
-
     const result = await ipaTool.downipa({
       path: uniqueDownloadPath,
       APPLE_ID,
@@ -430,40 +362,32 @@ app.post('/download', async (req, res) => {
       });
     }
 
+    // Cleanup after 30 minutes
     setTimeout(async () => {
       try {
         await fsPromises.unlink(result.filePath);
         await fsPromises.rm(uniqueDownloadPath, { recursive: true, force: true });
-        console.log(`Cleaned up: ${result.filePath}`);
       } catch (err) {
         console.error('Cleanup error:', err.message);
       }
     }, 30 * 60 * 1000);
 
-    const responseData = {
+    res.json({
       success: true,
-      downloadUrl: `/files/${path.basename(uniqueDownloadPath)}/${result.fileName}`,
       fileName: result.fileName,
       appInfo: result.appInfo,
-      ...(result.ipaUrl ? {
-        ipaUrl: result.ipaUrl,
-        plistUrl: result.plistUrl,
-        installUrl: result.installUrl
-      } : {})
-    };
-
-    res.json(responseData);
-  } catch (error) {
-    console.error('Download error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Download failed'
+      downloadUrl: result.downloadUrl,
+      installUrl: result.installUrl,
+      hasInstallOption: result.hasInstallOption
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message || 'Download failed' });
   }
 });
 
 app.use('/files', express.static(path.join(__dirname, 'app')));
 
+// Error handling
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
@@ -473,11 +397,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
+// Server startup
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
 });
 
+// Shutdown handling
 const shutdown = () => {
   console.log('Shutting down server...');
   server.close(() => {
@@ -490,46 +416,4 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled rejection:', err);
-});
-
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import axios from "axios";
-
-const s3 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-  },
-});
-
-app.post("/download-and-upload", async (req, res) => {
-  const { ipaUrl, appId } = req.body;
-
-  if (!ipaUrl || !appId) {
-    return res.status(400).json({ error: "Thiếu ipaUrl hoặc appId" });
-  }
-
-  try {
-    const response = await axios.get(ipaUrl, { responseType: "arraybuffer" });
-    const ipaBuffer = Buffer.from(response.data);
-
-    const fileKey = `ipas/${appId}-${Date.now()}.ipa`;
-
-    const upload = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: fileKey,
-      Body: ipaBuffer,
-      ContentType: "application/octet-stream",
-    });
-
-    await s3.send(upload);
-
-    const publicUrl = `${process.env.R2_ENDPOINT}/${fileKey}`;
-    res.json({ success: true, url: publicUrl });
-  } catch (error) {
-    console.error("Lỗi upload:", error.message);
-    res.status(500).json({ error: "Không thể upload lên R2" });
-  }
 });
