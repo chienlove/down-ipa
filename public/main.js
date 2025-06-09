@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
-    // Friendly error mapping
+    
     let message = responseData.message || '';
     if (message.includes('MZFinance.BadLogin.Configurator_message')) {
       message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
@@ -209,7 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     
-    // Force show step2
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
     
@@ -265,13 +264,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Xử lý 2FA bắt buộc
       if (data.require2FA || data.authType === '2fa') {
         handle2FARedirect(data);
         return;
       }
 
-      // Xử lý đăng nhập thành công không cần 2FA
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
@@ -333,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.dsid = data.dsid || state.dsid;
         showToast('Xác thực 2FA thành công!');
 
-        // Ẩn step2 hoàn toàn
         elements.step2.classList.add('hidden');
         elements.step2.style.display = 'none';
         elements.verificationCodeInput.value = '';
@@ -352,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Step 3: Download - With strict 2FA check
+  // Step 3: Download
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -369,12 +365,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Strict 2FA verification check
     if (state.requires2FA && !state.verified2FA) {
       showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
       setLoading(false);
       
-      // Auto-redirect to 2FA step
       elements.step2.style.display = 'block';
       elements.step2.classList.remove('hidden');
       transition(elements.step3, elements.step2);
@@ -403,32 +397,37 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.require2FA) {
         handle2FARedirect(data);
       } else if (data.success) {
-        // Display download result
         document.getElementById('appName').textContent = data.appInfo.name;
         document.getElementById('appAuthor').textContent = data.appInfo.artist;
         document.getElementById('appVersion').textContent = data.appInfo.version;
         document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
         document.getElementById('appDate').textContent = data.appInfo.releaseDate;
         
-        // Update download link
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
         
-        // Add install button
-        const installButton = document.createElement('button');
-        installButton.className = 'w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
-        installButton.innerHTML = `
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-          </svg>
-          Cài đặt trực tiếp
-        `;
-        installButton.onclick = () => {
-          window.location.href = data.installUrl;
-        };
+        // Tạo action buttons container
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'action-buttons';
         
-        // Add another app button
+        // Nếu có installUrl thì thêm nút cài đặt
+        if (data.installUrl) {
+          const installButton = document.createElement('button');
+          installButton.className = 'w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
+          installButton.innerHTML = `
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+            </svg>
+            Cài đặt trực tiếp
+          `;
+          installButton.onclick = () => {
+            window.location.href = data.installUrl;
+          };
+          actionButtons.appendChild(installButton);
+        }
+        
+        // Luôn thêm nút tải ứng dụng khác
         const anotherAppButton = document.createElement('button');
         anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
         anotherAppButton.innerHTML = `
@@ -438,16 +437,10 @@ document.addEventListener('DOMContentLoaded', () => {
           Tải ứng dụng khác
         `;
         anotherAppButton.onclick = resetForm;
-        
-        // Create action buttons container
-        const actionButtons = document.createElement('div');
-        actionButtons.className = 'action-buttons';
-        actionButtons.appendChild(installButton);
         actionButtons.appendChild(anotherAppButton);
         
-        // Insert action buttons after download link
-        const resultContainer = document.getElementById('result');
-        const existingButtons = resultContainer.querySelector('.action-buttons');
+        // Thay thế hoặc thêm action buttons
+        const existingButtons = document.querySelector('.action-buttons');
         if (existingButtons) {
           existingButtons.replaceWith(actionButtons);
         } else {
