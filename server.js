@@ -18,11 +18,12 @@ const port = process.env.PORT || 5004;
 const R2_ENDPOINT = 'https://file.storeios.net';
 const r2Client = new S3Client({
   region: 'auto',
-  endpoint: process.env.R2_ENDPOINT || 'https://<account-id>.r2.cloudflarestorage.com',
+  endpoint: R2_ENDPOINT, // Sử dụng domain custom trực tiếp
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-  }
+  },
+  forcePathStyle: true
 });
 
 // R2 Helper Functions
