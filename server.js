@@ -321,13 +321,82 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// Các routes khác giữ nguyên...
 app.post('/auth', async (req, res) => {
-  // ... giữ nguyên code gốc ...
+  try {
+    const { APPLE_ID, PASSWORD } = req.body;
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
+
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId
+    };
+
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      return res.json({
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    if (user._state === 'success') {
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog
+      });
+    }
+
+    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID'
+    });
+  }
 });
 
 app.post('/verify', async (req, res) => {
-  // ... giữ nguyên code gốc ...
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
+    });
+  }
 });
 
 app.post('/download', async (req, res) => {
