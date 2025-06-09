@@ -491,3 +491,45 @@ process.on('SIGINT', shutdown);
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled rejection:', err);
 });
+
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import axios from "axios";
+
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
+
+app.post("/download-and-upload", async (req, res) => {
+  const { ipaUrl, appId } = req.body;
+
+  if (!ipaUrl || !appId) {
+    return res.status(400).json({ error: "Thiếu ipaUrl hoặc appId" });
+  }
+
+  try {
+    const response = await axios.get(ipaUrl, { responseType: "arraybuffer" });
+    const ipaBuffer = Buffer.from(response.data);
+
+    const fileKey = `ipas/${appId}-${Date.now()}.ipa`;
+
+    const upload = new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: fileKey,
+      Body: ipaBuffer,
+      ContentType: "application/octet-stream",
+    });
+
+    await s3.send(upload);
+
+    const publicUrl = `${process.env.R2_ENDPOINT}/${fileKey}`;
+    res.json({ success: true, url: publicUrl });
+  } catch (error) {
+    console.error("Lỗi upload:", error.message);
+    res.status(500).json({ error: "Không thể upload lên R2" });
+  }
+});

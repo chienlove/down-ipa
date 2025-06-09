@@ -460,3 +460,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// Gửi file IPA lên server để tải về và đẩy lên R2
+async function uploadIPAtoR2(ipaUrl, appId) {
+  try {
+    const res = await fetch("/download-and-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ipaUrl, appId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById("downloadLink").href = data.url;
+      document.getElementById("result").classList.remove("hidden");
+    } else {
+      showError("Tải lên R2 thất bại: " + data.error);
+    }
+  } catch (e) {
+    showError("Lỗi khi tải lên R2: " + e.message);
+  }
+}
