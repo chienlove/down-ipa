@@ -15,7 +15,7 @@ const app = express();
 const port = process.env.PORT || 5004;
 
 // R2 Configuration
-const R2_ENDPOINT = 'https://file.storeios.net';
+const R2_ENDPOINT = 'https://b9b33e1228ae77e510897cc002c1735c.r2.cloudflarestorage.com';
 const r2Client = new S3Client({
   region: 'auto',
   endpoint: R2_ENDPOINT,
