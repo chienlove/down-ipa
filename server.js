@@ -555,3 +555,4 @@ app.post('/purchase-only', async (req, res) => {
     console.error('Purchase failed:', err.stderr || err.message);
     res.status(500).json({ success: false, error: 'Không thể thêm vào mục Đã mua.', detail: err.stderr || err.message });
   }
+});
