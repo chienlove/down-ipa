@@ -293,7 +293,7 @@ class IPATool {
           <key>kind</key>
           <string>software-package</string>
           <key>url</key>
-          <string>${R2_ENDPOINT}/${ipaKey}</string>
+          <string>${R2_PUBLIC_BASE}/${ipaKey}</string>
         </dict>
       </array>
       <key>metadata</key>
