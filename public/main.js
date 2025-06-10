@@ -386,6 +386,18 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
+        const installLink = document.getElementById('installLink');
+        if (data.installUrl) {
+          installLink.href = data.installUrl;
+          installLink.classList.remove('hidden');
+        } else {
+          installLink.classList.add('hidden');
+        }
+
+        document.getElementById('resetBtn').addEventListener('click', () => {
+          window.location.reload();
+        });
+
         transition(elements.step3, elements.result);
         setProgress(4);
       } else {
