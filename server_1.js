@@ -293,7 +293,7 @@ class IPATool {
           <key>kind</key>
           <string>software-package</string>
           <key>url</key>
-          <string>${R2_ENDPOINT}/${ipaKey}</string>
+          <string>${R2_PUBLIC_BASE}/${ipaKey}</string>
         </dict>
       </array>
       <key>metadata</key>
@@ -524,34 +524,3 @@ process.on('SIGINT', shutdown);
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled rejection:', err);
 });
-
-
-app.post('/purchase-only', async (req, res) => {
-  const { APPLE_ID, PASSWORD, CODE, APPID } = req.body;
-
-  if (!APPLE_ID || !PASSWORD || !APPID) {
-    return res.status(400).json({ success: false, error: 'Thiếu thông tin đăng nhập hoặc App ID.' });
-  }
-
-  const purchaseCmd = [
-    'ipatool',
-    'purchase',
-    '--bundle-id', APPID,
-    '--account', APPLE_ID,
-    '--password', PASSWORD
-  ];
-
-  if (CODE) {
-    purchaseCmd.push('--otp', CODE);
-  }
-
-  console.log('Running purchase command:', purchaseCmd.join(' '));
-
-  try {
-    const { stdout, stderr } = await exec(purchaseCmd.join(' '), { timeout: 60000 });
-    console.log('Purchase success:', stdout);
-    res.json({ success: true, message: 'Đã thêm vào mục Đã mua thành công.' });
-  } catch (err) {
-    console.error('Purchase failed:', err.stderr || err.message);
-    res.status(500).json({ success: false, error: 'Không thể thêm vào mục Đã mua.', detail: err.stderr || err.message });
-  }
