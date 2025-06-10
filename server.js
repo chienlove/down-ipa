@@ -12,41 +12,26 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Route: /purchase-only
-app.post('/purchase-only', async (req, res) => {
-  const { APPLE_ID, PASSWORD, CODE, APPID } = req.body;
+app.post('/purchased-apps', async (req, res) => {
+  const { APPLE_ID, PASSWORD, CODE } = req.body;
 
-  if (!APPLE_ID || !PASSWORD || !APPID) {
-    return res.status(400).json({ success: false, error: 'Thiếu thông tin đăng nhập hoặc App ID.' });
+  if (!APPLE_ID || !PASSWORD) {
+    return res.status(400).json({ success: false, error: 'Thiếu tài khoản hoặc mật khẩu.' });
   }
 
   try {
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (!user || user._state !== 'success') {
-      return res.status(401).json({
-        success: false,
-        error: user?.customerMessage || 'Đăng nhập thất bại'
-      });
+      return res.status(401).json({ success: false, error: user?.customerMessage || 'Đăng nhập thất bại.' });
     }
 
-    const result = await Store.purchase(APPID, user);
+    const apps = await Store.purchaseHistory(user);
 
-    if (result?._state === 'success') {
-      return res.json({ success: true, message: 'Đã thêm vào mục Đã mua thành công.' });
-    } else {
-      return res.status(500).json({
-        success: false,
-        error: result?.customerMessage || 'Không thể thêm vào mục Đã mua.'
-      });
-    }
-  } catch (error) {
-    console.error('Purchase error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Đã xảy ra lỗi khi thêm vào mục Đã mua.',
-      detail: error.message || String(error)
-    });
+    res.json({ success: true, apps });
+  } catch (err) {
+    console.error('Lỗi lấy danh sách đã mua:', err);
+    res.status(500).json({ success: false, error: 'Không thể lấy danh sách đã mua.', detail: err.message });
   }
 });
 

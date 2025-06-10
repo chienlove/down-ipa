@@ -70,6 +70,20 @@ class Store {
     const parsedResp = plist.parse(await resp.text());
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
+
+  static async purchaseHistory(Cookie) {
+    const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.Headers,
+        'X-Dsid': Cookie.dsPersonId,
+        'iCloud-DSID': Cookie.dsPersonId
+      }
+    });
+    const parsedResp = plist.parse(await resp.text());
+    return parsedResp;
+  }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
