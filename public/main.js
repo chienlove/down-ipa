@@ -34,11 +34,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let isLoading = false;
 
   /* ========== UI HELPERS ========== */
+  
+  // Create toast container
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
   toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
   document.body.appendChild(toastContainer);
 
+  // Add CSS styles
   const addStyles = () => {
     const style = document.createElement('style');
     style.textContent = `
@@ -96,18 +99,12 @@ document.addEventListener('DOMContentLoaded', () => {
       #step2 {
         display: none;
       }
-      .action-buttons {
-        display: flex;
-        gap: 12px;
-        margin-top: 16px;
-      }
-      .action-buttons button {
-        flex: 1;
-      }
     `;
     document.head.appendChild(style);
   };
   addStyles();
+
+  /* ========== CORE FUNCTIONS ========== */
 
   const showToast = (message, type = 'success') => {
     const toast = document.createElement('div');
@@ -162,90 +159,31 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.add('button-loading');
         btn.disabled = true;
-      
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
-});
+      });
     } else {
       elements.progressBar.classList.remove('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
         btn.classList.remove('button-loading');
         btn.disabled = false;
-      
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
-});
+      });
     }
-  };
-
-  const resetForm = () => {
-    state.APPLE_ID = '';
-    state.PASSWORD = '';
-    state.CODE = '';
-    state.verified2FA = false;
-    state.dsid = null;
-    state.requires2FA = false;
-    
-    elements.appleIdInput.value = '';
-    elements.passwordInput.value = '';
-    elements.verificationCodeInput.value = '';
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    
-    elements.step1.classList.remove('hidden');
-    elements.step2.classList.add('hidden');
-    elements.step3.classList.add('hidden');
-    elements.result.classList.add('hidden');
-    
-    setProgress(0);
   };
 
   const handle2FARedirect = (responseData) => {
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
-    
-    let message = responseData.message || '';
-    if (message.includes('MZFinance.BadLogin.Configurator_message')) {
-      message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
-    } else if (message.toLowerCase().includes('code')) {
-      message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
-    }
+    // Friendly error mapping
+let message = responseData.message || '';
+if (message.includes('MZFinance.BadLogin.Configurator_message')) {
+  message = 'Thiết bị cần xác minh bảo mật. Vui lòng kiểm tra thiết bị tin cậy của bạn.';
+} else if (message.toLowerCase().includes('code')) {
+  message = 'Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.';
+}
 
-    elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
+elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     
+    // Force show step2
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
     
@@ -254,33 +192,17 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   /* ========== EVENT HANDLERS ========== */
+
+  // Toggle password visibility
   elements.togglePassword.addEventListener('click', () => {
     const isPassword = elements.passwordInput.type === 'password';
     elements.passwordInput.type = isPassword ? 'text' : 'password';
     elements.eyeIcon.innerHTML = isPassword
       ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`
       : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
-  
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
   });
 
-});
-
+  // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -307,26 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ APPLE_ID, PASSWORD })
-      
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
-});
+      });
 
       const data = await response.json();
       console.log('Auth response:', data);
@@ -336,11 +239,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // Xử lý 2FA bắt buộc
       if (data.require2FA || data.authType === '2fa') {
         handle2FARedirect(data);
         return;
       }
 
+      // Xử lý đăng nhập thành công không cần 2FA
       if (data.success) {
         state.requires2FA = false;
         state.verified2FA = true;
@@ -357,27 +262,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       setLoading(false);
     }
-  
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
   });
 
-});
-
+  // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -404,26 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
           CODE,
           dsid: state.dsid 
         })
-      
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
-});
+      });
 
       const data = await response.json();
       console.log('Verify response:', data);
@@ -434,19 +302,20 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (data.success) {
-        state.CODE = CODE;
-        state.verified2FA = true;
-        state.dsid = data.dsid || state.dsid;
-        showToast('Xác thực 2FA thành công!');
+  state.CODE = CODE;
+  state.verified2FA = true;
+  state.dsid = data.dsid || state.dsid;
+  showToast('Xác thực 2FA thành công!');
 
-        elements.step2.classList.add('hidden');
-        elements.step2.style.display = 'none';
-        elements.verificationCodeInput.value = '';
-        elements.verifyMessage.textContent = '';
+  // Ẩn step2 hoàn toàn
+  elements.step2.classList.add('hidden');
+  elements.step2.style.display = 'none';
+  elements.verificationCodeInput.value = '';
+  elements.verifyMessage.textContent = '';
 
-        transition(elements.step2, elements.step3);
-        setProgress(3);
-      } else {
+  transition(elements.step2, elements.step3);
+  setProgress(3);
+} else {
         showError(data.error || 'Mã xác minh không đúng.');
       }
     } catch (error) {
@@ -455,27 +324,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       setLoading(false);
     }
-  
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
   });
 
-});
-
+  // Step 3: Download - With strict 2FA check
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -492,10 +343,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Strict 2FA verification check
     if (state.requires2FA && !state.verified2FA) {
       showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
       setLoading(false);
       
+      // Auto-redirect to 2FA step
       elements.step2.style.display = 'block';
       elements.step2.classList.remove('hidden');
       transition(elements.step3, elements.step2);
@@ -516,26 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
           appVerId,
           dsid: state.dsid
         })
-      
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
-});
+      });
 
       const data = await response.json();
       console.log('Download response:', data);
@@ -543,53 +377,26 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.require2FA) {
         handle2FARedirect(data);
       } else if (data.success) {
+        // Display download result
         document.getElementById('appName').textContent = data.appInfo.name;
         document.getElementById('appAuthor').textContent = data.appInfo.artist;
         document.getElementById('appVersion').textContent = data.appInfo.version;
         document.getElementById('appBundleId').textContent = data.appInfo.bundleId;
         document.getElementById('appDate').textContent = data.appInfo.releaseDate;
-        
         const downloadLink = document.getElementById('downloadLink');
         downloadLink.href = data.downloadUrl;
         downloadLink.download = data.fileName;
-        
-        // Clear existing action buttons if any
-        const existingButtons = document.querySelector('.action-buttons');
-        if (existingButtons) {
-          existingButtons.remove();
-        }
-
-        // Add action buttons
-        const actionButtons = document.createElement('div');
-        actionButtons.className = 'action-buttons';
-        
+        const installLink = document.getElementById('installLink');
         if (data.installUrl) {
-          const installButton = document.createElement('button');
-          installButton.className = 'w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
-          installButton.innerHTML = `
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-            </svg>
-            Cài đặt trực tiếp
-          `;
-          installButton.onclick = () => {
-            window.location.href = data.installUrl;
-          };
-          actionButtons.appendChild(installButton);
+          installLink.href = data.installUrl;
+          installLink.classList.remove('hidden');
+        } else {
+          installLink.classList.add('hidden');
         }
 
-        const anotherAppButton = document.createElement('button');
-        anotherAppButton.className = 'w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg';
-        anotherAppButton.innerHTML = `
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Tải ứng dụng khác
-        `;
-        anotherAppButton.onclick = resetForm;
-        actionButtons.appendChild(anotherAppButton);
-
-        document.getElementById('result').appendChild(actionButtons);
+        document.getElementById('resetBtn').addEventListener('click', () => {
+          window.location.reload();
+        });
 
         transition(elements.step3, elements.result);
         setProgress(4);
@@ -602,43 +409,5 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       setLoading(false);
     }
-  
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
   });
-
-});
-
-  // Xử lý nút "Tải ứng dụng khác"
-  const resetBtn = document.getElementById('resetBtn');
-  resetBtn.addEventListener('click', () => {
-    elements.result.classList.add('hidden');
-    elements.step3.classList.remove('hidden');
-
-    elements.appIdInput.value = '';
-    elements.appVerInput.value = '';
-    document.getElementById('downloadLink').href = '#';
-    document.getElementById('installLink').classList.add('hidden');
-
-    ['appName', 'appAuthor', 'appVersion', 'appBundleId', 'appDate'].forEach(id => {
-      document.getElementById(id).textContent = '';
-    });
-
-    setProgress(3);
-  });
-
 });
