@@ -375,11 +375,10 @@ app.post('/auth', async (req, res) => {
       user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
-      user.failureType?.toLowerCase().includes('mfa') ||
-      user.authType === '2fa'
+      user.customerMessage?.includes('Configurator_message')
     );
 
-    if (needs2FA) {
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
       return res.json({
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
