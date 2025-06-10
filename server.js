@@ -15,6 +15,7 @@ const app = express();
 const port = process.env.PORT || 5004;
 
 // R2 Configuration
+const R2_PUBLIC_BASE = 'https://file.storeios.net';
 const R2_ENDPOINT = 'https://b9b33e1228ae77e510897cc002c1735c.r2.cloudflarestorage.com';
 const r2Client = new S3Client({
   region: 'auto',
@@ -319,8 +320,8 @@ class IPATool {
           contentType: 'application/xml'
         });
 
-        ipaUrl = `${R2_ENDPOINT}/${ipaKey}`;
-        installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_ENDPOINT}/${plistKey}`)}`;
+        ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
+installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
         r2Success = true;
 
         setTimeout(async () => {
