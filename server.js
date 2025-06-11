@@ -444,9 +444,9 @@ app.post('/download', async (req, res) => {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !APPID) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Required fields are missing' 
+      return res.status(400).json({
+        success: false,
+        error: 'Required fields are missing'
       });
     }
 
@@ -454,20 +454,25 @@ app.post('/download', async (req, res) => {
     console.log(`Download request for app: ${APPID}`);
 
     const result = await ipaTool.downipa({
-  path: uniqueDownloadPath,
-  APPLE_ID,
-  PASSWORD,
-  CODE,
-  APPID,
-  appVerId
-});
+      path: uniqueDownloadPath,
+      APPLE_ID,
+      PASSWORD,
+      CODE,
+      APPID,
+      appVerId
+    });
 
-// ✅ Log link R2 (đã có sẵn trong result)
-console.log(`R2 link: ${result.downloadUrl}`);
+    // ✅ Log R2 link
+    console.log(`R2 link: ${result.downloadUrl}`);
 
-// ✅ Tạo và log link local (nếu file vẫn còn local)
-const relativePath = result.filePath.replace(path.join(__dirname, 'app'), '');
-console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
+    // ✅ Chỉ log local link nếu file vẫn tồn tại
+    try {
+      await fsPromises.access(result.filePath);
+      const relativePath = result.filePath.replace(path.join(__dirname, 'app'), '');
+      console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
+    } catch {
+      console.log('Local file already removed or not found — skipping local link log.');
+    }
 
     if (result.require2FA) {
       return res.json({
@@ -477,16 +482,26 @@ console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
       });
     }
 
-    // ✅ XÓA FILE CỤC BỘ NGAY SAU KHI UPLOAD XONG
+    // ✅ Xoá file IPA local
     try {
-      await fsPromises.unlink(result.filePath); // xoá file .ipa
-      await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true }); // xoá thư mục tạm
+      await fsPromises.unlink(result.filePath);
+      await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
       console.log(`Cleaned up local file and folder: ${result.filePath}`);
     } catch (err) {
-      console.error('Immediate cleanup error:', err.message);
+      console.error('Cleanup IPA error:', err.message);
     }
 
-    // ✅ GỬI KẾT QUẢ VỀ CLIENT DÙ ĐÃ XOÁ FILE LOCAL
+    // ✅ Xoá file .plist nếu có
+    if (result.plistPath) {
+      try {
+        await fsPromises.unlink(result.plistPath);
+        console.log(`Deleted local plist file: ${result.plistPath}`);
+      } catch (err) {
+        console.error('Cleanup plist error:', err.message);
+      }
+    }
+
+    // ✅ Trả kết quả
     res.json({
       success: true,
       downloadUrl: result.downloadUrl,
