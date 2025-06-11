@@ -439,7 +439,7 @@ app.post('/verify', async (req, res) => {
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
-
+    
     if (!APPLE_ID || !PASSWORD || !APPID) {
       return res.status(400).json({ 
         success: false, 
@@ -451,13 +451,13 @@ app.post('/download', async (req, res) => {
     console.log(`Download request for app: ${APPID}`);
 
     const result = await ipaTool.downipa({
-  path: uniqueDownloadPath,
-  APPLE_ID,
-  PASSWORD,
-  CODE,
-  APPID,
-  appVerId
-});
+      path: uniqueDownloadPath,
+      APPLE_ID,
+      PASSWORD,
+      CODE,
+      APPID,
+      appVerId
+    });
 
 // ✅ Log link R2 (đã có sẵn trong result)
 console.log(`R2 link: ${result.downloadUrl}`);
@@ -474,16 +474,16 @@ console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
       });
     }
 
-    // ✅ XÓA FILE CỤC BỘ NGAY SAU KHI UPLOAD XONG
-    try {
-      await fsPromises.unlink(result.filePath); // xoá file .ipa
-      await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true }); // xoá thư mục tạm
-      console.log(`Cleaned up local file and folder: ${result.filePath}`);
-    } catch (err) {
-      console.error('Immediate cleanup error:', err.message);
-    }
+    setTimeout(async () => {
+      try {
+        await fsPromises.unlink(result.filePath);
+        await fsPromises.rm(uniqueDownloadPath, { recursive: true, force: true });
+        console.log(`Cleaned up: ${result.filePath}`);
+      } catch (err) {
+        console.error('Cleanup error:', err.message);
+      }
+    }, 30 * 60 * 1000);
 
-    // ✅ GỬI KẾT QUẢ VỀ CLIENT DÙ ĐÃ XOÁ FILE LOCAL
     res.json({
       success: true,
       downloadUrl: result.downloadUrl,
