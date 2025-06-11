@@ -459,6 +459,22 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
+    const result = await ipaTool.downipa({
+  path: uniqueDownloadPath,
+  APPLE_ID,
+  PASSWORD,
+  CODE,
+  APPID,
+  appVerId
+});
+
+// ✅ Log link R2 (đã có sẵn trong result)
+console.log(`R2 link: ${result.downloadUrl}`);
+
+// ✅ Tạo và log link local (nếu file vẫn còn local)
+const relativePath = result.filePath.replace(path.join(__dirname, 'app'), '');
+console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
+
     if (result.require2FA) {
       return res.json({
         success: false,
