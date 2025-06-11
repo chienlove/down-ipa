@@ -462,18 +462,6 @@ app.post('/download', async (req, res) => {
       appVerId
     });
 
-    // ✅ Log R2 link
-    console.log(`R2 link: ${result.downloadUrl}`);
-
-    // ✅ Chỉ log local link nếu file vẫn tồn tại
-    try {
-      await fsPromises.access(result.filePath);
-      const relativePath = result.filePath.replace(path.join(__dirname, 'app'), '');
-      console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
-    } catch {
-      console.log('Local file already removed or not found — skipping local link log.');
-    }
-
     if (result.require2FA) {
       return res.json({
         success: false,
