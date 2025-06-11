@@ -320,6 +320,9 @@ class IPATool {
           contentType: 'application/xml'
         });
 
+        await fsPromises.unlink(plistPath);
+console.log(`Deleted local plist file: ${plistPath}`);
+
         ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
 installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
         r2Success = true;
@@ -500,8 +503,6 @@ console.log(`Local link: https://ipadl.storeios.net/files${relativePath}`);
     });
   }
 });
-
-app.use('/files', express.static(path.join(__dirname, 'app')));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
