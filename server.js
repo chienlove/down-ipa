@@ -261,6 +261,7 @@ class IPATool {
     await new Promise(resolve => finalFile.on('finish', resolve));
 
     if (skipSignature) {
+      console.log('skipSignature enabled: uploading raw IPA');
       const ipaKey = `ipas_raw/${outputFileName}`;
       const ipaStream = createReadStream(outputFilePath);
 
