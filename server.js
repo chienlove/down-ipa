@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 import { promises as fsPromises } from 'fs';
 import fetch from 'node-fetch';
 import { Store } from './src/client.js';
-import { SignatureTransform } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Agent } from 'https';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
