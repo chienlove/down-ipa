@@ -335,9 +335,6 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     setLoading(true);
 
     const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
-    const skipSignature = document.getElementById('skipSignature')?.checked;
-
-
     const appVerId = elements.appVerInput.value.trim();
 
     if (!APPID) {

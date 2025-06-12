@@ -168,7 +168,7 @@ async function clearCache(cacheDir) {
 }
 
 class IPATool {
-  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, skipSignature = false } = {}) {
+  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}`);
 
@@ -258,32 +258,6 @@ class IPATool {
         });
       }
       finalFile.end();
-    await new Promise(resolve => finalFile.on('finish', resolve));
-
-    if (skipSignature) {
-      const ipaKey = `ipas_raw/${outputFileName}`;
-      const ipaStream = createReadStream(outputFilePath);
-
-      await r2Client.send(new PutObjectCommand({
-        Bucket: 'file',
-        Key: ipaKey,
-        Body: ipaStream,
-        ContentType: 'application/octet-stream'
-      }));
-
-      await fsPromises.unlink(outputFilePath).catch(() => {});
-      await fsPromises.rm(cacheDir, { recursive: true, force: true });
-
-      return {
-        appInfo,
-        fileName: outputFileName,
-        filePath: outputFilePath,
-        downloadUrl: `${R2_PUBLIC_BASE}/${ipaKey}`,
-        installUrl: null,
-        r2UploadSuccess: true,
-        success: true
-      };
-    }
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
