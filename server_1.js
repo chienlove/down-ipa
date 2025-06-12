@@ -1,15 +1,13 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { promises as fsPromises } from 'fs';
+import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
 import fetch from 'node-fetch';
 import { Store } from './src/client.js';
+import { SignatureClient } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Agent } from 'https';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { Transform } from 'stream';
-import plist from 'plist';
-import JSZip from 'jszip';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,16 +27,24 @@ const r2Client = new S3Client({
   forcePathStyle: true
 });
 
-// R2 Helper Functions (đã cải tiến)
-async function uploadToR2({ key, stream, contentType }) {
+// R2 Helper Functions
+async function uploadToR2({ key, filePath, contentType }) {
   try {
+    console.log(`Preparing to upload to R2: ${key}`);
+    const fileContent = await fsPromises.readFile(filePath);
+    console.log(`File read successfully, size: ${fileContent.length} bytes`);
+
     const command = new PutObjectCommand({
       Bucket: 'file',
       Key: key,
-      Body: stream,
+      Body: fileContent,
       ContentType: contentType
     });
-    return await r2Client.send(command);
+
+    console.log('Sending upload command to R2...');
+    const result = await r2Client.send(command);
+    console.log('Upload successful:', result);
+    return result;
   } catch (error) {
     console.error('R2 upload error:', error);
     throw error;
@@ -59,13 +65,13 @@ async function deleteFromR2(key) {
   }
 }
 
-// Middleware và các route khác giữ nguyên
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// Health check endpoint (giữ nguyên)
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -74,7 +80,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// R2 Connection Test Endpoint (giữ nguyên)
+// R2 Connection Test Endpoint
 app.get('/check-r2', async (req, res) => {
   try {
     const testKey = `test-${Date.now()}.txt`;
@@ -99,21 +105,83 @@ app.get('/check-r2', async (req, res) => {
   }
 });
 
-// Serve index.html (giữ nguyên)
+// Serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// IPATool với stream trực tiếp lên R2
+// Constants
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_CONCURRENT_DOWNLOADS = 10;
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 3000;
+const REQUEST_TIMEOUT = 15000; // 15 seconds
+
+// Helper functions
+function generateRandomString(length = 16) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+}
+
+async function downloadChunk({ url, start, end, output }) {
+  const headers = { Range: `bytes=${start}-${end}` };
+  const agent = new Agent({ rejectUnauthorized: false });
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+      
+      const response = await fetch(url, { 
+        headers,
+        agent,
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeout);
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      const fileStream = createWriteStream(output, { flags: 'a' });
+      await new Promise((resolve, reject) => {
+        response.body.pipe(fileStream);
+        response.body.on('error', reject);
+        fileStream.on('finish', resolve);
+      });
+      return;
+    } catch (error) {
+      if (attempt === MAX_RETRIES - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+}
+
+async function clearCache(cacheDir) {
+  try {
+    const files = await fsPromises.readdir(cacheDir);
+    await Promise.all(files.map(file => fsPromises.unlink(path.join(cacheDir, file))));
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error(`Cache clearance error: ${error.message}`);
+    }
+  }
+}
+
 class IPATool {
-  async downipa({ APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
+  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
+    downloadPath = downloadPath || '.';
+    console.log(`Starting download for app: ${APPID}`);
+
     try {
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
       if (user._state !== 'success') {
         if (user.failureType?.toLowerCase().includes('mfa')) {
-          return { require2FA: true, message: user.customerMessage || '2FA verification required' };
+          return {
+            require2FA: true,
+            message: user.customerMessage || '2FA verification required'
+          };
         }
         throw new Error(user.customerMessage || 'Authentication failed');
       }
@@ -124,7 +192,10 @@ class IPATool {
 
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
-          return { require2FA: true, message: app.customerMessage || '2FA verification required' };
+          return {
+            require2FA: true,
+            message: app.customerMessage || '2FA verification required'
+          };
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
       }
@@ -137,34 +208,79 @@ class IPATool {
         releaseDate: songList0.metadata.releaseDate
       };
 
-      // Tạo key ngẫu nhiên cho R2
-      const randomId = uuidv4().substring(0, 8);
-      const ipaKey = `temp-ipas/${randomId}_${appInfo.name.replace(/[^a-z0-9]/gi, '_')}.ipa`;
-      const plistKey = `temp-manifests/${randomId}.plist`;
+      await fsPromises.mkdir(downloadPath, { recursive: true });
+      const uniqueString = uuidv4();
+      const outputFileName = `${appInfo.name.replace(/[^a-z0-9]/gi, '_')}_${appInfo.version}_${uniqueString}.ipa`;
+      const outputFilePath = path.join(downloadPath, outputFileName);
+      const cacheDir = path.join(downloadPath, 'cache');
 
-      // Tạo transform stream để xử lý signature
-      const signatureTransform = new SignatureTransform(songList0, APPLE_ID);
+      await fsPromises.mkdir(cacheDir, { recursive: true });
+      await clearCache(cacheDir);
 
-      // Tải và upload đồng thời
-      console.log('Downloading and uploading to R2...');
-      const ipaResponse = await fetch(songList0.URL, { 
+      console.log('Downloading IPA file...');
+      const resp = await fetch(songList0.URL, { 
         agent: new Agent({ rejectUnauthorized: false }) 
       });
       
-      if (!ipaResponse.ok) throw new Error(`Failed to download IPA: ${ipaResponse.statusText}`);
+      if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
-      // Pipe qua transform stream để xử lý signature
-      const processedStream = ipaResponse.body.pipe(signatureTransform);
+      const fileSize = Number(resp.headers.get('content-length'));
+      const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
-      // Upload stream đã xử lý lên R2
-      await uploadToR2({
-        key: ipaKey,
-        stream: processedStream,
-        contentType: 'application/octet-stream'
+      console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
+
+      const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+        const tempOutput = path.join(cacheDir, `part${i}`);
+        return () => downloadChunk({ 
+          url: songList0.URL, 
+          start, 
+          end, 
+          output: tempOutput 
+        });
       });
 
-      // Tạo plist file
-      const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+      for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
+        await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
+      }
+
+      console.log('Merging chunks...');
+      const finalFile = createWriteStream(outputFilePath);
+      for (let i = 0; i < numChunks; i++) {
+        const tempOutput = path.join(cacheDir, `part${i}`);
+        const tempStream = createReadStream(tempOutput);
+        await new Promise(resolve => {
+          tempStream.pipe(finalFile, { end: false });
+          tempStream.on('end', () => {
+            fsPromises.unlink(tempOutput).then(resolve);
+          });
+        });
+      }
+      finalFile.end();
+
+      console.log('Signing IPA...');
+      const sigClient = new SignatureClient(songList0, APPLE_ID);
+      await sigClient.loadFile(outputFilePath);
+      await sigClient.appendMetadata().appendSignature();
+      await sigClient.write();
+
+      // R2 Upload
+      let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
+      let installUrl = null;
+      let r2Success = false;
+
+      try {
+        const ipaKey = `ipas/${outputFileName}`;
+        await uploadToR2({
+          key: ipaKey,
+          filePath: outputFilePath,
+          contentType: 'application/octet-stream'
+        });
+
+        const plistName = outputFileName.replace(/\.ipa$/, '.plist');
+        const plistKey = `manifests/${plistName}`;
+        const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -196,112 +312,49 @@ class IPATool {
 </dict>
 </plist>`;
 
-      // Upload plist lên R2
-      await uploadToR2({
-        key: plistKey,
-        stream: Buffer.from(plistContent),
-        contentType: 'application/xml'
-      });
+        const plistPath = path.join(downloadPath, plistName);
+        await fsPromises.writeFile(plistPath, plistContent, 'utf8');
+        await uploadToR2({
+          key: plistKey,
+          filePath: plistPath,
+          contentType: 'application/xml'
+        });
 
-      // Lên lịch xóa file sau 5 phút
-      setTimeout(async () => {
-        try {
-          await deleteFromR2(ipaKey);
-          await deleteFromR2(plistKey);
-        } catch (err) {
-          console.error('Cleanup error:', err);
-        }
-      }, 5 * 60 * 1000);
+        await fsPromises.unlink(plistPath);
+console.log(`Deleted local plist file: ${plistPath}`);
+
+        ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
+installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
+        r2Success = true;
+
+        setTimeout(async () => {
+          try {
+            await deleteFromR2(ipaKey);
+            await deleteFromR2(plistKey);
+          } catch (err) {
+            console.error('R2 cleanup error:', err);
+          }
+        }, 5 * 60 * 1000);
+
+      } catch (error) {
+        console.error('R2 upload failed (using local file):', error);
+      }
+
+      await fsPromises.rm(cacheDir, { recursive: true, force: true });
+      console.log('Download completed successfully!');
 
       return {
         appInfo,
-        downloadUrl: `${R2_PUBLIC_BASE}/${ipaKey}`,
-        installUrl: `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`,
-        r2UploadSuccess: true
+        fileName: outputFileName,
+        filePath: outputFilePath,
+        downloadUrl: ipaUrl,
+        installUrl: installUrl,
+        r2UploadSuccess: r2Success
       };
     } catch (error) {
       console.error('Download error:', error);
       throw error;
     }
-  }
-}
-
-// SignatureTransform thay thế cho SignatureClient
-class SignatureTransform extends Transform {
-  constructor(songList0, email) {
-    super();
-    this.signature = songList0.sinfs.find(sinf => sinf.id === 0);
-    if (!this.signature) throw new Error('Invalid signature.');
-    
-    this.metadata = { 
-      ...songList0.metadata, 
-      'apple-id': email, 
-      userName: email, 
-      'appleId': email 
-    };
-    
-    this.buffer = Buffer.alloc(0);
-    this.foundManifest = false;
-    this.manifestContent = null;
-  }
-
-  async _transform(chunk, encoding, callback) {
-    try {
-      this.buffer = Buffer.concat([this.buffer, chunk]);
-      
-      if (!this.foundManifest) {
-        const manifestMatch = this.buffer.toString().match(/Payload\/[^\/]+\.app\/SC_Info\/Manifest\.plist/);
-        if (manifestMatch) {
-          this.foundManifest = true;
-          const zip = await JSZip.loadAsync(this.buffer);
-          const manifestFile = zip.file(/\.app\/SC_Info\/Manifest\.plist$/)[0];
-          this.manifestContent = await manifestFile.async('string');
-        }
-      }
-      
-      // Nếu đã tìm thấy manifest, xử lý thêm signature
-      if (this.foundManifest && !this.processed) {
-        this.processed = true;
-        const zip = await JSZip.loadAsync(this.buffer);
-        
-        // Thêm metadata
-        const metadataPlist = plist.build(this.metadata);
-        zip.file('iTunesMetadata.plist', Buffer.from(metadataPlist, 'utf8'));
-        
-        // Thêm signature
-        const manifest = plist.parse(this.manifestContent);
-        const sinfPath = manifest.SinfPaths?.[0];
-        if (!sinfPath) throw new Error('Invalid signature.');
-        
-        const appBundleName = Object.keys(zip.files)
-          .find(f => f.endsWith('.app/'))
-          .split('/')[1]
-          .replace(/\.app$/, '');
-        
-        const signatureTargetPath = `Payload/${appBundleName}.app/${sinfPath}`;
-        zip.file(signatureTargetPath, Buffer.from(this.signature.sinf, 'base64'));
-        
-        // Generate lại file zip
-        const newBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-        this.push(newBuffer);
-      } else if (!this.processed) {
-        // Chưa xử lý xong, tiếp tục đọc
-        callback();
-      } else {
-        // Đã xử lý xong, chuyển tiếp chunk
-        this.push(chunk);
-        callback();
-      }
-    } catch (err) {
-      callback(err);
-    }
-  }
-
-  _flush(callback) {
-    if (this.buffer.length > 0) {
-      this.push(this.buffer);
-    }
-    callback();
   }
 }
 
@@ -386,7 +439,6 @@ app.post('/verify', async (req, res) => {
   }
 });
 
-// Route download
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -398,7 +450,11 @@ app.post('/download', async (req, res) => {
       });
     }
 
+    const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
+    console.log(`Download request for app: ${APPID}`);
+
     const result = await ipaTool.downipa({
+      path: uniqueDownloadPath,
       APPLE_ID,
       PASSWORD,
       CODE,
@@ -414,9 +470,30 @@ app.post('/download', async (req, res) => {
       });
     }
 
+    // ✅ Xoá file IPA local
+    try {
+      await fsPromises.unlink(result.filePath);
+      await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
+      console.log(`Cleaned up local file and folder: ${result.filePath}`);
+    } catch (err) {
+      console.error('Cleanup IPA error:', err.message);
+    }
+
+    // ✅ Xoá file .plist nếu có
+    if (result.plistPath) {
+      try {
+        await fsPromises.unlink(result.plistPath);
+        console.log(`Deleted local plist file: ${result.plistPath}`);
+      } catch (err) {
+        console.error('Cleanup plist error:', err.message);
+      }
+    }
+
+    // ✅ Trả kết quả
     res.json({
       success: true,
       downloadUrl: result.downloadUrl,
+      fileName: result.fileName,
       appInfo: result.appInfo,
       installUrl: result.installUrl,
       r2UploadSuccess: result.r2UploadSuccess
@@ -430,7 +507,6 @@ app.post('/download', async (req, res) => {
   }
 });
 
-// Các middleware và khởi động server giữ nguyên
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
