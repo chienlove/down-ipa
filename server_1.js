@@ -263,26 +263,7 @@ class IPATool {
       const sigClient = new SignatureClient(songList0, APPLE_ID);
       await sigClient.loadFile(outputFilePath);
       await sigClient.appendMetadata().appendSignature();
-      import archiver from 'archiver'; // đảm bảo dòng này có đầu file server.js
-
-await sigClient.loadFile(outputFilePath);
-await sigClient.appendMetadata().appendSignature();
-
-const signedDir = path.join(downloadPath, 'signed');
-await sigClient.extractToDirectory(signedDir);
-
-// Nén lại IPA bằng stream để giảm RAM
-await new Promise((resolve, reject) => {
-  const output = createWriteStream(outputFilePath); // ghi đè lên file cũ
-  const archive = archiver('zip', { zlib: { level: 9 } });
-
-  output.on('close', resolve);
-  archive.on('error', reject);
-
-  archive.pipe(output);
-  archive.directory(signedDir, false);
-  archive.finalize();
-});
+      await sigClient.write();
 
       // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
@@ -493,7 +474,6 @@ app.post('/download', async (req, res) => {
     try {
       await fsPromises.unlink(result.filePath);
       await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
-      await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
       console.log(`Cleaned up local file and folder: ${result.filePath}`);
     } catch (err) {
       console.error('Cleanup IPA error:', err.message);

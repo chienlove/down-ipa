@@ -1,7 +1,6 @@
-import { createWriteStream, readFileSync, promises as fsPromises } from 'fs';
+import { createWriteStream, readFileSync } from 'fs';
 import JSZip from 'jszip';
 import plist from 'plist';
-import path from 'path';
 
 export async function readZip(path) {
     const content = readFileSync(path);
@@ -47,20 +46,14 @@ export class SignatureClient {
         return this;
     }
 
-    // ✅ Ghi nội dung zip ra thư mục tạm để dùng archiver nén lại
-    async extractToDirectory(outputDir) {
-        await fsPromises.mkdir(outputDir, { recursive: true });
-        const entries = Object.entries(this.archive.files);
-
-        for (const [filePath, file] of entries) {
-            const fullPath = path.join(outputDir, filePath);
-            if (file.dir) {
-                await fsPromises.mkdir(fullPath, { recursive: true });
-            } else {
-                const content = await file.async('nodebuffer');
-                await fsPromises.mkdir(path.dirname(fullPath), { recursive: true });
-                await fsPromises.writeFile(fullPath, content);
-            }
-        }
+    async write() {
+        const outputStream = createWriteStream(this.filename);
+        return new Promise((resolve, reject) => {
+            this.archive
+                .generateNodeStream({ streamFiles: true, compression: 'DEFLATE', compressionOptions: { level: 9 } })
+                .pipe(outputStream)
+                .on('finish', resolve)
+                .on('error', reject);
+        });
     }
 }
