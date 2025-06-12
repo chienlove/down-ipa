@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import fs, { promises as fsPromises } from 'fs';
+import { promises as fsPromises } from 'fs';
 import fetch from 'node-fetch';
 import { Store } from './src/client.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -29,14 +29,15 @@ const r2Client = new S3Client({
   forcePathStyle: true
 });
 
-// R2 Helper Functions (đã cải tiến)
-async function uploadToR2({ key, stream, contentType }) {
+// R2 Helper Functions
+async function uploadToR2({ key, stream, contentType, contentLength }) {
   try {
     const command = new PutObjectCommand({
       Bucket: 'file',
       Key: key,
       Body: stream,
-      ContentType: contentType
+      ContentType: contentType,
+      ContentLength: contentLength
     });
     return await r2Client.send(command);
   } catch (error) {
@@ -59,13 +60,13 @@ async function deleteFromR2(key) {
   }
 }
 
-// Middleware và các route khác giữ nguyên
+// Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
-// Health check endpoint (giữ nguyên)
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -74,7 +75,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// R2 Connection Test Endpoint (giữ nguyên)
+// R2 Connection Test Endpoint
 app.get('/check-r2', async (req, res) => {
   try {
     const testKey = `test-${Date.now()}.txt`;
@@ -99,7 +100,7 @@ app.get('/check-r2', async (req, res) => {
   }
 });
 
-// Serve index.html (giữ nguyên)
+// Serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -142,25 +143,32 @@ class IPATool {
       const ipaKey = `temp-ipas/${randomId}_${appInfo.name.replace(/[^a-z0-9]/gi, '_')}.ipa`;
       const plistKey = `temp-manifests/${randomId}.plist`;
 
-      // Tạo transform stream để xử lý signature
-      const signatureTransform = new SignatureTransform(songList0, APPLE_ID);
-
-      // Tải và upload đồng thời
-      console.log('Downloading and uploading to R2...');
+      // Tải IPA từ App Store
+      console.log('Downloading from App Store...');
       const ipaResponse = await fetch(songList0.URL, { 
         agent: new Agent({ rejectUnauthorized: false }) 
       });
       
       if (!ipaResponse.ok) throw new Error(`Failed to download IPA: ${ipaResponse.statusText}`);
 
-      // Pipe qua transform stream để xử lý signature
-      const processedStream = ipaResponse.body.pipe(signatureTransform);
+      const contentLength = Number(ipaResponse.headers.get('content-length'));
+      if (!contentLength || contentLength > 2 * 1024 * 1024 * 1024) {
+        throw new Error('Invalid file size or file too large (>2GB)');
+      }
+
+      // Tạo transform stream để xử lý signature
+      const signatureTransform = new SignatureTransform(songList0, APPLE_ID);
+
+      // Pipe qua transform stream
+      ipaResponse.body.pipe(signatureTransform);
 
       // Upload stream đã xử lý lên R2
+      console.log('Uploading processed IPA to R2...');
       await uploadToR2({
         key: ipaKey,
-        stream: processedStream,
-        contentType: 'application/octet-stream'
+        stream: signatureTransform,
+        contentType: 'application/octet-stream',
+        contentLength: contentLength // Sử dụng content-length gốc (xấp xỉ)
       });
 
       // Tạo plist file
@@ -197,10 +205,12 @@ class IPATool {
 </plist>`;
 
       // Upload plist lên R2
+      console.log('Uploading plist to R2...');
       await uploadToR2({
         key: plistKey,
         stream: Buffer.from(plistContent),
-        contentType: 'application/xml'
+        contentType: 'application/xml',
+        contentLength: Buffer.byteLength(plistContent)
       });
 
       // Lên lịch xóa file sau 5 phút
@@ -208,6 +218,7 @@ class IPATool {
         try {
           await deleteFromR2(ipaKey);
           await deleteFromR2(plistKey);
+          console.log(`Cleaned up temporary files: ${ipaKey}, ${plistKey}`);
         } catch (err) {
           console.error('Cleanup error:', err);
         }
@@ -226,88 +237,9 @@ class IPATool {
   }
 }
 
-// SignatureTransform thay thế cho SignatureClient
-class SignatureTransform extends Transform {
-  constructor(songList0, email) {
-    super();
-    this.signature = songList0.sinfs.find(sinf => sinf.id === 0);
-    if (!this.signature) throw new Error('Invalid signature.');
-    
-    this.metadata = { 
-      ...songList0.metadata, 
-      'apple-id': email, 
-      userName: email, 
-      'appleId': email 
-    };
-    
-    this.buffer = Buffer.alloc(0);
-    this.foundManifest = false;
-    this.manifestContent = null;
-  }
-
-  async _transform(chunk, encoding, callback) {
-    try {
-      this.buffer = Buffer.concat([this.buffer, chunk]);
-      
-      if (!this.foundManifest) {
-        const manifestMatch = this.buffer.toString().match(/Payload\/[^\/]+\.app\/SC_Info\/Manifest\.plist/);
-        if (manifestMatch) {
-          this.foundManifest = true;
-          const zip = await JSZip.loadAsync(this.buffer);
-          const manifestFile = zip.file(/\.app\/SC_Info\/Manifest\.plist$/)[0];
-          this.manifestContent = await manifestFile.async('string');
-        }
-      }
-      
-      // Nếu đã tìm thấy manifest, xử lý thêm signature
-      if (this.foundManifest && !this.processed) {
-        this.processed = true;
-        const zip = await JSZip.loadAsync(this.buffer);
-        
-        // Thêm metadata
-        const metadataPlist = plist.build(this.metadata);
-        zip.file('iTunesMetadata.plist', Buffer.from(metadataPlist, 'utf8'));
-        
-        // Thêm signature
-        const manifest = plist.parse(this.manifestContent);
-        const sinfPath = manifest.SinfPaths?.[0];
-        if (!sinfPath) throw new Error('Invalid signature.');
-        
-        const appBundleName = Object.keys(zip.files)
-          .find(f => f.endsWith('.app/'))
-          .split('/')[1]
-          .replace(/\.app$/, '');
-        
-        const signatureTargetPath = `Payload/${appBundleName}.app/${sinfPath}`;
-        zip.file(signatureTargetPath, Buffer.from(this.signature.sinf, 'base64'));
-        
-        // Generate lại file zip
-        const newBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-        this.push(newBuffer);
-      } else if (!this.processed) {
-        // Chưa xử lý xong, tiếp tục đọc
-        callback();
-      } else {
-        // Đã xử lý xong, chuyển tiếp chunk
-        this.push(chunk);
-        callback();
-      }
-    } catch (err) {
-      callback(err);
-    }
-  }
-
-  _flush(callback) {
-    if (this.buffer.length > 0) {
-      this.push(this.buffer);
-    }
-    callback();
-  }
-}
-
 const ipaTool = new IPATool();
 
-// Authentication routes
+// Authentication routes (giữ nguyên)
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
@@ -386,7 +318,7 @@ app.post('/verify', async (req, res) => {
   }
 });
 
-// Route download
+// Download route
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -430,7 +362,7 @@ app.post('/download', async (req, res) => {
   }
 });
 
-// Các middleware và khởi động server giữ nguyên
+// Error handlers
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
@@ -440,6 +372,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal Server Error' });
 });
 
+// Start server
 const server = app.listen(port, () => {
   console.log(`Server running on port ${port}`);
   console.log(`Health check: http://localhost:${port}/health`);

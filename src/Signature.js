@@ -15,66 +15,47 @@ export class SignatureTransform extends Transform {
       'appleId': email 
     };
     
-    this.buffer = Buffer.alloc(0);
-    this.foundManifest = false;
-    this.manifestContent = null;
-    this.processed = false;
+    this.chunks = [];
   }
 
-  async _transform(chunk, encoding, callback) {
+  _transform(chunk, encoding, callback) {
+    this.chunks.push(chunk);
+    callback();
+  }
+
+  async _flush(callback) {
     try {
-      this.buffer = Buffer.concat([this.buffer, chunk]);
+      const buffer = Buffer.concat(this.chunks);
+      const zip = await JSZip.loadAsync(buffer);
       
-      if (!this.foundManifest) {
-        const manifestMatch = this.buffer.toString().match(/Payload\/[^\/]+\.app\/SC_Info\/Manifest\.plist/);
-        if (manifestMatch) {
-          this.foundManifest = true;
-          const zip = await JSZip.loadAsync(this.buffer);
-          const manifestFile = zip.file(/\.app\/SC_Info\/Manifest\.plist$/)[0];
-          this.manifestContent = await manifestFile.async('string');
-        }
-      }
+      // Thêm metadata
+      const metadataPlist = plist.build(this.metadata);
+      zip.file('iTunesMetadata.plist', Buffer.from(metadataPlist, 'utf8'));
       
-      if (this.foundManifest && !this.processed) {
-        this.processed = true;
-        const zip = await JSZip.loadAsync(this.buffer);
-        
-        // Thêm metadata
-        const metadataPlist = plist.build(this.metadata);
-        zip.file('iTunesMetadata.plist', Buffer.from(metadataPlist, 'utf8'));
-        
-        // Thêm signature
-        const manifest = plist.parse(this.manifestContent);
-        const sinfPath = manifest.SinfPaths?.[0];
-        if (!sinfPath) throw new Error('Invalid signature.');
-        
-        const appBundleName = Object.keys(zip.files)
-          .find(f => f.endsWith('.app/'))
-          .split('/')[1]
-          .replace(/\.app$/, '');
-        
-        const signatureTargetPath = `Payload/${appBundleName}.app/${sinfPath}`;
-        zip.file(signatureTargetPath, Buffer.from(this.signature.sinf, 'base64'));
-        
-        // Generate lại file zip
-        const newBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-        this.push(newBuffer);
-        callback();
-      } else if (!this.processed) {
-        callback();
-      } else {
-        this.push(chunk);
-        callback();
-      }
+      // Tìm và thêm signature
+      const manifestFile = zip.file(/\.app\/SC_Info\/Manifest\.plist$/)[0];
+      if (!manifestFile) throw new Error('Invalid app bundle.');
+      
+      const manifestContent = await manifestFile.async('string');
+      const manifest = plist.parse(manifestContent);
+      const sinfPath = manifest.SinfPaths?.[0];
+      if (!sinfPath) throw new Error('Invalid signature.');
+      
+      const appBundleName = manifestFile.name.split('/')[1].replace(/\.app$/, '');
+      const signatureTargetPath = `Payload/${appBundleName}.app/${sinfPath}`;
+      zip.file(signatureTargetPath, Buffer.from(this.signature.sinf, 'base64'));
+      
+      // Generate lại file zip
+      const newBuffer = await zip.generateAsync({ 
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 }
+      });
+      
+      this.push(newBuffer);
+      callback();
     } catch (err) {
       callback(err);
     }
-  }
-
-  _flush(callback) {
-    if (this.buffer.length > 0) {
-      this.push(this.buffer);
-    }
-    callback();
   }
 }
