@@ -228,8 +228,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       const response = await fetch('/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          skipSignature, APPLE_ID, PASSWORD })
+        body: JSON.stringify({ APPLE_ID, PASSWORD })
       });
 
       const data = await response.json();
@@ -286,8 +285,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       const response = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          skipSignature, 
+        body: JSON.stringify({ 
           APPLE_ID: state.APPLE_ID, 
           PASSWORD: state.PASSWORD, 
           CODE,
@@ -337,7 +335,6 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
     setLoading(true);
 
     const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
-    const skipSignature = document.getElementById('skipSignature')?.checked;
     const appVerId = elements.appVerInput.value.trim();
 
     if (!APPID) {
@@ -364,8 +361,7 @@ elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 
       const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          skipSignature, 
+        body: JSON.stringify({ 
           APPLE_ID: state.APPLE_ID,
           PASSWORD: state.PASSWORD,
           CODE: state.CODE,
