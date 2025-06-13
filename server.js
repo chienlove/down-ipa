@@ -47,10 +47,10 @@ async function uploadToR2({ key, filePath, contentType }) {
         Body: fileStream,
         ContentType: contentType,
       },
-      partSize: 10 * 1024 * 1024, // 10MB per part
-      queueSize: 1, // Limit 1 concurrent upload
+      partSize: 20 * 1024 * 1024, // 20MB per part
+      queueSize: 1,
       leavePartsOnError: false,
-      timeout: 300000, // 300s
+      timeout: 300000,
     });
 
     console.log('Sending multi-part upload to R2...');
@@ -190,6 +190,14 @@ async function clearCache(cacheDir) {
   }
 }
 
+async function checkMemory(requiredMB) {
+  const { freemem } = require('os');
+  const freeMB = freemem() / 1024 / 1024;
+  if (freeMB < requiredMB) {
+    throw new Error(`Insufficient memory: ${freeMB.toFixed(2)}MB available, ${requiredMB}MB required`);
+  }
+}
+
 async function checkDiskSpace(path, requiredSpace) {
   const stats = await fsPromises.statfs(path);
   const freeDisk = stats.bavail * stats.bsize;
@@ -198,12 +206,16 @@ async function checkDiskSpace(path, requiredSpace) {
   }
 }
 
+const progressMap = new Map();
+
 class IPATool {
-  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
+  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}`);
 
     try {
+      progressMap.set(requestId, { progress: 0, status: 'processing' });
+
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
@@ -216,6 +228,8 @@ class IPATool {
         }
         throw new Error(user.customerMessage || 'Authentication failed');
       }
+
+      progressMap.set(requestId, { progress: 10, status: 'processing' });
 
       console.log('Fetching app info...');
       const app = await Store.download(APPID, appVerId, user);
@@ -260,7 +274,9 @@ class IPATool {
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
+      await checkMemory(300);
       await checkDiskSpace(downloadPath, fileSize);
+      progressMap.set(requestId, { progress: 20, status: 'processing' });
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
         const start = i * CHUNK_SIZE;
@@ -291,6 +307,7 @@ class IPATool {
         });
       }
       finalFile.end();
+      progressMap.set(requestId, { progress: 40, status: 'processing' });
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
@@ -300,7 +317,7 @@ class IPATool {
 
       await new Promise((resolve, reject) => {
         const output = createWriteStream(outputFilePath);
-        const archive = archiver('zip', { zlib: { level: 5 } });
+        const archive = archiver('zip', { zlib: { level: 3 } });
 
         output.on('close', () => {
           console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
@@ -320,6 +337,7 @@ class IPATool {
 
       await fsPromises.rm(signedDir, { recursive: true, force: true });
       console.log('🧹 Deleted temporary signed directory to free disk.');
+      progressMap.set(requestId, { progress: 60, status: 'processing' });
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -327,6 +345,7 @@ class IPATool {
       let installUrl = null;
       let r2Success = false;
 
+      await checkMemory(300);
       await checkDiskSpace(downloadPath, fileSize);
 
       try {
@@ -381,6 +400,7 @@ class IPATool {
 
         await fsPromises.unlink(plistPath);
         console.log(`🧹 Deleted local plist file: ${plistPath}`);
+        progressMap.set(requestId, { progress: 80, status: 'processing' });
 
         ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
         installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
@@ -397,10 +417,13 @@ class IPATool {
         }, 5 * 60 * 1000);
       } catch (error) {
         console.error('R2 upload failed (using local file):', error);
+        progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
+        throw error;
       }
 
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
       console.log('Download completed successfully!');
+      progressMap.set(requestId, { progress: 100, status: 'complete', downloadUrl: ipaUrl, installUrl, r2Success });
 
       return {
         appInfo,
@@ -412,12 +435,138 @@ class IPATool {
       };
     } catch (error) {
       console.error('Download error:', error);
+      progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
       throw error;
     }
   }
 }
 
 const ipaTool = new IPATool();
+
+app.get('/download-progress/:id', (req, res) => {
+  const id = req.params.id;
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  const sendProgress = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const interval = setInterval(() => {
+    const progress = progressMap.get(id) || { progress: 0, status: 'pending' };
+    sendProgress({ id, ...progress });
+    if (progress.status === 'complete' || progress.status === 'error') {
+      clearInterval(interval);
+      progressMap.delete(id);
+      res.end();
+    }
+  }, 5000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
+app.get('/status/:id', (req, res) => {
+  const id = req.params.id;
+  const progress = progressMap.get(id) || { progress: 0, status: 'pending' };
+  res.json({ id, ...progress });
+});
+
+app.post('/download', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
+
+    if (!APPLE_ID || !PASSWORD || !APPID) {
+      return res.status(400).json({
+        success: false,
+        error: 'Required fields missing',
+      });
+    }
+
+    const requestId = generateRandomString();
+    const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
+    console.log(`Download request for app: ${APPID}, requestId: ${requestId}`);
+
+    // Trả response ngay để tránh Cloudflare 524
+    res.json({
+      success: true,
+      status: 'pending',
+      requestId,
+      message: 'Processing started, check status via /status/:id or /download-progress/:id',
+    });
+
+    // Xử lý bất đồng bộ
+    setImmediate(async () => {
+      try {
+        const result = await ipaTool.downipa({
+          path: uniqueDownloadPath,
+          APPLE_ID,
+          PASSWORD,
+          CODE,
+          APPID,
+          appVerId,
+          requestId,
+        });
+
+        if (result.require2FA) {
+          progressMap.set(requestId, {
+            progress: 0,
+            status: 'error',
+            error: '2FA required',
+            require2FA: true,
+            message: result.message,
+          });
+          return;
+        }
+
+        console.log('Preparing to send response:', {
+          downloadUrl: result.downloadUrl,
+          installUrl: result.installUrl,
+          r2UploadSuccess: result.r2UploadSuccess,
+        });
+
+        // Cleanup bất đồng bộ
+        setTimeout(async () => {
+          try {
+            await fsPromises.unlink(result.filePath, { priority: 'low' });
+            await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
+            await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
+            console.log(`Cleaned up local file and folder: ${result.filePath}`);
+          } catch (err) {
+            console.error('Cleanup IPA error:', err.message);
+          }
+
+          if (result.plistPath) {
+            try {
+              await fsPromises.unlink(result.plistPath, { priority: 'low' });
+              console.log(`Deleted local plist file: ${result.plistPath}`);
+            } catch (err) {
+              console.error('Cleanup plist error:', err.message);
+            }
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Background download error:', error);
+        progressMap.set(requestId, {
+          progress: 0,
+          status: 'error',
+          error: error.message || 'Download failed',
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Download failed',
+    });
+  }
+});
 
 app.post('/auth', async (req, res) => {
   try {
@@ -497,109 +646,6 @@ app.post('/verify', async (req, res) => {
   }
 });
 
-app.get('/download-progress/:id', (req, res) => {
-  const id = req.params.id;
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  });
-
-  const sendProgress = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
-
-  let progress = 0;
-  const interval = setInterval(() => {
-    progress += 10;
-    sendProgress({ id, progress, status: 'processing' });
-    if (progress >= 100) {
-      clearInterval(interval);
-      sendProgress({ id, progress: 100, status: 'complete' });
-      res.end();
-    }
-  }, 10000);
-
-  req.on('close', () => {
-    clearInterval(interval);
-    res.end();
-  });
-});
-
-app.post('/download', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
-
-    if (!APPLE_ID || !PASSWORD || !APPID) {
-      return res.status(400).json({
-        success: false,
-        error: 'Required fields are missing',
-      });
-    }
-
-    const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
-    console.log(`Download request for app: ${APPID}`);
-
-    const result = await ipaTool.downipa({
-      path: uniqueDownloadPath,
-      APPLE_ID,
-      PASSWORD,
-      CODE,
-      APPID,
-      appVerId,
-    });
-
-    if (result.require2FA) {
-      return res.json({
-        success: false,
-        require2FA: true,
-        message: result.message,
-      });
-    }
-
-    console.log('Preparing to send response:', {
-      downloadUrl: result.downloadUrl,
-      installUrl: result.installUrl,
-      r2UploadSuccess: result.r2UploadSuccess,
-    });
-
-    res.json({
-      success: true,
-      downloadUrl: result.downloadUrl,
-      fileName: result.fileName,
-      appInfo: result.appInfo,
-      installUrl: result.installUrl,
-      r2UploadSuccess: result.r2UploadSuccess,
-    });
-
-    setTimeout(async () => {
-      try {
-        await fsPromises.unlink(result.filePath, { priority: 'low' });
-        await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
-        await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
-        console.log(`Cleaned up local file and folder: ${result.filePath}`);
-      } catch (err) {
-        console.error('Cleanup IPA error:', err.message);
-      }
-
-      if (result.plistPath) {
-        try {
-          await fsPromises.unlink(result.plistPath, { priority: 'low' });
-          console.log(`Deleted local plist file: ${result.plistPath}`);
-        } catch (err) {
-          console.error('Cleanup plist error:', err.message);
-        }
-      }
-    }, 100);
-  } catch (error) {
-    console.error('Download error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Download failed',
-    });
-  }
-});
-
 app.use((req, res) => {
   res.status(404).json({ error: 'Not Found' });
 });
@@ -614,6 +660,7 @@ const server = app.listen(port, () => {
   console.log(`Health check: http://localhost:${port}/health`);
   console.log(`R2 test endpoint: http://localhost:${port}/check-r2`);
 });
+server.setTimeout(600000);
 
 const shutdown = () => {
   console.log('Shutting down server...');
