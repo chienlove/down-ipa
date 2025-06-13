@@ -11,6 +11,7 @@ import archiver from 'archiver';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import rateLimit from 'express-rate-limit';
+import cors from 'cors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,7 +29,7 @@ const r2Client = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
   forcePathStyle: true,
-  maxAttempts: 3, // Retry 3 times
+  maxAttempts: 3,
   retryMode: 'standard',
 });
 
@@ -46,9 +47,10 @@ async function uploadToR2({ key, filePath, contentType }) {
         Body: fileStream,
         ContentType: contentType,
       },
-      partSize: 5 * 1024 * 1024, // 5MB per part
-      queueSize: 2, // Limit 2 concurrent uploads
-      leavePartsOnError: false, // Clean up parts on error
+      partSize: 5 * 1024 * 1024,
+      queueSize: 2,
+      leavePartsOnError: false,
+      timeout: 120000, // 120s
     });
 
     console.log('Sending multi-part upload to R2...');
@@ -81,6 +83,7 @@ async function deleteFromR2(key) {
 }
 
 // Middleware
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -88,8 +91,8 @@ app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.wel
 
 // Rate-limiting for /download endpoint
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per IP
+  windowMs: 15 * 60 * 1000,
+  max: 3,
 });
 app.use('/download', limiter);
 
@@ -106,12 +109,15 @@ app.get('/health', (req, res) => {
 app.get('/check-r2', async (req, res) => {
   try {
     const testKey = `test-${Date.now()}.txt`;
+    const testPath = path.join(__dirname, 'test.txt');
+    await fsPromises.writeFile(testPath, 'test content');
     await uploadToR2({
       key: testKey,
-      filePath: path.join(__dirname, 'test.txt'),
+      filePath: testPath,
       contentType: 'text/plain',
     });
     await deleteFromR2(testKey);
+    await fsPromises.unlink(testPath);
     res.json({ success: true, message: 'R2 connection is working' });
   } catch (error) {
     console.error('R2 test error:', error);
@@ -129,13 +135,12 @@ app.get('/', (req, res) => {
 });
 
 // Constants
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_CONCURRENT_DOWNLOADS = 2; // Reduced from 10
+const CHUNK_SIZE = 5 * 1024 * 1024;
+const MAX_CONCURRENT_DOWNLOADS = 2;
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 3000;
-const REQUEST_TIMEOUT = 15000; // 15 seconds
+const REQUEST_TIMEOUT = 15000;
 
-// Helper functions
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
@@ -188,7 +193,7 @@ async function clearCache(cacheDir) {
 async function checkDiskSpace(path, requiredSpace) {
   const stats = await fsPromises.statfs(path);
   const freeDisk = stats.bavail * stats.bsize;
-  if (freeDisk < requiredSpace + 100 * 1024 * 1024) { // Reserve 100MB
+  if (freeDisk < requiredSpace + 100 * 1024 * 1024) {
     throw new Error('Insufficient disk space for upload');
   }
 }
@@ -255,7 +260,7 @@ class IPATool {
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
-      await checkDiskSpace(downloadPath, fileSize); // Check disk space
+      await checkDiskSpace(downloadPath, fileSize);
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
         const start = i * CHUNK_SIZE;
@@ -293,7 +298,6 @@ class IPATool {
       await sigClient.processIPA(outputFilePath, signedDir);
       console.log('🔧 Using archiver to zip signed IPA...');
 
-      // Zip with reduced compression level
       await new Promise((resolve, reject) => {
         const output = createWriteStream(outputFilePath);
         const archive = archiver('zip', { zlib: { level: 6 } });
@@ -319,12 +323,11 @@ class IPATool {
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
       let installUrl = null;
       let r2Success = false;
 
-      await checkDiskSpace(downloadPath, fileSize); // Re-check disk before upload
+      await checkDiskSpace(downloadPath, fileSize);
 
       try {
         const ipaKey = `ipas/${outputFileName}`;
@@ -416,7 +419,6 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// Authentication routes
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
@@ -526,25 +528,11 @@ app.post('/download', async (req, res) => {
       });
     }
 
-    // Clean up local IPA file
-    try {
-      await fsPromises.unlink(result.filePath);
-      await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
-      await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
-      console.log(`Cleaned up local file and folder: ${result.filePath}`);
-    } catch (err) {
-      console.error('Cleanup IPA error:', err.message);
-    }
-
-    // Clean up plist file if exists
-    if (result.plistPath) {
-      try {
-        await fsPromises.unlink(result.plistPath);
-        console.log(`Deleted local plist file: ${result.plistPath}`);
-      } catch (err) {
-        console.error('Cleanup plist error:', err.message);
-      }
-    }
+    console.log('Preparing to send response:', {
+      downloadUrl: result.downloadUrl,
+      installUrl: result.installUrl,
+      r2UploadSuccess: result.r2UploadSuccess,
+    });
 
     res.json({
       success: true,
@@ -554,6 +542,26 @@ app.post('/download', async (req, res) => {
       installUrl: result.installUrl,
       r2UploadSuccess: result.r2UploadSuccess,
     });
+
+    setTimeout(async () => {
+      try {
+        await fsPromises.unlink(result.filePath);
+        await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
+        await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
+        console.log(`Cleaned up local file and folder: ${result.filePath}`);
+      } catch (err) {
+        console.error('Cleanup IPA error:', err.message);
+      }
+
+      if (result.plistPath) {
+        try {
+          await fsPromises.unlink(result.plistPath);
+          console.log(`Deleted local plist file: ${result.plistPath}`);
+        } catch (err) {
+          console.error('Cleanup plist error:', err.message);
+        }
+      }
+    }, 0);
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({
