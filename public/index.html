@@ -16,7 +16,8 @@
     .error { background: #fee2e2; padding: 10px; border-radius: 5px; }
     .progress-bar-container { height: 10px; background: #e5e7eb; border-radius: 5px; overflow: hidden; margin-bottom: 20px; }
     .progress-bar { height: 100%; background: #10b981; transition: width 0.3s; }
-    .password-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; }
+    .password-toggle { position: absolute; right: 15px; top: 38px; cursor: pointer; color: #6c757d; }
+    .password-field { position: relative; }
     .hidden { display: none !important; }
     input { border-radius: 8px; }
     .step { padding: 20px; }
@@ -46,7 +47,7 @@
               <label for="APPLE_ID" class="form-label">Apple ID</label>
               <input type="text" class="form-control" id="APPLE_ID" placeholder="Nhập Apple ID">
             </div>
-            <div class="mb-3 position-relative">
+            <div class="mb-3 password-field">
               <label for="PASSWORD" class="form-label">Mật khẩu Apple ID</label>
               <input type="password" class="form-control" id="PASSWORD" placeholder="Nhập mật khẩu">
               <i id="togglePassword" class="fas fa-eye password-toggle"></i>
@@ -105,6 +106,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-  <script src="/main.js"></script>
+  <script src="/index.js"></script>
 </body>
 </html>
