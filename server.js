@@ -264,7 +264,6 @@ class IPATool {
       const sigClient = new SignatureClient(songList0, APPLE_ID);
       await sigClient.loadFile(outputFilePath);
       await sigClient.appendMetadata().appendSignature();
-      import archiver from 'archiver'; // đảm bảo dòng này có đầu file server.js
 
 await sigClient.loadFile(outputFilePath);
 await sigClient.appendMetadata().appendSignature();
