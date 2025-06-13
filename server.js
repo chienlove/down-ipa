@@ -7,6 +7,7 @@ import { Store } from './src/client.js';
 import { SignatureClient } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Agent } from 'https';
+import archiver from 'archiver';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const __filename = fileURLToPath(import.meta.url);
