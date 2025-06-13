@@ -267,11 +267,12 @@ console.log('🔧 Using archiver to zip signed IPA...');
 
 // Nén lại IPA bằng stream để giảm RAM
 await new Promise((resolve, reject) => {
-  const output = createWriteStream(outputFilePath); // ghi đè lên file cũ
+  const output = createWriteStream(outputFilePath);
   const archive = archiver('zip', { zlib: { level: 9 } });
 
   output.on('close', () => {
     console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
+    output.close?.(); // ✅ Đảm bảo đóng stream
     resolve();
   });
 
@@ -285,8 +286,12 @@ await new Promise((resolve, reject) => {
   archive.finalize();
 });
 
-      await fsPromises.rm(signedDir, { recursive: true, force: true });
+// ✅ Xoá thư mục tạm ngay sau khi nén xong (trước khi upload)
+await fsPromises.rm(signedDir, { recursive: true, force: true });
 console.log('🧹 Deleted temporary signed directory to free disk.');
+
+// ✅ Nghỉ 0.5s để RAM/Disk hệ thống hoàn toàn ổn định trước khi upload
+await new Promise(resolve => setTimeout(resolve, 500));
 
       // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
