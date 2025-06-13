@@ -21,6 +21,7 @@
     "xml2js": "^0.4.23",
     "@aws-sdk/client-s3": "^3.491.0",
     "aws-sdk": "^2.1482.0",
-    "archiver": "^5.3.1"
+    "archiver": "^5.3.1",
+    "unzipper": "^0.10.11"
   }
 }
