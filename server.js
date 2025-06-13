@@ -32,15 +32,14 @@ const r2Client = new S3Client({
 async function uploadToR2({ key, filePath, contentType }) {
   try {
     console.log(`Preparing to upload to R2: ${key}`);
-    const fileContent = await fsPromises.readFile(filePath);
-    console.log(`File read successfully, size: ${fileContent.length} bytes`);
+    const fileStream = createReadStream(filePath);
 
-    const command = new PutObjectCommand({
-      Bucket: 'file',
-      Key: key,
-      Body: fileContent,
-      ContentType: contentType
-    });
+const command = new PutObjectCommand({
+  Bucket: 'file',
+  Key: key,
+  Body: fileStream,
+  ContentType: contentType
+});
 
     console.log('Sending upload command to R2...');
     const result = await r2Client.send(command);
@@ -285,6 +284,9 @@ await new Promise((resolve, reject) => {
   archive.directory(signedDir, false);
   archive.finalize();
 });
+
+      await fsPromises.rm(signedDir, { recursive: true, force: true });
+console.log('🧹 Deleted temporary signed directory to free disk.');
 
       // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
