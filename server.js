@@ -47,10 +47,10 @@ async function uploadToR2({ key, filePath, contentType }) {
         Body: fileStream,
         ContentType: contentType,
       },
-      partSize: 5 * 1024 * 1024,
-      queueSize: 2,
+      partSize: 10 * 1024 * 1024, // 10MB per part
+      queueSize: 1, // Limit 1 concurrent upload
       leavePartsOnError: false,
-      timeout: 120000, // 120s
+      timeout: 300000, // 300s
     });
 
     console.log('Sending multi-part upload to R2...');
@@ -300,7 +300,7 @@ class IPATool {
 
       await new Promise((resolve, reject) => {
         const output = createWriteStream(outputFilePath);
-        const archive = archiver('zip', { zlib: { level: 6 } });
+        const archive = archiver('zip', { zlib: { level: 5 } });
 
         output.on('close', () => {
           console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
@@ -497,6 +497,35 @@ app.post('/verify', async (req, res) => {
   }
 });
 
+app.get('/download-progress/:id', (req, res) => {
+  const id = req.params.id;
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+
+  const sendProgress = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += 10;
+    sendProgress({ id, progress, status: 'processing' });
+    if (progress >= 100) {
+      clearInterval(interval);
+      sendProgress({ id, progress: 100, status: 'complete' });
+      res.end();
+    }
+  }, 10000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
 app.post('/download', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -545,7 +574,7 @@ app.post('/download', async (req, res) => {
 
     setTimeout(async () => {
       try {
-        await fsPromises.unlink(result.filePath);
+        await fsPromises.unlink(result.filePath, { priority: 'low' });
         await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
         await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
         console.log(`Cleaned up local file and folder: ${result.filePath}`);
@@ -555,13 +584,13 @@ app.post('/download', async (req, res) => {
 
       if (result.plistPath) {
         try {
-          await fsPromises.unlink(result.plistPath);
+          await fsPromises.unlink(result.plistPath, { priority: 'low' });
           console.log(`Deleted local plist file: ${result.plistPath}`);
         } catch (err) {
           console.error('Cleanup plist error:', err.message);
         }
       }
-    }, 0);
+    }, 100);
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({
