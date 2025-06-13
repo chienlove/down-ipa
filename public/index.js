@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     progressBar: document.getElementById('progressBar'),
     togglePassword: document.getElementById('togglePassword'),
     passwordInput: document.getElementById('PASSWORD'),
-    eyeIcon: document.getElementById('eyeIcon'),
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
@@ -29,11 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
     verified2FA: false,
     dsid: null,
     requires2FA: false,
-    requestId: null, // Lưu requestId cho polling/SSE
+    requestId: null,
   };
 
   let isLoading = false;
-  let eventSource = null; // Lưu EventSource cho SSE
+  let eventSource = null;
 
   /* ========== UI HELPERS ========== */
 
@@ -151,10 +150,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const setProgress = (stepOrPercent) => {
     if (typeof stepOrPercent === 'number') {
-      // Cập nhật theo phần trăm (cho SSE)
       elements.progressBar.style.width = `${stepOrPercent}%`;
     } else {
-      // Cập nhật theo bước (1, 2, 3, 4)
       const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
       elements.progressBar.style.width = map[stepOrPercent] || '0%';
     }
@@ -197,21 +194,19 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(2);
   };
 
-  // Lắng nghe tiến trình tải qua SSE
   const listenProgress = (requestId) => {
     if (eventSource) {
-      eventSource.close(); // Đóng SSE cũ nếu có
+      eventSource.close();
     }
 
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       console.log(`Progress: ${data.progress}%`);
-      setProgress(data.progress); // Cập nhật progress bar
+      setProgress(data.progress);
       showToast(`Tiến trình: ${data.progress}%`, 'success');
 
       if (data.status === 'complete') {
-        // Hiển thị kết quả tải
         document.getElementById('appName').textContent = data.appInfo?.name || 'Unknown';
         document.getElementById('appAuthor').textContent = data.appInfo?.artist || 'Unknown';
         document.getElementById('appVersion').textContent = data.appInfo?.version || 'Unknown';
@@ -253,16 +248,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== EVENT HANDLERS ========== */
 
-  // Toggle password visibility
   elements.togglePassword.addEventListener('click', () => {
     const isPassword = elements.passwordInput.type === 'password';
     elements.passwordInput.type = isPassword ? 'text' : 'password';
-    elements.eyeIcon.innerHTML = isPassword
-      ? `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.966 9.966 0 012.842-4.275m3.763-2.174A9.977 9.977 0 0112 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`
-      : `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>`;
+    elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
   });
 
-  // Step 1: Login
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -322,7 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Step 2: Verify 2FA
   elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -383,7 +373,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Step 3: Download
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
     if (isLoading) return;
@@ -433,7 +422,6 @@ document.addEventListener('DOMContentLoaded', () => {
         handle2FARedirect(data);
         setLoading(false);
       } else if (data.success && data.requestId) {
-        // Bắt đầu lắng nghe tiến trình qua SSE
         state.requestId = data.requestId;
         listenProgress(data.requestId);
       } else {
