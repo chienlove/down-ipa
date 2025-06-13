@@ -8,7 +8,9 @@ import { SignatureClient } from './src/Signature.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Agent } from 'https';
 import archiver from 'archiver';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import rateLimit from 'express-rate-limit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,30 +25,43 @@ const r2Client = new S3Client({
   endpoint: R2_ENDPOINT,
   credentials: {
     accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
   },
-  forcePathStyle: true
+  forcePathStyle: true,
+  maxAttempts: 3, // Retry 3 times
+  retryMode: 'standard',
 });
 
 // R2 Helper Functions
 async function uploadToR2({ key, filePath, contentType }) {
   try {
-    console.log(`Preparing to upload to R2: ${key}`);
+    console.log(`Preparing to upload to R2: ${key} (multi-part)`);
     const fileStream = createReadStream(filePath);
 
-const command = new PutObjectCommand({
-  Bucket: 'file',
-  Key: key,
-  Body: fileStream,
-  ContentType: contentType
-});
+    const upload = new Upload({
+      client: r2Client,
+      params: {
+        Bucket: 'file',
+        Key: key,
+        Body: fileStream,
+        ContentType: contentType,
+      },
+      partSize: 5 * 1024 * 1024, // 5MB per part
+      queueSize: 2, // Limit 2 concurrent uploads
+      leavePartsOnError: false, // Clean up parts on error
+    });
 
-    console.log('Sending upload command to R2...');
-    const result = await r2Client.send(command);
+    console.log('Sending multi-part upload to R2...');
+    const result = await upload.done();
     console.log('Upload successful:', result);
     return result;
   } catch (error) {
-    console.error('R2 upload error:', error);
+    console.error('R2 upload error:', {
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      statusCode: error.$metadata?.httpStatusCode,
+    });
     throw error;
   }
 }
@@ -55,7 +70,7 @@ async function deleteFromR2(key) {
   try {
     const command = new DeleteObjectCommand({
       Bucket: 'file',
-      Key: key
+      Key: key,
     });
     await r2Client.send(command);
     console.log(`Successfully deleted ${key} from R2`);
@@ -71,12 +86,19 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 
+// Rate-limiting for /download endpoint
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 requests per IP
+});
+app.use('/download', limiter);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
+  res.status(200).json({
     status: 'healthy',
     version: '1.0.1',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -84,23 +106,19 @@ app.get('/health', (req, res) => {
 app.get('/check-r2', async (req, res) => {
   try {
     const testKey = `test-${Date.now()}.txt`;
-    const command = new PutObjectCommand({
-      Bucket: 'file',
-      Key: testKey,
-      Body: 'test content',
-      ContentType: 'text/plain'
+    await uploadToR2({
+      key: testKey,
+      filePath: path.join(__dirname, 'test.txt'),
+      contentType: 'text/plain',
     });
-    
-    await r2Client.send(command);
     await deleteFromR2(testKey);
-    
     res.json({ success: true, message: 'R2 connection is working' });
   } catch (error) {
     console.error('R2 test error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: error.message,
-      message: 'Failed to connect to R2' 
+      message: 'Failed to connect to R2',
     });
   }
 });
@@ -112,7 +130,7 @@ app.get('/', (req, res) => {
 
 // Constants
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_CONCURRENT_DOWNLOADS = 10;
+const MAX_CONCURRENT_DOWNLOADS = 2; // Reduced from 10
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 3000;
 const REQUEST_TIMEOUT = 15000; // 15 seconds
@@ -131,13 +149,13 @@ async function downloadChunk({ url, start, end, output }) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
-      
-      const response = await fetch(url, { 
+
+      const response = await fetch(url, {
         headers,
         agent,
-        signal: controller.signal 
+        signal: controller.signal,
       });
-      
+
       clearTimeout(timeout);
 
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -167,6 +185,14 @@ async function clearCache(cacheDir) {
   }
 }
 
+async function checkDiskSpace(path, requiredSpace) {
+  const stats = await fsPromises.statfs(path);
+  const freeDisk = stats.bavail * stats.bsize;
+  if (freeDisk < requiredSpace + 100 * 1024 * 1024) { // Reserve 100MB
+    throw new Error('Insufficient disk space for upload');
+  }
+}
+
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId } = {}) {
     downloadPath = downloadPath || '.';
@@ -180,7 +206,7 @@ class IPATool {
         if (user.failureType?.toLowerCase().includes('mfa')) {
           return {
             require2FA: true,
-            message: user.customerMessage || '2FA verification required'
+            message: user.customerMessage || '2FA verification required',
           };
         }
         throw new Error(user.customerMessage || 'Authentication failed');
@@ -194,7 +220,7 @@ class IPATool {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
           return {
             require2FA: true,
-            message: app.customerMessage || '2FA verification required'
+            message: app.customerMessage || '2FA verification required',
           };
         }
         throw new Error(app?.customerMessage || 'Failed to get app information');
@@ -205,7 +231,7 @@ class IPATool {
         artist: songList0.metadata.artistName,
         version: songList0.metadata.bundleShortVersionString,
         bundleId: songList0.metadata.softwareVersionBundleId,
-        releaseDate: songList0.metadata.releaseDate
+        releaseDate: songList0.metadata.releaseDate,
       };
 
       await fsPromises.mkdir(downloadPath, { recursive: true });
@@ -218,10 +244,10 @@ class IPATool {
       await clearCache(cacheDir);
 
       console.log('Downloading IPA file...');
-      const resp = await fetch(songList0.URL, { 
-        agent: new Agent({ rejectUnauthorized: false }) 
+      const resp = await fetch(songList0.URL, {
+        agent: new Agent({ rejectUnauthorized: false }),
       });
-      
+
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
@@ -229,15 +255,17 @@ class IPATool {
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
+      await checkDiskSpace(downloadPath, fileSize); // Check disk space
+
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
         const tempOutput = path.join(cacheDir, `part${i}`);
-        return () => downloadChunk({ 
-          url: songList0.URL, 
-          start, 
-          end, 
-          output: tempOutput 
+        return () => downloadChunk({
+          url: songList0.URL,
+          start,
+          end,
+          output: tempOutput,
         });
       });
 
@@ -260,50 +288,50 @@ class IPATool {
       finalFile.end();
 
       console.log('Signing IPA...');
-const sigClient = new SignatureClient(songList0, APPLE_ID);
-const signedDir = path.join(downloadPath, 'signed');
-await sigClient.processIPA(outputFilePath, signedDir);
-console.log('🔧 Using archiver to zip signed IPA...');
+      const sigClient = new SignatureClient(songList0, APPLE_ID);
+      const signedDir = path.join(downloadPath, 'signed');
+      await sigClient.processIPA(outputFilePath, signedDir);
+      console.log('🔧 Using archiver to zip signed IPA...');
 
-// Nén lại IPA bằng stream để giảm RAM
-await new Promise((resolve, reject) => {
-  const output = createWriteStream(outputFilePath);
-  const archive = archiver('zip', { zlib: { level: 9 } });
+      // Zip with reduced compression level
+      await new Promise((resolve, reject) => {
+        const output = createWriteStream(outputFilePath);
+        const archive = archiver('zip', { zlib: { level: 6 } });
 
-  output.on('close', () => {
-    console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
-    output.close?.(); // ✅ Đảm bảo đóng stream
-    resolve();
-  });
+        output.on('close', () => {
+          console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
+          output.close?.();
+          resolve();
+        });
 
-  archive.on('error', (err) => {
-    console.error('❌ Archiver error:', err);
-    reject(err);
-  });
+        archive.on('error', (err) => {
+          console.error('❌ Archiver error:', err);
+          reject(err);
+        });
 
-  archive.pipe(output);
-  archive.directory(signedDir, false);
-  archive.finalize();
-});
+        archive.pipe(output);
+        archive.directory(signedDir, false);
+        archive.finalize();
+      });
 
-// ✅ Xoá thư mục tạm ngay sau khi nén xong (trước khi upload)
-await fsPromises.rm(signedDir, { recursive: true, force: true });
-console.log('🧹 Deleted temporary signed directory to free disk.');
+      await fsPromises.rm(signedDir, { recursive: true, force: true });
+      console.log('🧹 Deleted temporary signed directory to free disk.');
 
-// ✅ Nghỉ 0.5s để RAM/Disk hệ thống hoàn toàn ổn định trước khi upload
-await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // R2 Upload
       let ipaUrl = `/files/${path.basename(downloadPath)}/${outputFileName}`;
       let installUrl = null;
       let r2Success = false;
 
+      await checkDiskSpace(downloadPath, fileSize); // Re-check disk before upload
+
       try {
         const ipaKey = `ipas/${outputFileName}`;
         await uploadToR2({
           key: ipaKey,
           filePath: outputFilePath,
-          contentType: 'application/octet-stream'
+          contentType: 'application/octet-stream',
         });
 
         const plistName = outputFileName.replace(/\.ipa$/, '.plist');
@@ -345,25 +373,25 @@ await new Promise(resolve => setTimeout(resolve, 500));
         await uploadToR2({
           key: plistKey,
           filePath: plistPath,
-          contentType: 'application/xml'
+          contentType: 'application/xml',
         });
 
         await fsPromises.unlink(plistPath);
-console.log(`Deleted local plist file: ${plistPath}`);
+        console.log(`🧹 Deleted local plist file: ${plistPath}`);
 
         ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
-installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
+        installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
         r2Success = true;
 
         setTimeout(async () => {
           try {
             await deleteFromR2(ipaKey);
             await deleteFromR2(plistKey);
+            console.log('🧼 Auto-cleaned file on R2');
           } catch (err) {
-            console.error('R2 cleanup error:', err);
+            console.error('❌ R2 cleanup error:', err.message);
           }
         }, 5 * 60 * 1000);
-
       } catch (error) {
         console.error('R2 upload failed (using local file):', error);
       }
@@ -376,8 +404,8 @@ installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent
         fileName: outputFileName,
         filePath: outputFilePath,
         downloadUrl: ipaUrl,
-        installUrl: installUrl,
-        r2UploadSuccess: r2Success
+        installUrl,
+        r2UploadSuccess: r2Success,
       };
     } catch (error) {
       console.error('Download error:', error);
@@ -399,7 +427,7 @@ app.post('/auth', async (req, res) => {
       failureType: user.failureType,
       customerMessage: user.customerMessage,
       authOptions: user.authOptions,
-      dsid: user.dsPersonId
+      dsid: user.dsPersonId,
     };
 
     const needs2FA = (
@@ -415,7 +443,7 @@ app.post('/auth', async (req, res) => {
         require2FA: true,
         message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
         dsid: user.dsPersonId,
-        debug: debugLog
+        debug: debugLog,
       });
     }
 
@@ -423,7 +451,7 @@ app.post('/auth', async (req, res) => {
       return res.json({
         success: true,
         dsid: user.dsPersonId,
-        debug: debugLog
+        debug: debugLog,
       });
     }
 
@@ -431,7 +459,7 @@ app.post('/auth', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID'
+      error: error.message || 'Lỗi xác thực Apple ID',
     });
   }
 });
@@ -439,11 +467,11 @@ app.post('/auth', async (req, res) => {
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
+
     if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
+      return res.status(400).json({
+        success: false,
+        error: 'All fields are required',
       });
     }
 
@@ -454,15 +482,15 @@ app.post('/verify', async (req, res) => {
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    res.json({ 
+    res.json({
       success: true,
-      dsid: user.dsPersonId
+      dsid: user.dsPersonId,
     });
   } catch (error) {
     console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Verification error',
     });
   }
 });
@@ -474,7 +502,7 @@ app.post('/download', async (req, res) => {
     if (!APPLE_ID || !PASSWORD || !APPID) {
       return res.status(400).json({
         success: false,
-        error: 'Required fields are missing'
+        error: 'Required fields are missing',
       });
     }
 
@@ -487,18 +515,18 @@ app.post('/download', async (req, res) => {
       PASSWORD,
       CODE,
       APPID,
-      appVerId
+      appVerId,
     });
 
     if (result.require2FA) {
       return res.json({
         success: false,
         require2FA: true,
-        message: result.message
+        message: result.message,
       });
     }
 
-    // ✅ Xoá file IPA local
+    // Clean up local IPA file
     try {
       await fsPromises.unlink(result.filePath);
       await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
@@ -508,7 +536,7 @@ app.post('/download', async (req, res) => {
       console.error('Cleanup IPA error:', err.message);
     }
 
-    // ✅ Xoá file .plist nếu có
+    // Clean up plist file if exists
     if (result.plistPath) {
       try {
         await fsPromises.unlink(result.plistPath);
@@ -518,20 +546,19 @@ app.post('/download', async (req, res) => {
       }
     }
 
-    // ✅ Trả kết quả
     res.json({
       success: true,
       downloadUrl: result.downloadUrl,
       fileName: result.fileName,
       appInfo: result.appInfo,
       installUrl: result.installUrl,
-      r2UploadSuccess: result.r2UploadSuccess
+      r2UploadSuccess: result.r2UploadSuccess,
     });
   } catch (error) {
     console.error('Download error:', error);
     res.status(500).json({
       success: false,
-      error: error.message || 'Download failed'
+      error: error.message || 'Download failed',
     });
   }
 });
