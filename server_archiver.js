@@ -261,9 +261,12 @@ class IPATool {
       finalFile.end();
 
       console.log('Signing IPA...');
-const sigClient = new SignatureClient(songList0, APPLE_ID);
+      const sigClient = new SignatureClient(songList0, APPLE_ID);
+await sigClient.loadFile(outputFilePath);
+await sigClient.appendMetadata().appendSignature();
+
 const signedDir = path.join(downloadPath, 'signed');
-await sigClient.processIPA(outputFilePath, signedDir);
+await sigClient.extractToDirectory(signedDir);
 console.log('🔧 Using archiver to zip signed IPA...');
 
 // Nén lại IPA bằng stream để giảm RAM
