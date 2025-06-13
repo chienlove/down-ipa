@@ -270,14 +270,22 @@ await sigClient.appendMetadata().appendSignature();
 
 const signedDir = path.join(downloadPath, 'signed');
 await sigClient.extractToDirectory(signedDir);
+console.log('🔧 Using archiver to zip signed IPA...');
 
 // Nén lại IPA bằng stream để giảm RAM
 await new Promise((resolve, reject) => {
   const output = createWriteStream(outputFilePath); // ghi đè lên file cũ
   const archive = archiver('zip', { zlib: { level: 9 } });
 
-  output.on('close', resolve);
-  archive.on('error', reject);
+  output.on('close', () => {
+    console.log(`✅ Archiver finished zipping. Final size: ${archive.pointer()} bytes`);
+    resolve();
+  });
+
+  archive.on('error', (err) => {
+    console.error('❌ Archiver error:', err);
+    reject(err);
+  });
 
   archive.pipe(output);
   archive.directory(signedDir, false);
