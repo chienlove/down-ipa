@@ -18,8 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
-    appVerInput: document.getElementById('APP_VER_ID'),
-    iosVersionInput: document.getElementById('IOS_VERSION')
+    appVerInput: document.getElementById('APP_VER_ID')
   };
 
   // Kiểm tra DOM elements
