@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('main.js loaded'); // Debug
+  console.log('index.js loaded');
   // DOM Elements
   const elements = {
     step1: document.getElementById('step1'),
@@ -18,7 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
-    appVerInput: document.getElementById('APP_VER_ID')
+    appVerInput: document.getElementById('APP_VER_ID'),
+    iosVersionInput: document.getElementById('IOS_VERSION') // Sẽ thêm vào HTML
   };
 
   // Kiểm tra DOM elements
@@ -35,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dsid: null,
     requires2FA: false,
     requestId: null,
+    iosVersion: ''
   };
 
   let isLoading = false;
@@ -42,13 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== UI HELPERS ========== */
   
-  // Create toast container
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
   toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
   document.body.appendChild(toastContainer);
 
-  // Add CSS styles
   const addStyles = () => {
     const style = document.createElement('style');
     style.textContent = `
@@ -94,6 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
         margin-right: 12px;
         font-size: 20px;
       }
+      .compatible {
+        background-color: #10B981;
+      }
+      .incompatible {
+        background-color: #EF4444;
+      }
       @keyframes spin {
         to { transform: rotate(360deg); }
       }
@@ -114,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ========== CORE FUNCTIONS ========== */
 
   const showToast = (message, type = 'success') => {
-    console.log(`Toast: ${message}, Type: ${type}`); // Debug
+    console.log(`Toast: ${message}, Type: ${type}`);
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
@@ -132,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showError = (msg) => {
-    console.log(`Error: ${msg}`); // Debug
+    console.log(`Error: ${msg}`);
     elements.errorMessage.textContent = msg;
     elements.errorBox.classList.remove('hidden');
     setTimeout(() => {
@@ -146,7 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const transition = (from, to) => {
-    console.log(`Transition from ${from.id} to ${to.id}`); // Debug
+    console.log(`Transition from ${from.id} to ${to.id}`);
     from.classList.add('animate__fadeOut');
     setTimeout(() => {
       from.classList.add('hidden');
@@ -158,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setProgress = (stepOrPercent) => {
-    console.log(`Set progress: ${stepOrPercent}`); // Debug
+    console.log(`Set progress: ${stepOrPercent}`);
     if (typeof stepOrPercent === 'number') {
       elements.progressBar.style.width = `${stepOrPercent}%`;
     } else {
@@ -168,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setLoading = (loading) => {
-    console.log(`Set loading: ${loading}`); // Debug
+    console.log(`Set loading: ${loading}`);
     isLoading = loading;
     if (loading) {
       elements.progressBar.classList.add('progress-loading');
@@ -185,8 +191,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  const compareVersions = (version1, version2) => {
+    const v1Parts = version1.split('.').map(Number);
+    const v2Parts = version2.split('.').map(Number);
+    const maxLength = Math.max(v1Parts.length, v2Parts.length);
+    
+    for (let i = 0; i < maxLength; i++) {
+      const v1 = v1Parts[i] || 0;
+      const v2 = v2Parts[i] || 0;
+      if (v1 > v2) return 1;
+      if (v1 < v2) return -1;
+    }
+    return 0;
+  };
+
+  const updateInstallButton = (minimumOSVersion, userIOSVersion) => {
+    const installLink = document.getElementById('installLink');
+    if (!userIOSVersion || minimumOSVersion === 'Unknown') {
+      installLink.textContent = '📲 Cài đặt trực tiếp';
+      installLink.classList.remove('compatible', 'incompatible');
+      return;
+    }
+
+    if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
+      installLink.textContent = '📲 Tương thích';
+      installLink.classList.add('compatible');
+      installLink.classList.remove('incompatible');
+    } else {
+      installLink.textContent = '📲 Không tương thích';
+      installLink.classList.add('incompatible');
+      installLink.classList.remove('compatible');
+    }
+  };
+
   const handle2FARedirect = (responseData) => {
-    console.log('Handle 2FA redirect:', responseData); // Debug
+    console.log('Handle 2FA redirect:', responseData);
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
@@ -200,12 +239,12 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
-    transition(elements.step3, elements.step2);
+    transition(elements.step3, elements elements.step2);
     setProgress(2);
   };
 
   const listenProgress = (requestId) => {
-    console.log(`Start SSE for requestId: ${requestId}`); // Debug
+    console.log(`Start SSE for requestId: ${requestId}`);
     if (eventSource) {
       console.log('Closing existing EventSource');
       eventSource.close();
@@ -213,52 +252,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onopen = () => {
-      console.log('SSE connection opened'); // Debug
+      console.log('SSE connection opened');
     };
 
     eventSource.onmessage = (event) => {
-      console.log('SSE message received:', event.data); // Debug
+      console.log('SSE message received:', event.data);
       try {
         const data = JSON.parse(event.data);
-        console.log(`Progress: ${data.progress}%`); // Debug
+        console.log(`Progress: ${data.progress}%`);
         setProgress(data.progress);
         showToast(`Tiến trình: ${data.progress}%`, 'success');
 
         if (data.status === 'complete') {
-          console.log('Download complete:', data); // Debug
-          document.getElementById('appName').textContent = data.appInfo?.name || 'Unknown';
-          document.getElementById('appAuthor').textContent = data.appInfo?.artist || 'Unknown';
-          document.getElementById('appVersion').textContent = data.appInfo?.version || 'Unknown';
-          document.getElementById('appBundleId').textContent = data.appInfo?.bundleId || 'Unknown';
-          document.getElementById('appDate').textContent = data.appInfo?.releaseDate || 'Unknown';
+          console.log('Download complete:', data);
+          const appInfo = data.appInfo || {};
+          document.getElementById('appName').textContent = appInfo.name || 'Unknown';
+          document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
+          document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
+          document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
+          document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
           const downloadLink = document.getElementById('downloadLink');
-          downloadLink.href = data.downloadUrl;
+          downloadLink.href = data.downloadUrl || '#';
           downloadLink.download = data.fileName || 'app.ipa';
           const installLink = document.getElementById('installLink');
           if (data.installUrl) {
             installLink.href = data.installUrl;
             installLink.classList.remove('hidden');
-          } else {
+          } Aldo
             installLink.classList.add('hidden');
           }
 
+          updateInstallButton(appInfo.minimumOSVersion, state.iosVersion);
           showToast('Tải thành công!', 'success');
           transition(elements.step3, elements.result);
           setProgress(4);
+          setLoading(false);
           eventSource.close();
           eventSource = null;
-          console.log('SSE closed after completion'); // Debug
+          console.log('SSE closed after completion');
         } else if (data.status === 'error') {
-          console.error('SSE error:', data.error); // Debug
+          console.error('SSE error:', data.error);
           showError(data.error || 'Tải ứng dụng thất bại.');
           showToast('Lỗi tải ứng dụng!', 'error');
           setLoading(false);
           eventSource.close();
           eventSource = null;
-          console.log('SSE closed after error'); // Debug
+          console.log('SSE closed after error');
         }
       } catch (error) {
-        console.error('SSE parse error:', error, event.data); // Debug
+        console.error('SSE parse error:', error, event.data);
         showError('Lỗi xử lý tiến trình tải.');
         showToast('Lỗi tiến trình!', 'error');
         setLoading(false);
@@ -266,23 +308,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     eventSource.onerror = () => {
-      console.error('SSE connection error'); // Debug
-      showError('Mất kết nối với server. Đang thử kết nối lại...');
+      console.error('SSE connection error');
+      showError('Mất kết nối với server.');
       showToast('Lỗi kết nối!', 'error');
       setLoading(false);
       eventSource.close();
       eventSource = null;
-      setTimeout(() => {
-        console.log('Reconnecting SSE...'); // Debug
-        listenProgress(requestId);
-      }, 5000);
     };
   };
 
   /* ========== EVENT HANDLERS ========== */
 
   elements.togglePassword.addEventListener('click', () => {
-    console.log('Toggle password clicked'); // Debug
+    console.log('Toggle password clicked');
     const isPassword = elements.passwordInput.type === 'password';
     elements.passwordInput.type = isPassword ? 'text' : 'password';
     elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
@@ -290,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
-    console.log('Login button clicked'); // Debug
+    console.log('Login button clicked');
     if (isLoading) return;
     
     hideError();
@@ -352,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
-    console.log('Verify button clicked'); // Debug
+    console.log('Verify button clicked');
     if (isLoading) return;
     
     hideError();
@@ -412,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
-    console.log('Download button clicked'); // Debug
+    console.log('Download button clicked');
     if (isLoading) return;
     
     hideError();
@@ -420,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
     const appVerId = elements.appVerInput.value.trim();
+    state.iosVersion = elements.iosVersionInput?.value.trim() || '';
 
     if (!APPID) {
       showError('Vui lòng nhập App ID hợp lệ.');
@@ -439,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(3);
 
     try {
-      console.log('Sending /download request'); // Debug
+      console.log('Sending /download request');
       const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -461,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       } else if (data.success && data.requestId) {
         state.requestId = data.requestId;
-        console.log(`Starting progress listener for requestId: ${data.requestId}`); // Debug
+        console.log(`Starting progress listener for requestId: ${data.requestId}`);
         listenProgress(data.requestId);
       } else {
         showError(data.error || 'Tải ứng dụng thất bại.');

@@ -12,12 +12,13 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
-import os from 'os'; // Sửa lỗi require('os')
+import os from 'os';
+import plist from 'plist'; // Thêm module plist để parse Info.plist
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-app.set('trust proxy', true); // Sửa lỗi X-Forwarded-For
+app.set('trust proxy', true);
 const port = process.env.PORT || 5004;
 
 // R2 Configuration
@@ -49,7 +50,7 @@ async function uploadToR2({ key, filePath, contentType }) {
         Body: fileStream,
         ContentType: contentType,
       },
-      partSize: 20 * 1024 * 1024, // 20MB per part
+      partSize: 20 * 1024 * 1024,
       queueSize: 1,
       leavePartsOnError: false,
       timeout: 300000,
@@ -196,7 +197,7 @@ async function clearCache(cacheDir) {
 }
 
 async function checkMemory(requiredMB) {
-  const freeMB = os.freemem() / 1024 / 1024; // Sửa lỗi require('os')
+  const freeMB = os.freemem() / 1024 / 1024;
   if (freeMB < requiredMB) {
     throw new Error(`Insufficient memory: ${freeMB.toFixed(2)}MB available, ${requiredMB}MB required`);
   }
@@ -207,6 +208,36 @@ async function checkDiskSpace(path, requiredSpace) {
   const freeDisk = stats.bavail * stats.bsize;
   if (freeDisk < requiredSpace + 100 * 1024 * 1024) {
     throw new Error('Insufficient disk space for upload');
+  }
+}
+
+async function extractMinimumOSVersion(ipaPath) {
+  try {
+    const unzipDir = path.join(__dirname, 'temp_unzip', uuidv4());
+    await fsPromises.mkdir(unzipDir, { recursive: true });
+    
+    // Giả sử sử dụng thư viện như `adm-zip` để giải nén IPA
+    const AdmZip = (await import('adm-zip')).default;
+    const zip = new AdmZip(ipaPath);
+    zip.extractAllTo(unzipDir, true);
+
+    // Tìm file Info.plist trong Payload/*.app
+    const payloadDir = path.join(unzipDir, 'Payload');
+    const appDir = (await fsPromises.readdir(payloadDir, { withFileTypes: true }))
+      .find(dirent => dirent.isDirectory() && dirent.name.endsWith('.app'))?.name;
+    if (!appDir) throw new Error('No .app directory found in IPA');
+
+    const infoPlistPath = path.join(payloadDir, appDir, 'Info.plist');
+    const plistContent = await fsPromises.readFile(infoPlistPath, 'utf8');
+    const plistData = plist.parse(plistContent);
+    
+    // Xóa thư mục tạm
+    await fsPromises.rm(unzipDir, { recursive: true, force: true });
+    
+    return plistData.MinimumOSVersion || 'Unknown';
+  } catch (error) {
+    console.error('Error extracting MinimumOSVersion:', error);
+    return 'Unknown';
   }
 }
 
@@ -250,11 +281,11 @@ class IPATool {
       }
 
       const appInfo = {
-        name: songList0.metadata.bundleDisplayName,
-        artist: songList0.metadata.artistName,
-        version: songList0.metadata.bundleShortVersionString,
-        bundleId: songList0.metadata.softwareVersionBundleId,
-        releaseDate: songList0.metadata.releaseDate,
+        name: songList0.metadata.bundleDisplayName || 'Unknown',
+        artist: songList0.metadata.artistName || 'Unknown',
+        version: songList0.metadata.bundleShortVersionString || 'Unknown',
+        bundleId: songList0.metadata.softwareVersionBundleId || 'Unknown',
+        releaseDate: songList0.metadata.releaseDate || 'Unknown',
       };
 
       await fsPromises.mkdir(downloadPath, { recursive: true });
@@ -312,6 +343,10 @@ class IPATool {
       }
       finalFile.end();
       progressMap.set(requestId, { progress: 40, status: 'processing' });
+
+      console.log('Extracting MinimumOSVersion...');
+      const minimumOSVersion = await extractMinimumOSVersion(outputFilePath);
+      appInfo.minimumOSVersion = minimumOSVersion;
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
@@ -427,7 +462,14 @@ class IPATool {
 
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
       console.log('Download completed successfully!');
-      progressMap.set(requestId, { progress: 100, status: 'complete', downloadUrl: ipaUrl, installUrl, r2Success });
+      progressMap.set(requestId, { 
+        progress: 100, 
+        status: 'complete', 
+        downloadUrl: ipaUrl, 
+        installUrl, 
+        r2Success,
+        appInfo // Đảm bảo gửi appInfo đầy đủ
+      });
 
       return {
         appInfo,
@@ -467,7 +509,7 @@ app.get('/download-progress/:id', (req, res) => {
       progressMap.delete(id);
       res.end();
     }
-  }, 5000);
+  }, 2000); // Giảm interval để phản hồi nhanh hơn
 
   req.on('close', () => {
     clearInterval(interval);
@@ -496,7 +538,6 @@ app.post('/download', async (req, res) => {
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
     console.log(`Download request for app: ${APPID}, requestId: ${requestId}`);
 
-    // Trả response ngay để tránh Cloudflare 524
     res.json({
       success: true,
       status: 'pending',
@@ -504,7 +545,6 @@ app.post('/download', async (req, res) => {
       message: 'Processing started, check status via /status/:id or /download-progress/:id',
     });
 
-    // Xử lý bất đồng bộ
     setImmediate(async () => {
       try {
         const result = await ipaTool.downipa({
@@ -534,7 +574,6 @@ app.post('/download', async (req, res) => {
           r2UploadSuccess: result.r2UploadSuccess,
         });
 
-        // Cleanup bất đồng bộ
         setTimeout(async () => {
           try {
             await fsPromises.unlink(result.filePath, { priority: 'low' });
