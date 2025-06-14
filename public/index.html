@@ -1,218 +1,655 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IPA Downloader Pro</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-  <style>
-    .fade-in { animation: fadeIn 0.3s ease-out; }
-    .slide-up { animation: slideUp 0.3s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-    .progress-bar {
-      height: 4px;
-      background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #3b82f6 100%);
-      background-size: 200% 100%;
-      animation: progress 2s linear infinite;
-    }
-    @keyframes progress {
-      0% { background-position: 0% 50%; }
-      100% { background-position: 200% 50%; }
-    }
-    .password-toggle { right: 10px; top: 50%; transform: translateY(-50%); }
-    .progress-loading {
-      animation: pulse 1.5s infinite;
-    }
-    .button-loading {
-      opacity: 0.6;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.5; }
-      100% { opacity: 1; }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPA Downloader - Download iOS Apps Directly</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --dark: #1e293b;
+            --light: #f8fafc;
+            --gray: #94a3b8;
+            --gray-dark: #64748b;
+            --border-radius: 12px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f1f5f9;
+            color: var(--dark);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        header {
+            background-color: white;
+            box-shadow: var(--shadow);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo i {
+            font-size: 1.8rem;
+        }
+
+        .step-container {
+            background-color: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step-container.hidden {
+            display: none;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .step-container.fade-in {
+            animation: fadeIn 0.3s ease forwards;
+        }
+
+        .step-container.fade-out {
+            animation: fadeOut 0.3s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+        }
+
+        .step-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--primary-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .step-title .step-number {
+            background-color: var(--primary);
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--dark);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+            transition: var(--transition);
+            background-color: #f8fafc;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            background-color: white;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: var(--gray);
+            transition: var(--transition);
+        }
+
+        .password-toggle:hover {
+            color: var(--primary);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--border-radius);
+            font-weight: 500;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            background-color: var(--primary);
+            color: white;
+            width: 100%;
+        }
+
+        .btn:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn.button-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn.button-loading::after {
+            content: "";
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-secondary {
+            background-color: var(--gray);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--gray-dark);
+        }
+
+        .btn-success {
+            background-color: var(--secondary);
+        }
+
+        .btn-success:hover {
+            background-color: #0d9f6e;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #e2e8f0;
+            border-radius: 20px;
+            height: 12px;
+            margin: 1.5rem 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: var(--primary);
+            border-radius: 20px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-bar.progress-loading {
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark), var(--primary));
+            background-size: 200% 100%;
+            animation: progressLoading 1.5s linear infinite;
+        }
+
+        @keyframes progressLoading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        .error-box {
+            background-color: #fee2e2;
+            color: var(--danger);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-left: 4px solid var(--danger);
+        }
+
+        .error-box.hidden {
+            display: none;
+        }
+
+        .error-box i {
+            font-size: 1.2rem;
+        }
+
+        .verify-message {
+            background-color: #fef3c7;
+            color: var(--warning);
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--warning);
+        }
+
+        .app-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .app-info-item {
+            background-color: #f8fafc;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+        }
+
+        .app-info-label {
+            font-size: 0.85rem;
+            color: var(--gray-dark);
+            margin-bottom: 0.25rem;
+        }
+
+        .app-info-value {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--dark);
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .result-actions .btn {
+            flex: 1;
+        }
+
+        .result-actions .btn i {
+            margin-right: 0.5rem;
+        }
+
+        .compatible {
+            background-color: var(--secondary);
+        }
+
+        .incompatible {
+            background-color: var(--warning);
+        }
+
+        .unknown {
+            background-color: var(--gray);
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-width: 350px;
+            width: 100%;
+        }
+
+        .toast {
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transform: translateX(120%);
+            transition: transform 0.3s ease;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast-success {
+            background-color: var(--secondary);
+        }
+
+        .toast-error {
+            background-color: var(--danger);
+        }
+
+        .toast-icon {
+            font-weight: bold;
+        }
+
+        footer {
+            background-color: white;
+            padding: 1.5rem 0;
+            margin-top: auto;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 1.5rem;
+        }
+
+        .footer-link {
+            color: var(--gray-dark);
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .footer-link:hover {
+            color: var(--primary);
+        }
+
+        .copyright {
+            color: var(--gray-dark);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header-content {
+                padding: 0 1rem;
+            }
+
+            .step-container {
+                padding: 1.5rem;
+            }
+
+            .result-actions {
+                flex-direction: column;
+            }
+
+            .app-info {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-content {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .footer-links {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
 </head>
-<body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
-  <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
-    <!-- Progress bar -->
-    <div id="progressBar" class="progress-bar w-0"></div>
-    
-    <div class="p-6 space-y-6">
-      <h1 class="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500">
-        🚀 IPADL Pro
-      </h1>
-
-      <!-- Security notice -->
-      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg fade-in">
-        <div class="flex">
-          <div class="flex-shrink-0 text-yellow-400">
-            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-          </div>
-          <div class="ml-3">
-            <p class="text-sm text-yellow-700">
-              <strong>Lưu ý bảo mật:</strong> Chúng tôi không lưu trữ thông tin đăng nhập của bạn. Mọi thông tin chỉ được sử dụng để xác thực với Apple và sẽ bị xóa ngay sau khi hoàn tất.
-            </p>
-          </div>
+<body>
+    <header>
+        <div class="header-content">
+            <a href="/" class="logo">
+                <i class="fas fa-mobile-alt"></i>
+                <span>IPA Downloader</span>
+            </a>
+            <div class="header-links">
+                <a href="#" class="header-link"><i class="fas fa-question-circle"></i> Help</a>
+            </div>
         </div>
-      </div>
+    </header>
 
-      <!-- Step 1: Apple ID Login -->
-      <div id="step1" class="space-y-4 animate__animated animate__fadeIn">
-        <div class="space-y-1">
-          <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
-          <input id="APPLE_ID" name="APPLE_ID" required type="email"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="your@appleid.com"
-            autocomplete="username">
-        </div>
-
-        <div class="space-y-1 relative">
-          <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
-          <div class="relative">
-            <input id="PASSWORD" name="PASSWORD" required type="password"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-12"
-              placeholder="••••••••"
-              autocomplete="current-password">
-            <button type="button" id="togglePassword" class="absolute password-toggle text-gray-500 hover:text-gray-700">
-              <svg id="eyeIcon" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-              </svg>
+    <main class="container">
+        <!-- Step 1: Login -->
+        <div id="step1" class="step-container">
+            <h2 class="step-title">
+                <span class="step-number">1</span>
+                <span>Apple ID Login</span>
+            </h2>
+            
+            <div id="error" class="error-box hidden">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorMessage"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="APPLE_ID" class="form-label">Apple ID</label>
+                <input type="text" id="APPLE_ID" class="form-control" placeholder="your@appleid.com" autocomplete="username">
+            </div>
+            
+            <div class="form-group">
+                <label for="PASSWORD" class="form-label">Password</label>
+                <div class="input-group">
+                    <input type="password" id="PASSWORD" class="form-control" placeholder="••••••••" autocomplete="current-password">
+                    <i id="togglePassword" class="fas fa-eye password-toggle"></i>
+                </div>
+            </div>
+            
+            <button id="loginBtn" class="btn">
+                <i class="fas fa-sign-in-alt"></i> Login
             </button>
-          </div>
-          <p class="text-xs text-gray-500">Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.</p>
-        </div>
-
-        <button id="loginBtn"
-          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
-          Đăng nhập
-        </button>
-      </div>
-
-      <!-- Step 2: 2FA Verification -->
-      <div id="step2" class="hidden space-y-4">
-        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg slide-up">
-          <div class="flex">
-            <div class="flex-shrink-0 text-blue-500">
-              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clip-rule="evenodd"/>
-              </svg>
+            
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
             </div>
-            <div class="ml-3">
-              <p id="verifyMessage" class="text-sm text-blue-700">
-                Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn
-              </p>
-            </div>
-          </div>
         </div>
-
-        <div class="space-y-1">
-          <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
-          <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="123456"
-            maxlength="6"
-            inputmode="numeric"
-            pattern="\d{6}">
-        </div>
-
-        <button id="verifyBtn"
-          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
-          Xác thực
-        </button>
-      </div>
-
-      <!-- Step 3: App Download -->
-      <div id="step3" class="hidden space-y-4">
-        <div class="space-y-1">
-          <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL AppStore</label>
-          <input id="APPID" name="APPID" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789">
-          <p class="text-xs text-gray-500">Nhập ID ứng dụng (số) hoặc URL từ App Store</p>
-        </div>
-
-        <div class="space-y-1">
-          <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">ID VerSion (tùy chọn)</label>
-          <input id="APP_VER_ID" name="APP_VER_ID"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            placeholder="Nhập nếu muốn tải phiên bản cụ thể">
-          <p class="text-xs text-gray-600">Để trống sẽ tải phiên bản mới nhất</p>
-        </div>
-
-        <button id="downloadBtn"
-          class="w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-green-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
-          📥 Tải IPA
-        </button>
-      </div>
-
-      <!-- Result Display -->
-      <div id="result" class="hidden border-t pt-6 space-y-4 slide-up">
-        <h2 class="text-xl font-bold text-gray-800">🎉 Tải thành công!</h2>
         
-        <div class="bg-gray-50 p-4 rounded-lg space-y-2">
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">Tên ứng dụng:</span>
-            <span id="appName" class="font-semibold text-gray-900"></span>
-          </p>
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">Tác giả:</span>
-            <span id="appAuthor" class="font-semibold text-gray-900"></span>
-          </p>
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">Phiên bản:</span>
-            <span id="appVersion" class="font-semibold text-gray-900"></span>
-          </p>
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">Bundle ID:</span>
-            <span id="appBundleId" class="font-semibold text-gray-900"></span>
-          </p>
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">Ngày phát hành:</span>
-            <span id="appDate" class="font-semibold text-gray-900"></span>
-          </p>
-          <p class="flex items-center">
-            <span class="font-medium text-gray-700 w-28">version iOS tối thiểu:</span>
-            <span id="minimumOSVersion" class="font-semibold text-gray-900"></span>
-          </p>
-          
+        <!-- Step 2: 2FA Verification -->
+        <div id="step2" class="step-container hidden">
+            <h2 class="step-title">
+                <span class="step-number">2</span>
+                <span>Two-Factor Authentication</span>
+            </h2>
+            
+            <div id="error" class="error-box hidden">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorMessage"></span>
+            </div>
+            
+            <div id="verifyMessage" class="verify-message">
+                Please enter the 6-digit verification code sent to your trusted device.
+            </div>
+            
+            <div class="form-group">
+                <label for="VERIFICATION_CODE" class="form-label">Verification Code</label>
+                <input type="text" id="VERIFICATION_CODE" class="form-control" placeholder="123456" maxlength="6" inputmode="numeric" pattern="\d{6}">
+            </div>
+            
+            <button id="verifyBtn" class="btn btn-success">
+                <i class="fas fa-check-circle"></i> Verify
+            </button>
+            
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
         </div>
-
-        <a id="downloadLink"
-          class="inline-flex items-center justify-center w-full bg-gradient-to-r from-green-600 to-green-500 text-white py-3 px-4 rounded-lg hover:from-green-700 hover:to-green-600 transition-all duration-300 font-semibold shadow-md hover:shadow-lg">
-          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-          </svg>
-          Tải xuống ngay
-        </a>
-        <a id="installLink" href="#" class="hidden inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold shadow-md hover:shadow-lg">
-          <span class="icon">📲</span> Cài trực tiếp
-        </a>
-      </div>
-
-      <!-- Error Display -->
-      <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
-        <div class="flex">
-          <div class="flex-shrink-0 text-red-500">
-            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
-            </svg>
-          </div>
-          <div class="ml-3">
-            <p id="errorMessage" class="text-sm text-red-700"></p>
-          </div>
+        
+        <!-- Step 3: App Download -->
+        <div id="step3" class="step-container hidden">
+            <h2 class="step-title">
+                <span class="step-number">3</span>
+                <span>Download IPA</span>
+            </h2>
+            
+            <div id="error" class="error-box hidden">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorMessage"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="APPID" class="form-label">App Store URL or App ID</label>
+                <input type="text" id="APPID" class="form-control" placeholder="https://apps.apple.com/app/id123456789 or 123456789">
+            </div>
+            
+            <div class="form-group">
+                <label for="APP_VER_ID" class="form-label">App Version ID (Optional)</label>
+                <input type="text" id="APP_VER_ID" class="form-control" placeholder="Leave empty for latest version">
+            </div>
+            
+            <button id="downloadBtn" class="btn">
+                <i class="fas fa-download"></i> Download IPA
+            </button>
+            
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar"></div>
+            </div>
         </div>
-      </div>
-    </div>
-  </div>
+        
+        <!-- Result: Download Complete -->
+        <div id="result" class="step-container hidden">
+            <h2 class="step-title">
+                <i class="fas fa-check-circle" style="color: var(--secondary);"></i>
+                <span>Download Complete!</span>
+            </h2>
+            
+            <div class="app-info">
+                <div class="app-info-item">
+                    <div class="app-info-label">App Name</div>
+                    <div class="app-info-value" id="appName">Unknown</div>
+                </div>
+                
+                <div class="app-info-item">
+                    <div class="app-info-label">Developer</div>
+                    <div class="app-info-value" id="appAuthor">Unknown</div>
+                </div>
+                
+                <div class="app-info-item">
+                    <div class="app-info-label">Version</div>
+                    <div class="app-info-value" id="appVersion">Unknown</div>
+                </div>
+                
+                <div class="app-info-item">
+                    <div class="app-info-label">Bundle ID</div>
+                    <div class="app-info-value" id="appBundleId">Unknown</div>
+                </div>
+                
+                <div class="app-info-item">
+                    <div class="app-info-label">Release Date</div>
+                    <div class="app-info-value" id="appDate">Unknown</div>
+                </div>
+                
+                <div class="app-info-item">
+                    <div class="app-info-label">Minimum iOS Version</div>
+                    <div class="app-info-value" id="minimumOSVersion">Unknown</div>
+                </div>
+            </div>
+            
+            <div class="result-actions">
+                <a id="downloadLink" href="#" class="btn btn-secondary">
+                    <i class="fas fa-file-download"></i> Download IPA File
+                </a>
+                <a id="installLink" href="#" class="btn">
+                    <span class="icon">📲</span> Install Directly
+                </a>
+            </div>
+            
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar" style="width: 100%;"></div>
+            </div>
+        </div>
+    </main>
 
-  <script src="/index.js"></script>
+    <footer>
+        <div class="footer-content">
+            <div class="footer-links">
+                <a href="#" class="footer-link">Terms of Service</a>
+                <a href="#" class="footer-link">Privacy Policy</a>
+                <a href="#" class="footer-link">Contact</a>
+            </div>
+            <div class="copyright">
+                &copy; 2023 IPA Downloader. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script src="/index.js"></script>
 </body>
 </html>
