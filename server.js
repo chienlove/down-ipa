@@ -243,7 +243,7 @@ const progressMap = new Map();
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId } = {}) {
     downloadPath = downloadPath || '.';
-    console.log(`Starting download for app: ${APPID}`);
+    console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
     try {
       progressMap.set(requestId, { progress: 0, status: 'processing' });
@@ -347,7 +347,8 @@ class IPATool {
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
-      const signedDir = path Anno
+      const signedDir = path.join(downloadPath, 'signed'); // Sửa lỗi cú pháp
+      await fsPromises.mkdir(signedDir, { recursive: true });
       await sigClient.processIPA(outputFilePath, signedDir);
       console.log('🔧 Using archiver to zip signed IPA...');
 
@@ -480,6 +481,8 @@ class IPATool {
       console.error('Download error:', error);
       progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
       throw error;
+    } finally {
+      console.log(`Finished processing requestId: ${requestId}`);
     }
   }
 }
@@ -488,6 +491,7 @@ const ipaTool = new IPATool();
 
 app.get('/download-progress/:id', (req, res) => {
   const id = req.params.id;
+  console.log(`SSE connection opened for progress id: ${id}`);
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -502,6 +506,7 @@ app.get('/download-progress/:id', (req, res) => {
     const progress = progressMap.get(id) || { progress: 0, status: 'pending' };
     sendProgress({ id, ...progress });
     if (progress.status === 'complete' || progress.status === 'error') {
+      console.log(`Closing SSE for id: ${id}, status: ${progress.status}`);
       clearInterval(interval);
       progressMap.delete(id);
       res.end();
@@ -509,6 +514,7 @@ app.get('/download-progress/:id', (req, res) => {
   }, 2000);
 
   req.on('close', () => {
+    console.log(`SSE connection closed for id: ${id}`);
     clearInterval(interval);
     res.end();
   });
@@ -521,7 +527,7 @@ app.get('/status/:id', (req, res) => {
 });
 
 app.post('/auth', async (req, res) => {
-  console.log('Received /auth request:', req.body);
+  console.log('Received /auth request:', { body: req.body });
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     if (!APPLE_ID || !PASSWORD) {
@@ -594,10 +600,12 @@ app.post('/auth', async (req, res) => {
 });
 
 app.post('/download', async (req, res) => {
+  console.log('Received /download request:', { body: req.body });
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !APPID) {
+      console.log('Missing required fields in /download');
       return res.status(400).json({
         success: false,
         error: 'Required fields missing',
@@ -682,10 +690,12 @@ app.post('/download', async (req, res) => {
 });
 
 app.post('/verify', async (req, res) => {
+  console.log('Received /verify request:', { body: req.body });
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !CODE) {
+      console.log('Missing required fields in /verify');
       return res.status(400).json({
         success: false,
         error: 'All fields are required',
@@ -696,15 +706,17 @@ app.post('/verify', async (req, res) => {
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
+      console.log('2FA verification failed:', user.customerMessage);
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
+    console.log('2FA verification successful');
     res.json({
       success: true,
       dsid: user.dsPersonId,
     });
   } catch (error) {
-    console.error('Verify error:', error);
+    console.error('Verify error:', error.message);
     res.status(500).json({
       success: false,
       error: error.message || 'Verification error',
@@ -713,6 +725,7 @@ app.post('/verify', async (req, res) => {
 });
 
 app.use((req, res) => {
+  console.log(`404 Not Found: ${req.method} ${req.url}`);
   res.status(404).json({ error: 'Not Found' });
 });
 
