@@ -22,6 +22,19 @@
       100% { background-position: 200% 50%; }
     }
     .password-toggle { right: 10px; top: 50%; transform: translateY(-50%); }
+    .progress-loading {
+      animation: pulse 1.5s infinite;
+    }
+    .button-loading {
+      opacity: 0.6;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
@@ -178,6 +191,9 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
           </svg>
           Tải xuống ngay
+        </a>
+        <a id="installLink" href="#" class="hidden inline-flex items-center justify-center w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold shadow-md hover:shadow-lg">
+          <span class="icon">📲</span> Cài trực tiếp
         </a>
       </div>
 

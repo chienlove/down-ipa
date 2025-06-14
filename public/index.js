@@ -52,10 +52,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (match) {
       return `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
     }
-    return null; // Unknown if not detected
+    return 'Unknown'; // Mặc định nếu không phát hiện
   }
 
-  deviceOSVersion = detectIOSVersion() || state.iosVersion;
+  deviceOSVersion = detectIOSVersion();
+  state.iosVersion = deviceOSVersion;
 
   /* ========== UI HELPERS ========== */
   
@@ -129,18 +130,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const setLoading = (loading) => {
     console.log(`Set loading: ${loading}`);
     isLoading = loading;
+    if (!elements.progressBar) {
+      console.error('Progress bar element not found');
+      showError('Lỗi giao diện: Thanh tiến trình không được tìm thấy');
+      return;
+    }
     if (loading) {
       elements.progressBar.classList.add('progress-loading');
       document.querySelectorAll('button').forEach(btn => {
-        btn.classList.add('button-loading');
-        btn.disabled = true;
+        if (btn) {
+          btn.classList.add('button-loading');
+          btn.disabled = true;
+        }
       });
     } else {
-      elements.progressBar.classList.remove('progress-loading');
-      document.querySelectorAll('button').forEach(btn => {
-        btn.classList.remove('button-loading');
-        btn.disabled = false;
-      });
+      setTimeout(() => {
+        elements.progressBar.classList.remove('progress-loading');
+        document.querySelectorAll('button').forEach(btn => {
+          if (btn) {
+            btn.classList.remove('button-loading');
+            btn.disabled = false;
+          }
+        });
+      }, 300);
     }
   };
 
@@ -162,7 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const updateInstallButton = (minimumOSVersion, userIOSVersion, installUrl, downloadUrl) => {
     const installLink = document.getElementById('installLink');
     installLink.href = installUrl || downloadUrl || '#';
-    if (!userIOSVersion || minimumOSVersion === 'Unknown') {
+    userIOSVersion = userIOSVersion || 'Unknown';
+    if (minimumOSVersion === 'Unknown' || userIOSVersion === 'Unknown') {
       installLink.innerHTML = '<span class="icon">📲</span> Cài trực tiếp (Chưa rõ)';
       installLink.classList.remove('compatible', 'incompatible');
       installLink.classList.add('unknown');
@@ -238,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
             installLink.classList.add('hidden');
           }
 
-          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion || state.iosVersion, data.installUrl, data.downloadUrl);
+          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
           showToast('Tải thành công!', 'success');
           transition(elements.step3, elements.result);
           setProgress(4);
