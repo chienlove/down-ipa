@@ -3,825 +3,369 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus IPA | Premium iOS App Downloader</title>
+    <title>App Downloader</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary: #6366f1;
-            --primary-light: #818cf8;
-            --primary-dark: #4f46e5;
-            --secondary: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --dark: #1e293b;
-            --light: #f8fafc;
-            --gray: #94a3b8;
-            --gray-light: #e2e8f0;
-            --gray-dark: #64748b;
-            --glass: rgba(255, 255, 255, 0.92);
-            --border-radius: 16px;
-            --border-radius-sm: 12px;
-            --shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 15px 40px rgba(0, 0, 0, 0.15);
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            --blur: blur(12px);
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --background: #f3f4f6;
+            --card-bg: #ffffff;
         }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        [data-theme="dark"] {
+            --primary: #3b82f6;
+            --primary-hover: #60a5fa;
+            --background: #1f2937;
+            --card-bg: #374151;
+            --text: #f3f4f6;
         }
-
         body {
-            background: linear-gradient(135deg, #f5f3ff 0%, #ecfdf5 100%);
-            color: var(--dark);
-            line-height: 1.6;
-            min-height: 100vh;
+            background-color: var(--background);
+            color: var(--text, #1f2937);
+            transition: all 0.3s ease;
+            overflow-x: hidden;
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+        .fade-out {
+            animation: fadeOut 0.5s ease-out;
+        }
+        .progress-loading {
+            background: linear-gradient(90deg, var(--primary), var(--primary-hover), var(--primary));
+            background-size: 200%;
+            animation: loading 1.5s linear infinite;
+        }
+        .button-loading {
+            opacity: 0.6;
+            cursor: not-allowed;
+            animation: pulse 1.5s infinite;
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .toast {
             display: flex;
-            flex-direction: column;
-            -webkit-font-smoothing: antialiased;
+            align-items: center;
+            padding: 12px 20px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.4s ease;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem;
-            width: 100%;
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
         }
-
-        header {
-            background: var(--glass);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            box-shadow: var(--shadow);
-            padding: 1.5rem 0;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+        .toast-success {
+            background-color: #10b981;
         }
-
-        .header-content {
+        .toast-error {
+            background-color: #ef4444;
+        }
+        .toast-icon {
+            margin-right: 10px;
+            font-size: 1.2rem;
+        }
+        .step-indicator {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 2rem;
-        }
-
-        .logo {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: var(--primary-dark);
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            letter-spacing: -0.5px;
-        }
-
-        .logo-icon {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        }
-
-        .header-actions {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .header-link {
-            color: var(--dark);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.95rem;
-            padding: 0.5rem 1rem;
-            border-radius: var(--border-radius-sm);
-            transition: var(--transition);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .header-link:hover {
-            background: rgba(99, 102, 241, 0.1);
-            color: var(--primary-dark);
-        }
-
-        .header-link i {
-            font-size: 1.1rem;
-        }
-
-        .step-container {
-            background: var(--glass);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
-            padding: 2.5rem;
-            margin-bottom: 2rem;
-            transition: var(--transition);
             position: relative;
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.3);
         }
-
-        .step-container::before {
+        .step-indicator::before {
             content: '';
             position: absolute;
-            top: 0;
+            top: 50%;
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+            background: #e5e7eb;
+            z-index: 1;
         }
-
-        .step-container.hidden {
-            display: none;
-            opacity: 0;
-            transform: translateY(20px);
-        }
-
-        .step-container.fade-in {
-            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        .step-container.fade-out {
-            animation: fadeOut 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeOut {
-            from {
-                opacity: 1;
-                transform: translateY(0);
-            }
-            to {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-        }
-
-        .step-title {
-            font-size: 1.75rem;
-            font-weight: 700;
-            margin-bottom: 2rem;
-            color: var(--dark);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            letter-spacing: -0.5px;
-        }
-
-        .step-title .step-number {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        }
-
-        .form-group {
-            margin-bottom: 1.75rem;
-            position: relative;
-        }
-
-        .form-label {
-            display: block;
-            margin-bottom: 0.75rem;
-            font-weight: 500;
-            color: var(--dark);
-            font-size: 0.95rem;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 1rem 1.25rem;
-            border: 1px solid var(--gray-light);
-            border-radius: var(--border-radius-sm);
-            font-size: 1rem;
-            transition: var(--transition);
-            background-color: rgba(255, 255, 255, 0.7);
-            color: var(--dark);
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--primary-light);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
-            background-color: white;
-        }
-
-        .input-group {
-            position: relative;
-        }
-
-        .password-toggle {
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            color: var(--gray);
-            transition: var(--transition);
-            background: none;
-            border: none;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 6px;
-        }
-
-        .password-toggle:hover {
-            color: var(--primary-dark);
-            background: rgba(99, 102, 241, 0.1);
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-            padding: 1.1rem 1.75rem;
-            border-radius: var(--border-radius-sm);
-            font-weight: 600;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: var(--transition);
-            border: none;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-            color: white;
-            width: 100%;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-            letter-spacing: -0.25px;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
-        }
-
-        .btn:active {
-            transform: translateY(0);
-        }
-
-        .btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        .btn.button-loading {
-            position: relative;
-            color: transparent !important;
-        }
-
-        .btn.button-loading::after {
-            content: "";
-            position: absolute;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
+        .step-indicator .step {
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
-            border-top-color: white;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
-        }
-
-        .btn-secondary:hover {
-            box-shadow: 0 8px 24px rgba(100, 116, 139, 0.4);
-        }
-
-        .btn-success {
-            background: linear-gradient(135deg, var(--secondary) 0%, #0d9488 100%);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-
-        .btn-success:hover {
-            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
-        }
-
-        .progress-container {
-            width: 100%;
-            background-color: var(--gray-light);
-            border-radius: 20px;
-            height: 8px;
-            margin: 2rem 0;
-            overflow: hidden;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
-            border-radius: 20px;
-            width: 0%;
-            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-            position: relative;
-        }
-
-        .progress-bar.progress-loading {
-            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 50%, var(--primary) 100%);
-            background-size: 200% 100%;
-            animation: progressLoading 1.5s linear infinite;
-        }
-
-        @keyframes progressLoading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-
-        .error-box {
-            background-color: #fee2e2;
-            color: var(--danger);
-            padding: 1.25rem;
-            border-radius: var(--border-radius-sm);
-            margin-bottom: 1.75rem;
+            background: #e5e7eb;
+            color: #6b7280;
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            border-left: 4px solid var(--danger);
+            justify-content: center;
+            font-weight: bold;
+            z-index: 2;
+            transition: all 0.3s ease;
         }
-
-        .error-box.hidden {
-            display: none;
-        }
-
-        .error-box i {
-            font-size: 1.25rem;
-            flex-shrink: 0;
-        }
-
-        .verify-message {
-            background-color: #fffbeb;
-            color: var(--warning);
-            padding: 1.25rem;
-            border-radius: var(--border-radius-sm);
-            margin-bottom: 1.75rem;
-            border-left: 4px solid var(--warning);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .verify-message i {
-            font-size: 1.25rem;
-            flex-shrink: 0;
-        }
-
-        .app-info {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2.5rem;
-        }
-
-        .app-info-item {
-            background: var(--glass);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            padding: 1.5rem;
-            border-radius: var(--border-radius-sm);
-            box-shadow: var(--shadow);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            transition: var(--transition);
-        }
-
-        .app-info-item:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .app-info-label {
-            font-size: 0.85rem;
-            color: var(--gray-dark);
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-
-        .app-info-value {
-            font-weight: 600;
-            font-size: 1.15rem;
-            color: var(--dark);
-            letter-spacing: -0.25px;
-        }
-
-        .result-actions {
-            display: flex;
-            gap: 1.25rem;
-            margin-top: 2.5rem;
-        }
-
-        .result-actions .btn {
-            flex: 1;
-        }
-
-        .result-actions .btn i {
-            margin-right: 0.5rem;
-        }
-
-        .compatible {
-            background: linear-gradient(135deg, var(--secondary) 0%, #0d9488 100%);
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-        }
-
-        .incompatible {
-            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-        }
-
-        .unknown {
-            background: linear-gradient(135deg, var(--gray) 0%, var(--gray-dark) 100%);
-            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
-        }
-
-        .toast-container {
-            position: fixed;
-            top: 1.5rem;
-            right: 1.5rem;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            max-width: 380px;
-            width: 100%;
-        }
-
-        .toast {
-            padding: 1.25rem;
-            border-radius: var(--border-radius-sm);
-            box-shadow: var(--shadow-lg);
+        .step-indicator .step.active {
+            background: var(--primary);
             color: white;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            transform: translateX(120%);
-            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-
-        .toast.show {
+        .step-indicator .step.completed {
+            background: #10b981;
+            color: white;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(20px); }
+        }
+        @keyframes loading {
+            0% { background-position: 0%; }
+            100% { background-position: 200%; }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 0.8; }
+        }
+        /* Hamburger menu styles */
+        #mobileMenu {
+            transition: transform 0.3s ease-in-out;
+        }
+        #mobileMenu.open {
             transform: translateX(0);
         }
-
-        .toast-success {
-            background: rgba(16, 185, 129, 0.9);
-        }
-
-        .toast-error {
-            background: rgba(239, 68, 68, 0.9);
-        }
-
-        .toast-icon {
-            font-weight: bold;
-            font-size: 1.25rem;
-            flex-shrink: 0;
-        }
-
-        footer {
-            background: var(--glass);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            padding: 2rem 0;
-            margin-top: auto;
-            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.05);
-            border-top: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .footer-links {
-            display: flex;
-            gap: 1.75rem;
-        }
-
-        .footer-link {
-            color: var(--dark);
-            text-decoration: none;
-            transition: var(--transition);
-            font-weight: 500;
-            font-size: 0.95rem;
-        }
-
-        .footer-link:hover {
-            color: var(--primary-dark);
-        }
-
-        .copyright {
-            color: var(--gray-dark);
-            font-size: 0.9rem;
-        }
-
-        .floating-bg {
-            position: fixed;
-            width: 600px;
-            height: 600px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%);
-            z-index: -1;
-        }
-
-        .floating-bg-1 {
-            top: -200px;
-            right: -200px;
-        }
-
-        .floating-bg-2 {
-            bottom: -300px;
-            left: -200px;
-            background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 70%);
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 1.25rem;
-            }
-
-            .header-content {
-                padding: 0 1.25rem;
-            }
-
-            .step-container {
-                padding: 1.75rem;
-            }
-
-            .result-actions {
-                flex-direction: column;
-            }
-
-            .app-info {
-                grid-template-columns: 1fr;
-            }
-
-            .footer-content {
-                flex-direction: column;
-                gap: 1.25rem;
-                text-align: center;
-            }
-
-            .footer-links {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .step-container {
-                padding: 1.5rem;
-            }
-
-            .step-title {
-                font-size: 1.5rem;
-            }
-
-            .form-control {
-                padding: 0.9rem 1.15rem;
-            }
-
-            .btn {
-                padding: 1rem 1.5rem;
-            }
+        /* Input focus and hover enhancements */
+        input:focus {
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
     </style>
 </head>
-<body>
-    <div class="floating-bg floating-bg-1"></div>
-    <div class="floating-bg floating-bg-2"></div>
-
-    <header>
-        <div class="header-content">
-            <a href="/" class="logo">
-                <div class="logo-icon">
-                    <i class="fas fa-cloud-download-alt"></i>
-                </div>
-                <span>Nexus IPA</span>
-            </a>
-            <div class="header-actions">
-                <a href="#" class="header-link">
-                    <i class="fas fa-question-circle"></i>
-                    <span>Help</span>
-                </a>
-                <a href="#" class="header-link">
-                    <i class="fas fa-cog"></i>
-                    <span>Settings</span>
-                </a>
+<body class="min-h-screen flex flex-col font-sans">
+    <!-- Header -->
+    <header class="bg-white dark:bg-gray-800 shadow sticky top-0 z-50 transition-colors duration-300">
+        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-cloud-download-alt text-2xl text-blue-600 dark:text-blue-400"></i>
+                <h1 class="text-2xl font-bold text-blue-600 dark:text-blue-400">App Downloader</h1>
+            </div>
+            <!-- Desktop Menu -->
+            <div class="hidden md:flex items-center space-x-6">
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a>
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">About</a>
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Support</a>
+                <button id="themeToggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <i class="fas fa-moon text-gray-600 dark:text-gray-300"></i>
+                </button>
+            </div>
+            <!-- Hamburger Button -->
+            <button id="hamburger" class="md:hidden p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                <i class="fas fa-bars text-gray-600 dark:text-gray-300"></i>
+            </button>
+        </nav>
+        <!-- Mobile Menu -->
+        <div id="mobileMenu" class="md:hidden fixed top-0 right-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform translate-x-full z-40">
+            <div class="flex justify-end p-4">
+                <button id="closeMenu" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <i class="fas fa-times text-gray-600 dark:text-gray-300"></i>
+                </button>
+            </div>
+            <div class="flex flex-col space-y-4 p-4">
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a>
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">About</a>
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Support</a>
+                <button id="themeToggleMobile" class="flex items-center text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400">
+                    <i class="fas fa-moon mr-2"></i> Toggle Theme
+                </button>
             </div>
         </div>
     </header>
 
-    <main class="container">
+    <!-- Main Content -->
+    <main class="flex-grow max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <!-- Step Indicator -->
+        <div class="step-indicator mb-12">
+            <div class="step active">1</div>
+            <div class="step">2</div>
+            <div class="step">3</div>
+            <div class="step">4</div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-8 overflow-hidden">
+            <div id="progressBar" class="h-full bg-blue-600 rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error" class="hidden bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative mb-6 shadow">
+            <span id="errorMessage"></span>
+        </div>
+
         <!-- Step 1: Login -->
-        <div id="step1" class="step-container">
-            <h2 class="step-title">
-                <span class="step-number">1</span>
-                <span>Apple ID Authentication</span>
-            </h2>
-            
-            <div id="error" class="error-box hidden">
-                <i class="fas fa-exclamation-circle"></i>
-                <span id="errorMessage"></span>
-            </div>
-            
-            <div class="form-group">
-                <label for="APPLE_ID" class="form-label">Apple ID</label>
-                <input type="text" id="APPLE_ID" class="form-control" placeholder="your@appleid.com" autocomplete="username">
-            </div>
-            
-            <div class="form-group">
-                <label for="PASSWORD" class="form-label">Password</label>
-                <div class="input-group">
-                    <input type="password" id="PASSWORD" class="form-control" placeholder="••••••••" autocomplete="current-password">
-                    <button id="togglePassword" class="password-toggle">
-                        <i class="fas fa-eye"></i>
-                    </button>
+        <div id="step1" class="bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Login with Apple ID</h2>
+            <form>
+                <div class="mb-6">
+                    <label for="APPLE_ID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Apple ID</label>
+                    <div class="relative">
+                        <i class="fas fa-envelope absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                        <input type="email" id="APPLE_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter your Apple ID">
+                    </div>
                 </div>
-            </div>
-            
-            <button id="loginBtn" class="btn">
-                <i class="fas fa-sign-in-alt"></i> Continue
-            </button>
-            
-            <div class="progress-container">
-                <div id="progressBar" class="progress-bar"></div>
-            </div>
+                <div class="mb-6 relative">
+                    <label for="PASSWORD" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
+                    <div class="relative">
+                        <i class="fas fa-lock absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                        <input type="password" id="PASSWORD" class="pl-12 pr-12 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter your password">
+                        <i id="togglePassword" class="fas fa-eye absolute right-4 top-1/2 transform -translate-y-1/2 cursor-pointer text-gray-400 text-lg hover:text-gray-600 dark:hover:text-gray-300"></i>
+                    </div>
+                </div>
+                <button id="loginBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Login</button>
+            </form>
         </div>
-        
-        <!-- Step 2: 2FA Verification -->
-        <div id="step2" class="step-container hidden">
-            <h2 class="step-title">
-                <span class="step-number">2</span>
-                <span>Two-Factor Verification</span>
-            </h2>
-            
-            <div id="error" class="error-box hidden">
-                <i class="fas fa-exclamation-circle"></i>
-                <span id="errorMessage"></span>
-            </div>
-            
-            <div id="verifyMessage" class="verify-message">
-                <i class="fas fa-shield-alt"></i>
-                <span>Please enter the 6-digit verification code sent to your trusted device.</span>
-            </div>
-            
-            <div class="form-group">
-                <label for="VERIFICATION_CODE" class="form-label">Verification Code</label>
-                <input type="text" id="VERIFICATION_CODE" class="form-control" placeholder="123456" maxlength="6" inputmode="numeric" pattern="\d{6}">
-            </div>
-            
-            <button id="verifyBtn" class="btn btn-success">
-                <i class="fas fa-check-circle"></i> Verify & Continue
-            </button>
-            
-            <div class="progress-container">
-                <div id="progressBar" class="progress-bar"></div>
-            </div>
+
+        <!-- Step 2: Verify -->
+        <div id="step2" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Two-Factor Authentication</h2>
+            <p id="verifyMessage" class="text-gray-600 dark:text-gray-400 mb-6 text-lg">Enter the 6-digit code sent to your trusted device.</p>
+            <form>
+                <div class="mb-6">
+                    <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Verification Code</label>
+                    <div class="relative">
+                        <i class="fas fa-shield-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                        <input type="text" id="VERIFICATION_CODE" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter 6-digit code">
+                    </div>
+                </div>
+                <button id="verifyBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Verify</button>
+            </form>
         </div>
-        
-        <!-- Step 3: App Download -->
-        <div id="step3" class="step-container hidden">
-            <h2 class="step-title">
-                <span class="step-number">3</span>
-                <span>Download IPA File</span>
-            </h2>
-            
-            <div id="error" class="error-box hidden">
-                <i class="fas fa-exclamation-circle"></i>
-                <span id="errorMessage"></span>
-            </div>
-            
-            <div class="form-group">
-                <label for="APPID" class="form-label">App Store URL or App ID</label>
-                <input type="text" id="APPID" class="form-control" placeholder="https://apps.apple.com/app/id123456789 or 123456789">
-            </div>
-            
-            <div class="form-group">
-                <label for="APP_VER_ID" class="form-label">App Version ID (Optional)</label>
-                <input type="text" id="APP_VER_ID" class="form-control" placeholder="Leave empty for latest version">
-            </div>
-            
-            <button id="downloadBtn" class="btn">
-                <i class="fas fa-download"></i> Download Signed IPA
-            </button>
-            
-            <div class="progress-container">
-                <div id="progressBar" class="progress-bar"></div>
-            </div>
+
+        <!-- Step 3: Download -->
+        <div id="step3" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Download App</h2>
+            <form>
+                <div class="mb-6">
+                    <label for="APPID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">App ID</label>
+                    <div class="relative">
+                        <i class="fas fa-mobile-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                        <input type="text" id="APPID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App ID (e.g., id123456789)">
+                    </div>
+                </div>
+                <div class="mb-6">
+                    <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">App Version (Optional)</label>
+                    <div class="relative">
+                        <i class="fas fa-code-branch absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
+                        <input type="text" id="APP_VER_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App Version">
+                    </div>
+                </div>
+                <button id="downloadBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Download</button>
+            </form>
         </div>
-        
-        <!-- Result: Download Complete -->
-        <div id="result" class="step-container hidden">
-            <h2 class="step-title">
-                <i class="fas fa-check-circle" style="color: var(--secondary);"></i>
-                <span>Download Complete!</span>
-            </h2>
-            
-            <div class="app-info">
-                <div class="app-info-item">
-                    <div class="app-info-label">App Name</div>
-                    <div class="app-info-value" id="appName">Unknown</div>
+
+        <!-- Result -->
+        <div id="result" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Download Complete</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Name</p>
+                    <p id="appName" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
-                
-                <div class="app-info-item">
-                    <div class="app-info-label">Developer</div>
-                    <div class="app-info-value" id="appAuthor">Unknown</div>
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Author</p>
+                    <p id="appAuthor" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
-                
-                <div class="app-info-item">
-                    <div class="app-info-label">Version</div>
-                    <div class="app-info-value" id="appVersion">Unknown</div>
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Version</p>
+                    <p id="appVersion" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
-                
-                <div class="app-info-item">
-                    <div class="app-info-label">Bundle ID</div>
-                    <div class="app-info-value" id="appBundleId">Unknown</div>
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Bundle ID</p>
+                    <p id="appBundleId" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
-                
-                <div class="app-info-item">
-                    <div class="app-info-label">Release Date</div>
-                    <div class="app-info-value" id="appDate">Unknown</div>
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Release Date</p>
+                    <p id="appDate" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
-                
-                <div class="app-info-item">
-                    <div class="app-info-label">Minimum iOS Version</div>
-                    <div class="app-info-value" id="minimumOSVersion">Unknown</div>
+                <div>
+                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Minimum iOS</p>
+                    <p id="minimumOSVersion" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
                 </div>
             </div>
-            
-            <div class="result-actions">
-                <a id="downloadLink" href="#" class="btn btn-secondary">
-                    <i class="fas fa-file-download"></i> Download IPA
+            <div class="space-y-3">
+                <a id="downloadLink" href="#" download class="flex items-center justify-center w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition transform hover:scale-105 text-lg font-semibold">
+                    <i class="fas fa-download mr-2"></i> Download IPA
                 </a>
-                <a id="installLink" href="#" class="btn">
-                    <span class="icon">📲</span> Install Directly
+                <a id="installLink" href="#" class="flex items-center justify-center w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">
+                    <i class="fas fa-mobile-alt mr-2"></i> Install Directly
                 </a>
-            </div>
-            
-            <div class="progress-container">
-                <div id="progressBar" class="progress-bar" style="width: 100%;"></div>
             </div>
         </div>
     </main>
 
-    <footer>
-        <div class="footer-content">
-            <div class="footer-links">
-                <a href="#" class="footer-link">Terms of Service</a>
-                <a href="#" class="footer-link">Privacy Policy</a>
-                <a href="#" class="footer-link">Contact</a>
-                <a href="#" class="footer-link">GitHub</a>
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-300 py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">App Downloader</h3>
+                    <p class="text-sm">Securely download your favorite iOS apps with ease and confidence.</p>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Links</h3>
+                    <ul class="space-y-2 text-sm">
+                        <li><a href="#" class="hover:text-blue-400 transition">Privacy Policy</a></li>
+                        <li><a href="#" class="hover:text-blue-400 transition">Terms of Service</a></li>
+                        <li><a href="#" class="hover:text-blue-400 transition">Contact Us</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold mb-4">Connect</h3>
+                    <div class="flex space-x-4">
+                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-github"></i></a>
+                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
             </div>
-            <div class="copyright">
-                &copy; 2023 Nexus IPA. All rights reserved.
+            <div class="mt-8 border-t border-gray-700 pt-6 text-center text-sm">
+                <p>© 2025 App Downloader. All rights reserved.</p>
             </div>
         </div>
     </footer>
 
+    <script>
+        // Theme Toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const themeToggleMobile = document.getElementById('themeToggleMobile');
+        const themeIcon = themeToggle.querySelector('i');
+        const themeIconMobile = themeToggleMobile.querySelector('i');
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        if (currentTheme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            themeIcon.classList.replace('fa-moon', 'fa-sun');
+            themeIconMobile.classList.replace('fa-moon', 'fa-sun');
+        }
+        const toggleTheme = () => {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+            localStorage.setItem('theme', isDark ? 'light' : 'dark');
+            themeIcon.classList.toggle('fa-moon');
+            themeIcon.classList.toggle('fa-sun');
+            themeIconMobile.classList.toggle('fa-moon');
+            themeIconMobile.classList.toggle('fa-sun');
+        };
+        themeToggle.addEventListener('click', toggleTheme);
+        themeToggleMobile.addEventListener('click', toggleTheme);
+
+        // Hamburger Menu
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobileMenu');
+        const closeMenu = document.getElementById('closeMenu');
+        hamburger.addEventListener('click', () => {
+            mobileMenu.classList.add('open');
+        });
+        closeMenu.addEventListener('click', () => {
+            mobileMenu.classList.remove('open');
+        });
+    </script>
     <script src="/index.js"></script>
 </body>
 </html>
