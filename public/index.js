@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('main.js loaded'); // Debug: Xác nhận file được tải
-
+  console.log('main.js loaded'); // Debug
   // DOM Elements
   const elements = {
     step1: document.getElementById('step1'),
@@ -42,12 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let eventSource = null;
 
   /* ========== UI HELPERS ========== */
-
+  
+  // Create toast container
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
   toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
   document.body.appendChild(toastContainer);
 
+  // Add CSS styles
   const addStyles = () => {
     const style = document.createElement('style');
     style.textContent = `
@@ -121,7 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     toastContainer.appendChild(toast);
-
+    
     setTimeout(() => {
       toast.style.transform = 'translateX(0)';
       toast.style.opacity = '1';
@@ -197,10 +198,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
-
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
-
     transition(elements.step3, elements.step2);
     setProgress(2);
   };
@@ -273,7 +272,6 @@ document.addEventListener('DOMContentLoaded', () => {
       setLoading(false);
       eventSource.close();
       eventSource = null;
-      // Thử reconnect sau 5s
       setTimeout(() => {
         console.log('Reconnecting SSE...'); // Debug
         listenProgress(requestId);
@@ -294,13 +292,13 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     console.log('Login button clicked'); // Debug
     if (isLoading) return;
-
+    
     hideError();
     setLoading(true);
 
     const APPLE_ID = elements.appleIdInput.value.trim();
     const PASSWORD = elements.passwordInput.value;
-
+    
     if (!APPLE_ID || !PASSWORD) {
       showError('Vui lòng nhập Apple ID và mật khẩu.');
       setLoading(false);
@@ -343,11 +341,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setProgress(3);
       } else {
         showError(data.error || 'Đăng nhập thất bại');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Auth error:', error);
       showError('Không thể kết nối tới máy chủ.');
-    } finally {
       setLoading(false);
     }
   });
@@ -356,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     console.log('Verify button clicked'); // Debug
     if (isLoading) return;
-
+    
     hideError();
     setLoading(true);
 
@@ -373,11 +371,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          APPLE_ID: state.APPLE_ID,
-          PASSWORD: state.PASSWORD,
+        body: JSON.stringify({ 
+          APPLE_ID: state.APPLE_ID, 
+          PASSWORD: state.PASSWORD, 
           CODE,
-          dsid: state.dsid
+          dsid: state.dsid 
         })
       });
 
@@ -403,11 +401,11 @@ document.addEventListener('DOMContentLoaded', () => {
         setProgress(3);
       } else {
         showError(data.error || 'Mã xác minh không đúng.');
+        setLoading(false);
       }
     } catch (error) {
       console.error('Verify error:', error);
       showError('Không thể kết nối tới máy chủ.');
-    } finally {
       setLoading(false);
     }
   });
@@ -416,7 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     console.log('Download button clicked'); // Debug
     if (isLoading) return;
-
+    
     hideError();
     setLoading(true);
 
@@ -445,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify({ 
           APPLE_ID: state.APPLE_ID,
           PASSWORD: state.PASSWORD,
           CODE: state.CODE,

@@ -12,10 +12,12 @@ import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
+import os from 'os'; // Sửa lỗi require('os')
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+app.set('trust proxy', true); // Sửa lỗi X-Forwarded-For
 const port = process.env.PORT || 5004;
 
 // R2 Configuration
@@ -54,6 +56,9 @@ async function uploadToR2({ key, filePath, contentType }) {
     });
 
     console.log('Sending multi-part upload to R2...');
+    upload.on('httpUploadProgress', (progress) => {
+      console.log(`R2 upload progress: ${Math.round((progress.loaded / progress.total) * 100)}%`);
+    });
     const result = await upload.done();
     console.log('Upload successful:', result);
     return result;
@@ -191,8 +196,7 @@ async function clearCache(cacheDir) {
 }
 
 async function checkMemory(requiredMB) {
-  const { freemem } = require('os');
-  const freeMB = freemem() / 1024 / 1024;
+  const freeMB = os.freemem() / 1024 / 1024; // Sửa lỗi require('os')
   if (freeMB < requiredMB) {
     throw new Error(`Insufficient memory: ${freeMB.toFixed(2)}MB available, ${requiredMB}MB required`);
   }
