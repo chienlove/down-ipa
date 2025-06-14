@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPA Downloader - Download iOS Apps Directly</title>
+    <title>Nexus IPA | Premium iOS App Downloader</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #6366f1;
+            --primary-light: #818cf8;
             --primary-dark: #4f46e5;
             --secondary: #10b981;
             --danger: #ef4444;
@@ -15,26 +17,32 @@
             --dark: #1e293b;
             --light: #f8fafc;
             --gray: #94a3b8;
+            --gray-light: #e2e8f0;
             --gray-dark: #64748b;
-            --border-radius: 12px;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --transition: all 0.3s ease;
+            --glass: rgba(255, 255, 255, 0.92);
+            --border-radius: 16px;
+            --border-radius-sm: 12px;
+            --shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 15px 40px rgba(0, 0, 0, 0.15);
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --blur: blur(12px);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
 
         body {
-            background-color: #f1f5f9;
+            background: linear-gradient(135deg, #f5f3ff 0%, #ecfdf5 100%);
             color: var(--dark);
             line-height: 1.6;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            -webkit-font-smoothing: antialiased;
         }
 
         .container {
@@ -45,12 +53,15 @@
         }
 
         header {
-            background-color: white;
+            background: var(--glass);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
             box-shadow: var(--shadow);
-            padding: 1rem 0;
+            padding: 1.5rem 0;
             position: sticky;
             top: 0;
             z-index: 100;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.3);
         }
 
         .header-content {
@@ -63,28 +74,77 @@
         }
 
         .logo {
-            font-size: 1.5rem;
+            font-size: 1.75rem;
             font-weight: 700;
-            color: var(--primary);
+            color: var(--primary-dark);
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-icon {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .header-link {
+            color: var(--dark);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            padding: 0.5rem 1rem;
+            border-radius: var(--border-radius-sm);
+            transition: var(--transition);
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
 
-        .logo i {
-            font-size: 1.8rem;
+        .header-link:hover {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary-dark);
+        }
+
+        .header-link i {
+            font-size: 1.1rem;
         }
 
         .step-container {
-            background-color: white;
+            background: var(--glass);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
             border-radius: var(--border-radius);
             box-shadow: var(--shadow);
-            padding: 2rem;
+            padding: 2.5rem;
             margin-bottom: 2rem;
             transition: var(--transition);
             position: relative;
             overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .step-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
         }
 
         .step-container.hidden {
@@ -94,11 +154,11 @@
         }
 
         .step-container.fade-in {
-            animation: fadeIn 0.3s ease forwards;
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .step-container.fade-out {
-            animation: fadeOut 0.3s ease forwards;
+            animation: fadeOut 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         @keyframes fadeIn {
@@ -124,52 +184,58 @@
         }
 
         .step-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            color: var(--primary-dark);
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: var(--dark);
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 1rem;
+            letter-spacing: -0.5px;
         }
 
         .step-title .step-number {
-            background-color: var(--primary);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.9rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
         }
 
         .form-group {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.75rem;
+            position: relative;
         }
 
         .form-label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.75rem;
             font-weight: 500;
             color: var(--dark);
+            font-size: 0.95rem;
         }
 
         .form-control {
             width: 100%;
-            padding: 0.75rem 1rem;
-            border: 1px solid #e2e8f0;
-            border-radius: var(--border-radius);
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--gray-light);
+            border-radius: var(--border-radius-sm);
             font-size: 1rem;
             transition: var(--transition);
-            background-color: #f8fafc;
+            background-color: rgba(255, 255, 255, 0.7);
+            color: var(--dark);
         }
 
         .form-control:focus {
             outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            border-color: var(--primary-light);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
             background-color: white;
         }
 
@@ -179,44 +245,60 @@
 
         .password-toggle {
             position: absolute;
-            right: 12px;
+            right: 16px;
             top: 50%;
             transform: translateY(-50%);
             cursor: pointer;
             color: var(--gray);
             transition: var(--transition);
+            background: none;
+            border: none;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
         }
 
         .password-toggle:hover {
-            color: var(--primary);
+            color: var(--primary-dark);
+            background: rgba(99, 102, 241, 0.1);
         }
 
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            border-radius: var(--border-radius);
-            font-weight: 500;
+            gap: 0.75rem;
+            padding: 1.1rem 1.75rem;
+            border-radius: var(--border-radius-sm);
+            font-weight: 600;
             font-size: 1rem;
             cursor: pointer;
             transition: var(--transition);
             border: none;
-            background-color: var(--primary);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
             width: 100%;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+            letter-spacing: -0.25px;
         }
 
         .btn:hover {
-            background-color: var(--primary-dark);
             transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .btn:disabled {
             opacity: 0.7;
             cursor: not-allowed;
             transform: none !important;
+            box-shadow: none !important;
         }
 
         .btn.button-loading {
@@ -240,40 +322,43 @@
         }
 
         .btn-secondary {
-            background-color: var(--gray);
+            background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
         }
 
         .btn-secondary:hover {
-            background-color: var(--gray-dark);
+            box-shadow: 0 8px 24px rgba(100, 116, 139, 0.4);
         }
 
         .btn-success {
-            background-color: var(--secondary);
+            background: linear-gradient(135deg, var(--secondary) 0%, #0d9488 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
 
         .btn-success:hover {
-            background-color: #0d9f6e;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);
         }
 
         .progress-container {
             width: 100%;
-            background-color: #e2e8f0;
+            background-color: var(--gray-light);
             border-radius: 20px;
-            height: 12px;
-            margin: 1.5rem 0;
+            height: 8px;
+            margin: 2rem 0;
             overflow: hidden;
         }
 
         .progress-bar {
             height: 100%;
-            background-color: var(--primary);
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
             border-radius: 20px;
             width: 0%;
-            transition: width 0.3s ease;
+            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
         }
 
         .progress-bar.progress-loading {
-            background: linear-gradient(90deg, var(--primary), var(--primary-dark), var(--primary));
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 50%, var(--primary) 100%);
             background-size: 200% 100%;
             animation: progressLoading 1.5s linear infinite;
         }
@@ -286,9 +371,9 @@
         .error-box {
             background-color: #fee2e2;
             color: var(--danger);
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            margin-bottom: 1.5rem;
+            padding: 1.25rem;
+            border-radius: var(--border-radius-sm);
+            margin-bottom: 1.75rem;
             display: flex;
             align-items: center;
             gap: 0.75rem;
@@ -300,48 +385,68 @@
         }
 
         .error-box i {
-            font-size: 1.2rem;
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
         .verify-message {
-            background-color: #fef3c7;
+            background-color: #fffbeb;
             color: var(--warning);
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            margin-bottom: 1.5rem;
+            padding: 1.25rem;
+            border-radius: var(--border-radius-sm);
+            margin-bottom: 1.75rem;
             border-left: 4px solid var(--warning);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .verify-message i {
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
         .app-info {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 1.5rem;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
         }
 
         .app-info-item {
-            background-color: #f8fafc;
-            padding: 1rem;
-            border-radius: var(--border-radius);
+            background: var(--glass);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            padding: 1.5rem;
+            border-radius: var(--border-radius-sm);
             box-shadow: var(--shadow);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: var(--transition);
+        }
+
+        .app-info-item:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
         }
 
         .app-info-label {
             font-size: 0.85rem;
             color: var(--gray-dark);
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
         }
 
         .app-info-value {
             font-weight: 600;
-            font-size: 1.1rem;
+            font-size: 1.15rem;
             color: var(--dark);
+            letter-spacing: -0.25px;
         }
 
         .result-actions {
             display: flex;
-            gap: 1rem;
-            margin-top: 2rem;
+            gap: 1.25rem;
+            margin-top: 2.5rem;
         }
 
         .result-actions .btn {
@@ -353,39 +458,45 @@
         }
 
         .compatible {
-            background-color: var(--secondary);
+            background: linear-gradient(135deg, var(--secondary) 0%, #0d9488 100%);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
 
         .incompatible {
-            background-color: var(--warning);
+            background: linear-gradient(135deg, var(--warning) 0%, #d97706 100%);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
         }
 
         .unknown {
-            background-color: var(--gray);
+            background: linear-gradient(135deg, var(--gray) 0%, var(--gray-dark) 100%);
+            box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
         }
 
         .toast-container {
             position: fixed;
-            top: 1rem;
-            right: 1rem;
+            top: 1.5rem;
+            right: 1.5rem;
             z-index: 1000;
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
-            max-width: 350px;
+            gap: 1rem;
+            max-width: 380px;
             width: 100%;
         }
 
         .toast {
-            padding: 1rem;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
+            padding: 1.25rem;
+            border-radius: var(--border-radius-sm);
+            box-shadow: var(--shadow-lg);
             color: white;
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 1rem;
             transform: translateX(120%);
-            transition: transform 0.3s ease;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .toast.show {
@@ -393,22 +504,27 @@
         }
 
         .toast-success {
-            background-color: var(--secondary);
+            background: rgba(16, 185, 129, 0.9);
         }
 
         .toast-error {
-            background-color: var(--danger);
+            background: rgba(239, 68, 68, 0.9);
         }
 
         .toast-icon {
             font-weight: bold;
+            font-size: 1.25rem;
+            flex-shrink: 0;
         }
 
         footer {
-            background-color: white;
-            padding: 1.5rem 0;
+            background: var(--glass);
+            backdrop-filter: var(--blur);
+            -webkit-backdrop-filter: var(--blur);
+            padding: 2rem 0;
             margin-top: auto;
-            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.05);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         .footer-content {
@@ -422,17 +538,19 @@
 
         .footer-links {
             display: flex;
-            gap: 1.5rem;
+            gap: 1.75rem;
         }
 
         .footer-link {
-            color: var(--gray-dark);
+            color: var(--dark);
             text-decoration: none;
             transition: var(--transition);
+            font-weight: 500;
+            font-size: 0.95rem;
         }
 
         .footer-link:hover {
-            color: var(--primary);
+            color: var(--primary-dark);
         }
 
         .copyright {
@@ -440,17 +558,37 @@
             font-size: 0.9rem;
         }
 
+        .floating-bg {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%);
+            z-index: -1;
+        }
+
+        .floating-bg-1 {
+            top: -200px;
+            right: -200px;
+        }
+
+        .floating-bg-2 {
+            bottom: -300px;
+            left: -200px;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0) 70%);
+        }
+
         @media (max-width: 768px) {
             .container {
-                padding: 1rem;
+                padding: 1.25rem;
             }
 
             .header-content {
-                padding: 0 1rem;
+                padding: 0 1.25rem;
             }
 
             .step-container {
-                padding: 1.5rem;
+                padding: 1.75rem;
             }
 
             .result-actions {
@@ -463,7 +601,7 @@
 
             .footer-content {
                 flex-direction: column;
-                gap: 1rem;
+                gap: 1.25rem;
                 text-align: center;
             }
 
@@ -472,17 +610,47 @@
                 justify-content: center;
             }
         }
+
+        @media (max-width: 480px) {
+            .step-container {
+                padding: 1.5rem;
+            }
+
+            .step-title {
+                font-size: 1.5rem;
+            }
+
+            .form-control {
+                padding: 0.9rem 1.15rem;
+            }
+
+            .btn {
+                padding: 1rem 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="floating-bg floating-bg-1"></div>
+    <div class="floating-bg floating-bg-2"></div>
+
     <header>
         <div class="header-content">
             <a href="/" class="logo">
-                <i class="fas fa-mobile-alt"></i>
-                <span>IPA Downloader</span>
+                <div class="logo-icon">
+                    <i class="fas fa-cloud-download-alt"></i>
+                </div>
+                <span>Nexus IPA</span>
             </a>
-            <div class="header-links">
-                <a href="#" class="header-link"><i class="fas fa-question-circle"></i> Help</a>
+            <div class="header-actions">
+                <a href="#" class="header-link">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Help</span>
+                </a>
+                <a href="#" class="header-link">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
             </div>
         </div>
     </header>
@@ -492,7 +660,7 @@
         <div id="step1" class="step-container">
             <h2 class="step-title">
                 <span class="step-number">1</span>
-                <span>Apple ID Login</span>
+                <span>Apple ID Authentication</span>
             </h2>
             
             <div id="error" class="error-box hidden">
@@ -509,12 +677,14 @@
                 <label for="PASSWORD" class="form-label">Password</label>
                 <div class="input-group">
                     <input type="password" id="PASSWORD" class="form-control" placeholder="••••••••" autocomplete="current-password">
-                    <i id="togglePassword" class="fas fa-eye password-toggle"></i>
+                    <button id="togglePassword" class="password-toggle">
+                        <i class="fas fa-eye"></i>
+                    </button>
                 </div>
             </div>
             
             <button id="loginBtn" class="btn">
-                <i class="fas fa-sign-in-alt"></i> Login
+                <i class="fas fa-sign-in-alt"></i> Continue
             </button>
             
             <div class="progress-container">
@@ -526,7 +696,7 @@
         <div id="step2" class="step-container hidden">
             <h2 class="step-title">
                 <span class="step-number">2</span>
-                <span>Two-Factor Authentication</span>
+                <span>Two-Factor Verification</span>
             </h2>
             
             <div id="error" class="error-box hidden">
@@ -535,7 +705,8 @@
             </div>
             
             <div id="verifyMessage" class="verify-message">
-                Please enter the 6-digit verification code sent to your trusted device.
+                <i class="fas fa-shield-alt"></i>
+                <span>Please enter the 6-digit verification code sent to your trusted device.</span>
             </div>
             
             <div class="form-group">
@@ -544,7 +715,7 @@
             </div>
             
             <button id="verifyBtn" class="btn btn-success">
-                <i class="fas fa-check-circle"></i> Verify
+                <i class="fas fa-check-circle"></i> Verify & Continue
             </button>
             
             <div class="progress-container">
@@ -556,7 +727,7 @@
         <div id="step3" class="step-container hidden">
             <h2 class="step-title">
                 <span class="step-number">3</span>
-                <span>Download IPA</span>
+                <span>Download IPA File</span>
             </h2>
             
             <div id="error" class="error-box hidden">
@@ -575,7 +746,7 @@
             </div>
             
             <button id="downloadBtn" class="btn">
-                <i class="fas fa-download"></i> Download IPA
+                <i class="fas fa-download"></i> Download Signed IPA
             </button>
             
             <div class="progress-container">
@@ -624,7 +795,7 @@
             
             <div class="result-actions">
                 <a id="downloadLink" href="#" class="btn btn-secondary">
-                    <i class="fas fa-file-download"></i> Download IPA File
+                    <i class="fas fa-file-download"></i> Download IPA
                 </a>
                 <a id="installLink" href="#" class="btn">
                     <span class="icon">📲</span> Install Directly
@@ -643,9 +814,10 @@
                 <a href="#" class="footer-link">Terms of Service</a>
                 <a href="#" class="footer-link">Privacy Policy</a>
                 <a href="#" class="footer-link">Contact</a>
+                <a href="#" class="footer-link">GitHub</a>
             </div>
             <div class="copyright">
-                &copy; 2023 IPA Downloader. All rights reserved.
+                &copy; 2023 Nexus IPA. All rights reserved.
             </div>
         </div>
     </footer>
