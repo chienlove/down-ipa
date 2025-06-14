@@ -482,7 +482,8 @@ class IPATool {
           } catch (err) {
             console.error('❌ R2 cleanup error:', err.message);
           }
-        }, 5 * 60 * 1000));
+        }, 5 * 60 * 1000);
+
       } catch (error) {
         console.error('R2 upload failed (using local file):', error);
         progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
@@ -491,12 +492,11 @@ class IPATool {
 
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
       console.log('Download completed successfully!');
-      progressMap.set(requestId, 
+      progressMap.set(requestId, { 
         progress: 100, 
         status: 'complete', 
         downloadUrl: ipaUrl, 
-        installUrl,
- 
+        installUrl, 
         r2Success,
         appInfo
       });
@@ -511,7 +511,7 @@ class IPATool {
       };
     } catch (error) {
       console.error('Download error:', error);
-      progressMap.set(requestId);
+      progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
       throw error;
     } finally {
       console.log(`Finished processing requestId: ${requestId}`);
@@ -546,7 +546,7 @@ app.get('/download-progress/:id', (req, res) => {
   }, 2000);
 
   req.on('close', () => {
-    console.log(`SSE connection closed for id ${id}`);
+    console.log(`SSE connection closed for id: ${id}`);
     clearInterval(interval);
     res.end();
   });
@@ -571,9 +571,9 @@ app.post('/auth', async (req, res) => {
     }
 
     console.log(`Authenticating Apple ID: ${APPLE_ID}`);
-    const user = await Store.authenticating(APPLE_ID, PASSWORD);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
 
-    console.log('Authentication successful:', {
+    console.log('Authentication result:', {
       _state: user._state,
       failureType: user.failureType,
       customerMessage: user.customerMessage,
@@ -589,15 +589,15 @@ app.post('/auth', async (req, res) => {
     };
 
     const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã') ||
-      (user.customerMessage.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
       user.customerMessage?.toLowerCase().includes('mfa') ||
       user.customerMessage?.toLowerCase().includes('code') ||
       user.customerMessage?.includes('Configurator_message')
     );
 
     if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      console.log('2FA verification required');
+      console.log('2FA required');
       return res.json({
         success: false,
         require2FA: true,
@@ -631,7 +631,7 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-app.post('/download', async (req, res) {
+app.post('/download', async (req, res) => {
   console.log('Received /download request:', { body: req.body });
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
@@ -652,7 +652,7 @@ app.post('/download', async (req, res) {
       success: true,
       status: 'pending',
       requestId,
-      message: 'Processing started successfully, check status via /status/:id or /download-progress/:id',
+      message: 'Processing started, check status via /status/:id or /download-progress/:id',
     });
 
     setImmediate(async () => {
@@ -684,11 +684,11 @@ app.post('/download', async (req, res) {
           r2UploadSuccess: result.r2UploadSuccess,
         });
 
-        setTimeout(() => {
+        setTimeout(async () => {
           try {
             await fsPromises.unlink(result.filePath);
-            await fsPromises.rm(path.join(__dirname, 'app', path.basename(path.dirname(result.filePath))), { recursive: true, force: true });
-            await fsPromises.rm(path.join(__dirname, 'app', path.basename(path.dirname(path.dirname(result.filePath))), 'signed'), { recursive: true, force: true });
+            await fsPromises.rm(path.dirname(result.filePath), { recursive: true, force: true });
+            await fsPromises.rm(path.join(path.dirname(result.filePath), 'signed'), { recursive: true, force: true });
             console.log(`Cleaned up local file and folder: ${result.filePath}`);
           } catch (err) {
             console.error('Cleanup IPA error:', err.message);
@@ -700,8 +700,6 @@ app.post('/download', async (req, res) {
               console.log(`Deleted local plist file: ${result.plistPath}`);
             } catch (err) {
               console.error('Cleanup plist error:', err.message);
-            } else {
-              console.error('Cleanup plist error:', err);
             }
           }
         }, 1000);
@@ -709,13 +707,9 @@ app.post('/download', async (req, res) {
         console.error('Background download error:', error);
         progressMap.set(requestId, {
           progress: 0,
-            status: 'error',
-            error: error.message || 'Download failed',
-          }
-        );
-      } else {
-        console.error('Background download error:', error);
-        progressMap.set(downloadId, requestId);
+          status: 'error',
+          error: error.message || 'Download failed',
+        });
       }
     });
   } catch (error) {
@@ -724,20 +718,11 @@ app.post('/download', async (req, res) {
       success: false,
       error: error.message || 'Download failed',
     });
-  } else {
-    console.error('Error downloading:', error);
-    res.status(500);
-    json({
-      status: 'error',
-      success: 'Download failed',
-      error: error.message,
-    });
   }
 });
 
 app.post('/verify', async (req, res) => {
   console.log('Received /verify request:', { body: req.body });
-  });
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
 
@@ -745,24 +730,16 @@ app.post('/verify', async (req, res) => {
       console.log('Missing required fields in /verify');
       return res.status(400).json({
         success: false,
-          error: 'All fields are required',
-        return res.status(400);
-        json({
-          error: 'All fields must be required',
-        });
-      }
-    );
+        error: 'All fields are required',
+      });
+    }
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticated(APPLE_ID, PASSWORD, CODE);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
       console.log('2FA verification failed:', user.customerMessage);
-      return res.status(400).json({
-        error: 'Verification failed',
-        user: user.customerMessage || 'Failed to verify',
-      });
-      throw new Error('Verification failed');
+      throw new Error(user.customerMessage || 'Verification failed');
     }
 
     console.log('2FA verification successful');
@@ -775,13 +752,6 @@ app.post('/verify', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Verification error',
-    });
-  } else {
-    console.error('Verification error:', error);
-    res.json(500).status(500);
-    json({
-      success: 'false',
-      error: 'error.message || 'An error occurred',
     });
   }
 });
