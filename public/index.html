@@ -7,12 +7,23 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
+        :root {
+            --primary: #1e40af;
+            --primary-light: #3b82f6;
+            --success: #047857;
+            --error: #b91c1c;
+            --neutral: #4b5563;
+            --bg-light: #f8fafc;
+            --bg-dark: #0f172a;
+            --card-bg: rgba(255, 255, 255, 0.95);
+        }
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(to bottom, #f1f5f9, #e5e7eb);
+            background: linear-gradient(to bottom, var(--bg-light), #e2e8f0);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow-x: hidden;
         }
         .fade-in {
             animation: fadeIn 0.4s ease-in-out;
@@ -21,30 +32,30 @@
             animation: fadeOut 0.4s ease-in-out;
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
         @keyframes fadeOut {
             from { opacity: 1; transform: translateY(0); }
-            to { opacity: 0; transform: translateY(10px); }
+            to { opacity: 0; transform: translateY(12px); }
         }
         .progress-bar {
-            transition: width 0.4s ease-in-out;
-            background: linear-gradient(to right, #2563eb, #60a5fa);
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            background: linear-gradient(to right, var(--primary), var(--primary-light));
         }
         .progress-loading {
             background-image: linear-gradient(
                 45deg,
-                rgba(255, 255, 255, 0.3) 25%,
+                rgba(255, 255, 255, 0.25) 25%,
                 transparent 25%,
                 transparent 50%,
-                rgba(255, 255, 255, 0.3) 50%,
-                rgba(255, 255, 255, 0.3) 75%,
+                rgba(255, 255, 255, 0.25) 50%,
+                rgba(255, 255, 255, 0.25) 75%,
                 transparent 75%,
                 transparent
             );
             background-size: 30px 30px;
-            animation: progress 1.5s linear infinite;
+            animation: progress 1.2s linear infinite;
         }
         @keyframes progress {
             0% { background-position: 0 0; }
@@ -74,102 +85,81 @@
         }
         .toast-container {
             position: fixed;
-            top: 20px;
-            right: 20px;
+            top: 24px;
+            right: 24px;
             z-index: 1000;
         }
         .toast {
             padding: 12px 24px;
             margin-bottom: 12px;
-            border-radius: 10px;
+            border-radius: 12px;
             color: white;
             display: flex;
             align-items: center;
             opacity: 0;
             transform: translateX(100%);
-            transition: all 0.4s ease-in-out;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(8px);
         }
         .toast.show {
             opacity: 1;
             transform: translateX(0);
         }
         .toast-success {
-            background: #059669;
+            background: rgba(4, 120, 87, 0.9);
         }
         .toast-error {
-            background: #dc2626;
+            background: rgba(185, 28, 28, 0.9);
         }
         .toast-icon {
             margin-right: 10px;
             font-size: 20px;
-        }
-        .tooltip {
-            position: relative;
-        }
-        .tooltip:hover::after {
-            content: attr(title);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #111827;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-size: 13px;
-            white-space: nowrap;
-            z-index: 10;
-            margin-bottom: 10px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-        .tooltip:hover::before {
-            content: '';
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 8px solid transparent;
-            border-top-color: #111827;
-            margin-bottom: 2px;
         }
         .password-toggle {
             cursor: pointer;
             transition: color 0.2s;
         }
         .password-toggle:hover {
-            color: #2563eb;
+            color: var(--primary-light);
         }
         .incompatible {
-            background: #dc2626 !important;
+            background: var(--error) !important;
             opacity: 0.5;
             pointer-events: none;
         }
         .compatible {
-            background: #059669 !important;
+            background: var(--success) !important;
         }
         .unknown {
-            background: #6b7280 !important;
+            background: var(--neutral) !important;
         }
         .compatibility-message {
             font-size: 0.875rem;
             margin-top: 8px;
             text-align: center;
+            font-weight: 500;
+            transition: opacity 0.3s ease;
         }
         .compatibility-message.compatible {
-            color: #059669;
+            color: var(--success);
         }
         .compatibility-message.incompatible {
-            color: #dc2626;
+            color: var(--error);
         }
         .compatibility-message.unknown {
-            color: #6b7280;
+            color: var(--neutral);
+        }
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         .hamburger-menu {
             display: none;
         }
         .nav-menu {
-            transition: transform 0.3s ease-in-out;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         @media (max-width: 768px) {
             .hamburger-menu {
@@ -181,14 +171,15 @@
                 top: 0;
                 right: 0;
                 height: 100%;
-                width: 80%;
-                max-width: 320px;
-                background: white;
-                box-shadow: -6px 0 12px rgba(0, 0, 0, 0.1);
+                width: 60%;
+                max-width: 260px;
+                background: var(--card-bg);
+                box-shadow: -6px 0 12px rgba(0, 0, 0, 0.15);
                 transform: translateX(100%);
-                border-top-left-radius: 16px;
-                border-bottom-left-radius: 16px;
+                border-top-left-radius: 20px;
+                border-bottom-left-radius: 20px;
                 z-index: 50;
+                backdrop-filter: blur(12px);
             }
             .nav-menu.open {
                 display: block;
@@ -199,19 +190,19 @@
                 padding: 24px;
             }
             .nav-menu li {
-                margin: 12px 0;
+                margin: 14px 0;
             }
             .close-menu {
                 position: absolute;
-                top: 16px;
-                right: 16px;
-                font-size: 24px;
-                color: #374151;
+                top: 20px;
+                right: 20px;
+                font-size: 26px;
+                color: #1f2937;
                 cursor: pointer;
                 transition: color 0.2s;
             }
             .close-menu:hover {
-                color: #2563eb;
+                color: var(--primary);
             }
             .overlay {
                 position: fixed;
@@ -219,7 +210,7 @@
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.6);
+                background: rgba(0, 0, 0, 0.7);
                 z-index: 40;
                 display: none;
             }
@@ -231,18 +222,18 @@
 </head>
 <body>
     <!-- Header with Hamburger Menu -->
-    <header class="bg-white shadow-md sticky top-0 z-30">
+    <header class="bg-white shadow-lg sticky top-0 z-30">
         <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
             <div class="text-2xl font-bold text-blue-600">IPA Downloader</div>
-            <button class="hamburger-menu md:hidden text-gray-600 focus:outline-none">
+            <button class="hamburger-menu md:hidden text-gray-700 focus:outline-none">
                 <i class="fas fa-bars text-2xl"></i>
             </button>
             <div class="nav-menu md:flex md:items-center">
                 <i class="fas fa-times close-menu md:hidden"></i>
-                <ul class="flex md:flex-row flex-col md:space-x-6">
-                    <li><a href="#home" class="text-gray-600 hover:text-blue-600 font-medium">Trang chủ</a></li>
-                    <li><a href="#about" class="text-gray-600 hover:text-blue-600 font-medium">Giới thiệu</a></li>
-                    <li><a href="#guide" class="text-gray-600 hover:text-blue-600 font-medium">Hướng dẫn</a></li>
+                <ul class="flex md:flex-row flex-col md:space-x-8">
+                    <li><a href="#home" class="text-gray-700 hover:text-blue-600 font-medium transition">Trang chủ</a></li>
+                    <li><a href="#about" class="text-gray-700 hover:text-blue-600 font-medium transition">Giới thiệu</a></li>
+                    <li><a href="#guide" class="text-gray-700 hover:text-blue-600 font-medium transition">Hướng dẫn</a></li>
                 </ul>
             </div>
         </nav>
@@ -251,7 +242,7 @@
 
     <!-- Main Content -->
     <main class="flex-grow container mx-auto px-6 py-12">
-        <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-8 md:p-10">
+        <div class="max-w-4xl mx-auto card rounded-2xl shadow-2xl p-8 md:p-10">
             <!-- Progress Bar -->
             <div class="w-full bg-gray-200 rounded-full h-3 mb-8 overflow-hidden">
                 <div id="progressBar" class="h-3 rounded-full progress-bar" style="width: 0%"></div>
@@ -260,30 +251,30 @@
             <!-- Step 1: Authentication -->
             <div id="step1" class="step">
                 <h2 class="text-3xl font-bold text-gray-900 mb-4">Đăng nhập Apple ID</h2>
-                <p class="text-gray-600 mb-6">Nhập Apple ID và mật khẩu để xác thực. Thông tin được mã hóa và bảo mật.</p>
+                <p class="text-gray-600 mb-6">Nhập Apple ID và mật khẩu để xác thực. Dữ liệu được mã hóa an toàn.</p>
                 <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
                     <span id="errorMessage"></span>
                 </div>
                 <form>
                     <div class="mb-5">
                         <label for="APPLE_ID" class="block text-gray-700 text-sm font-medium mb-2">Apple ID</label>
-                        <input type="text" id="APPLE_ID" placeholder="Nhập email Apple ID" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
+                        <input type="text" id="APPLE_ID" placeholder="Nhập email Apple ID" class="w-full max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
                         <p class="text-xs text-gray-500 mt-1">Ví dụ: example@icloud.com</p>
                     </div>
                     <div class="mb-6 relative">
                         <label for="PASSWORD" class="block text-gray-700 text-sm font-medium mb-2">Mật khẩu</label>
-                        <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
+                        <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu" class="w-full max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
                         <i id="togglePassword" class="fas fa-eye password-toggle absolute right-4 top-11 text-gray-500"></i>
                         <p class="text-xs text-gray-500 mt-1">Mật khẩu tài khoản Apple của bạn</p>
                     </div>
-                    <button id="loginBtn" type="button" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Đăng nhập</button>
+                    <button id="loginBtn" type="button" class="w-full max-w-md bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Đăng nhập</button>
                 </form>
             </div>
 
             <!-- Step 2: 2FA Verification -->
             <div id="step2" class="step hidden">
                 <h2 class="text-3xl font-bold text-gray-900 mb-4">Xác minh hai bước</h2>
-                <p class="text-gray-600 mb-4">Nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy của bạn.</p>
+                <p class="text-gray-600 mb-4">Nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.</p>
                 <p id="verifyMessage" class="text-gray-600 mb-6"></p>
                 <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
                     <span id="errorMessage"></span>
@@ -291,10 +282,10 @@
                 <form>
                     <div class="mb-6">
                         <label for="VERIFICATION_CODE" class="block text-gray-700 text-sm font-medium mb-2">Mã xác minh</label>
-                        <input type="text" id="VERIFICATION_CODE" placeholder="Nhập mã 6 chữ số" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" maxlength="6" required>
+                        <input type="text" id="VERIFICATION_CODE" placeholder="Nhập mã 6 chữ số" class="w-full max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" maxlength="6" required>
                         <p class="text-xs text-gray-500 mt-1">Mã được gửi qua tin nhắn hoặc thông báo</p>
                     </div>
-                    <button id="verifyBtn" type="button" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Xác minh</button>
+                    <button id="verifyBtn" type="button" class="w-full max-w-md bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Xác minh</button>
                 </form>
             </div>
 
@@ -308,21 +299,18 @@
                 <form>
                     <div class="mb-5">
                         <label for="APPID" class="block text-gray-700 text-sm font-medium mb-2">App ID</label>
-                        <div class="flex space-x-4">
-                            <input type="text" id="APPID" placeholder="Nhập App ID (ví dụ: id123456789)" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
-                            <a href="https://appinfo.storeios.net" target="_blank" class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-200 transition font-medium"><i class="fas fa-search mr-2"></i>Tìm App ID</a>
-                        </div>
+                        <input type="text" id="APPID" placeholder="Nhập App ID (ví dụ: id123456789)" class="w-full max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
                         <p class="text-xs text-gray-500 mt-1">ID ứng dụng từ App Store (tìm trong URL ứng dụng)</p>
                     </div>
                     <div class="mb-6">
                         <label for="APP_VER_ID" class="block text-gray-700 text-sm font-medium mb-2">Phiên bản ứng dụng (tuỳ chọn)</label>
                         <div class="flex space-x-4">
-                            <input type="text" id="APP_VER_ID" placeholder="Nhập phiên bản (ví dụ: 1.0.0)" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition">
+                            <input type="text" id="APP_VER_ID" placeholder="Nhập phiên bản (ví dụ: 1.0.0)" class="flex-1 max-w-md px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition">
                             <a href="https://appinfo.storeios.net" target="_blank" class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg hover:bg-gray-200 transition font-medium"><i class="fas fa-search mr-2"></i>Tìm phiên bản</a>
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Để trống để tải phiên bản mới nhất</p>
                     </div>
-                    <button id="downloadBtn" type="button" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Tải ứng dụng</button>
+                    <button id="downloadBtn" type="button" class="w-full max-w-md bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Tải ứng dụng</button>
                 </form>
             </div>
 
@@ -361,12 +349,12 @@
                 </div>
                 <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
                     <div class="flex-1">
-                        <a id="downloadLink" href="#" download class="block bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition text-center font-medium tooltip" title="Tải file IPA về thiết bị">
+                        <a id="downloadLink" href="#" download class="block bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition text-center font-medium">
                             <span class="icon mr-2"><i class="fas fa-download"></i></span>Tải file IPA
                         </a>
                     </div>
                     <div class="flex-1">
-                        <a id="installLink" href="#" class="block bg-gray-500 text-white py-3 px-6 rounded-lg text-center font-medium tooltip hidden" title="Thông tin tương thích">
+                        <a id="installLink" href="#" class="block bg-gray-500 text-white py-3 px-6 rounded-lg text-center font-medium hidden">
                             <span class="icon mr-2"><i class="fas fa-mobile-alt"></i></span>Cài trực tiếp
                         </a>
                         <p id="compatibilityMessage" class="compatibility-message hidden"></p>
