@@ -13,7 +13,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import os from 'os';
-import plist from 'plist'; // Thêm module plist để parse Info.plist
+import plist from 'plist';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -216,12 +216,10 @@ async function extractMinimumOSVersion(ipaPath) {
     const unzipDir = path.join(__dirname, 'temp_unzip', uuidv4());
     await fsPromises.mkdir(unzipDir, { recursive: true });
     
-    // Giả sử sử dụng thư viện như `adm-zip` để giải nén IPA
     const AdmZip = (await import('adm-zip')).default;
     const zip = new AdmZip(ipaPath);
     zip.extractAllTo(unzipDir, true);
 
-    // Tìm file Info.plist trong Payload/*.app
     const payloadDir = path.join(unzipDir, 'Payload');
     const appDir = (await fsPromises.readdir(payloadDir, { withFileTypes: true }))
       .find(dirent => dirent.isDirectory() && dirent.name.endsWith('.app'))?.name;
@@ -231,7 +229,6 @@ async function extractMinimumOSVersion(ipaPath) {
     const plistContent = await fsPromises.readFile(infoPlistPath, 'utf8');
     const plistData = plist.parse(plistContent);
     
-    // Xóa thư mục tạm
     await fsPromises.rm(unzipDir, { recursive: true, force: true });
     
     return plistData.MinimumOSVersion || 'Unknown';
@@ -350,7 +347,7 @@ class IPATool {
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
-      const signedDir = path.join(downloadPath, 'signed');
+      const signedDir = path Anno
       await sigClient.processIPA(outputFilePath, signedDir);
       console.log('🔧 Using archiver to zip signed IPA...');
 
@@ -468,7 +465,7 @@ class IPATool {
         downloadUrl: ipaUrl, 
         installUrl, 
         r2Success,
-        appInfo // Đảm bảo gửi appInfo đầy đủ
+        appInfo
       });
 
       return {
@@ -509,7 +506,7 @@ app.get('/download-progress/:id', (req, res) => {
       progressMap.delete(id);
       res.end();
     }
-  }, 2000); // Giảm interval để phản hồi nhanh hơn
+  }, 2000);
 
   req.on('close', () => {
     clearInterval(interval);
@@ -521,6 +518,79 @@ app.get('/status/:id', (req, res) => {
   const id = req.params.id;
   const progress = progressMap.get(id) || { progress: 0, status: 'pending' };
   res.json({ id, ...progress });
+});
+
+app.post('/auth', async (req, res) => {
+  console.log('Received /auth request:', req.body);
+  try {
+    const { APPLE_ID, PASSWORD } = req.body;
+    if (!APPLE_ID || !PASSWORD) {
+      console.log('Missing APPLE_ID or PASSWORD');
+      return res.status(400).json({
+        success: false,
+        error: 'APPLE_ID và PASSWORD là bắt buộc',
+      });
+    }
+
+    console.log(`Authenticating Apple ID: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD);
+
+    console.log('Authentication result:', {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      dsid: user.dsPersonId,
+    });
+
+    const debugLog = {
+      _state: user._state,
+      failureType: user.failureType,
+      customerMessage: user.customerMessage,
+      authOptions: user.authOptions,
+      dsid: user.dsPersonId,
+    };
+
+    const needs2FA = (
+      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
+      user.customerMessage?.toLowerCase().includes('two-factor') ||
+      user.customerMessage?.toLowerCase().includes('mfa') ||
+      user.customerMessage?.toLowerCase().includes('code') ||
+      user.customerMessage?.includes('Configurator_message')
+    );
+
+    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
+      console.log('2FA required');
+      return res.json({
+        success: false,
+        require2FA: true,
+        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
+        dsid: user.dsPersonId,
+        debug: debugLog,
+      });
+    }
+
+    if (user._state === 'success') {
+      console.log('Authentication successful');
+      return res.json({
+        success: true,
+        dsid: user.dsPersonId,
+        debug: debugLog,
+      });
+    }
+
+    console.log('Authentication failed:', user.customerMessage);
+    return res.status(401).json({
+      success: false,
+      error: user.customerMessage || 'Đăng nhập thất bại',
+      debug: debugLog,
+    });
+  } catch (error) {
+    console.error('Auth error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Lỗi xác thực Apple ID',
+    });
+  }
 });
 
 app.post('/download', async (req, res) => {
@@ -607,53 +677,6 @@ app.post('/download', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Download failed',
-    });
-  }
-});
-
-app.post('/auth', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD } = req.body;
-    const user = await Store.authenticate(APPLE_ID, PASSWORD);
-
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId,
-    };
-
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
-
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      return res.json({
-        require2FA: true,
-        message: user.customerMessage || 'Tài khoản cần xác minh 2FA',
-        dsid: user.dsPersonId,
-        debug: debugLog,
-      });
-    }
-
-    if (user._state === 'success') {
-      return res.json({
-        success: true,
-        dsid: user.dsPersonId,
-        debug: debugLog,
-      });
-    }
-
-    throw new Error(user.customerMessage || 'Đăng nhập thất bại');
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Lỗi xác thực Apple ID',
     });
   }
 });

@@ -19,12 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
     appVerInput: document.getElementById('APP_VER_ID'),
-    iosVersionInput: document.getElementById('IOS_VERSION') // Sẽ thêm vào HTML
+    iosVersionInput: document.getElementById('IOS_VERSION')
   };
 
   // Kiểm tra DOM elements
   Object.keys(elements).forEach(key => {
-    if (!elements[key]) console.error(`DOM element ${key} not found`);
+    if (!elements[key]) {
+      console.error(`DOM element ${key} not found`);
+      showError(`Lỗi giao diện: Không tìm thấy phần tử ${key}`);
+    }
   });
 
   // App State
@@ -239,8 +242,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
     elements.step2.style.display = 'block';
     elements.step2.classList.remove('hidden');
-    transition(elements.step3, elements elements.step2);
+    transition(elements.step3, elements.step2);
     setProgress(2);
+    setLoading(false);
   };
 
   const listenProgress = (requestId) => {
@@ -271,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
           document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
           document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
+          document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
           const downloadLink = document.getElementById('downloadLink');
           downloadLink.href = data.downloadUrl || '#';
           downloadLink.download = data.fileName || 'app.ipa';
@@ -278,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (data.installUrl) {
             installLink.href = data.installUrl;
             installLink.classList.remove('hidden');
-          } Aldo
+          } else {
             installLink.classList.add('hidden');
           }
 
@@ -304,6 +309,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showError('Lỗi xử lý tiến trình tải.');
         showToast('Lỗi tiến trình!', 'error');
         setLoading(false);
+        eventSource?.close();
+        eventSource = null;
       }
     };
 
@@ -312,204 +319,222 @@ document.addEventListener('DOMContentLoaded', () => {
       showError('Mất kết nối với server.');
       showToast('Lỗi kết nối!', 'error');
       setLoading(false);
-      eventSource.close();
+      eventSource?.close();
       eventSource = null;
     };
   };
 
   /* ========== EVENT HANDLERS ========== */
 
-  elements.togglePassword.addEventListener('click', () => {
-    console.log('Toggle password clicked');
-    const isPassword = elements.passwordInput.type === 'password';
-    elements.passwordInput.type = isPassword ? 'text' : 'password';
-    elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
-  });
+  // Kiểm tra và gắn sự kiện cho loginBtn
+  if (elements.loginBtn) {
+    elements.loginBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      console.log('Login button clicked');
+      if (isLoading) {
+        console.log('Login button disabled due to isLoading=true');
+        return;
+      }
+      
+      hideError();
+      setLoading(true);
 
-  elements.loginBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    console.log('Login button clicked');
-    if (isLoading) return;
-    
-    hideError();
-    setLoading(true);
-
-    const APPLE_ID = elements.appleIdInput.value.trim();
-    const PASSWORD = elements.passwordInput.value;
-    
-    if (!APPLE_ID || !PASSWORD) {
-      showError('Vui lòng nhập Apple ID và mật khẩu.');
-      setLoading(false);
-      return;
-    }
-
-    state.APPLE_ID = APPLE_ID;
-    state.PASSWORD = PASSWORD;
-
-    setProgress(1);
-
-    try {
-      const response = await fetch('/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ APPLE_ID, PASSWORD })
-      });
-
-      const data = await response.json();
-      console.log('Auth response:', data);
-
-      if (!response.ok) {
-        showError(data.error || 'Lỗi từ máy chủ.');
+      const APPLE_ID = elements.appleIdInput?.value.trim() || '';
+      const PASSWORD = elements.passwordInput?.value || '';
+      
+      if (!APPLE_ID || !PASSWORD) {
+        showError('Vui lòng nhập Apple ID và mật khẩu.');
         setLoading(false);
         return;
       }
 
-      if (data.require2FA || data.authType === '2fa') {
-        handle2FARedirect(data);
+      state.APPLE_ID = APPLE_ID;
+      state.PASSWORD = PASSWORD;
+
+      setProgress(1);
+
+      try {
+        console.log('Sending /auth request');
+        const response = await fetch('/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ APPLE_ID, PASSWORD })
+        });
+
+        console.log('Auth response status:', response.status);
+        const data = await response.json();
+        console.log('Auth response data:', data);
+
+        if (!response.ok) {
+          showError(data.error || 'Lỗi từ máy chủ.');
+          setLoading(false);
+          return;
+        }
+
+        if (data.require2FA || data.authType === '2fa') {
+          handle2FARedirect(data);
+          return;
+        }
+
+        if (data.success) {
+          state.requires2FA = false;
+          state.verified2FA = true;
+          state.dsid = data.dsid || null;
+          showToast('Đăng nhập thành công!');
+          transition(elements.step1, elements.step3);
+          setProgress(3);
+          setLoading(false);
+        } else {
+          showError(data.error || 'Đăng nhập thất bại');
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Auth error:', error.message);
+        showError('Không thể kết nối tới máy chủ.');
+        setLoading(false);
+      }
+    });
+  } else {
+    console.error('loginBtn not found in DOM');
+    showError('Lỗi giao diện: Nút đăng nhập không được tìm thấy.');
+  }
+
+  if (elements.togglePassword) {
+    elements.togglePassword.addEventListener('click', () => {
+      console.log('Toggle password clicked');
+      const isPassword = elements.passwordInput.type === 'password';
+      elements.passwordInput.type = isPassword ? 'text' : 'password';
+      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
+    });
+  }
+
+  if (elements.verifyBtn) {
+    elements.verifyBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      console.log('Verify button clicked');
+      if (isLoading) return;
+      
+      hideError();
+      setLoading(true);
+
+      const CODE = elements.verificationCodeInput?.value.trim() || '';
+      if (CODE.length !== 6) {
+        showError('Mã xác minh phải có 6 chữ số.');
         setLoading(false);
         return;
       }
 
-      if (data.success) {
-        state.requires2FA = false;
-        state.verified2FA = true;
-        state.dsid = data.dsid || null;
-        showToast('Đăng nhập thành công!');
-        transition(elements.step1, elements.step3);
-        setProgress(3);
-      } else {
-        showError(data.error || 'Đăng nhập thất bại');
+      setProgress(2);
+
+      try {
+        const response = await fetch('/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            APPLE_ID: state.APPLE_ID, 
+            PASSWORD: state.PASSWORD, 
+            CODE,
+            dsid: state.dsid 
+          })
+        });
+
+        const data = await response.json();
+        console.log('Verify response:', data);
+
+        if (!response.ok) {
+          showError(data.error || 'Xác minh thất bại.');
+          setLoading(false);
+          return;
+        }
+
+        if (data.success) {
+          state.CODE = CODE;
+          state.verified2FA = true;
+          state.dsid = data.dsid || state.dsid;
+          showToast('Xác thực 2FA thành công!');
+          elements.step2.classList.add('hidden');
+          elements.step2.style.display = 'none';
+          elements.verificationCodeInput.value = '';
+          elements.verifyMessage.textContent = '';
+          transition(elements.step2, elements.step3);
+          setProgress(3);
+          setLoading(false);
+        } else {
+          showError(data.error || 'Mã xác minh không đúng.');
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Verify error:', error);
+        showError('Không thể kết nối tới máy chủ.');
         setLoading(false);
       }
-    } catch (error) {
-      console.error('Auth error:', error);
-      showError('Không thể kết nối tới máy chủ.');
-      setLoading(false);
-    }
-  });
+    });
+  }
 
-  elements.verifyBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    console.log('Verify button clicked');
-    if (isLoading) return;
-    
-    hideError();
-    setLoading(true);
+  if (elements.downloadBtn) {
+    elements.downloadBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      console.log('Download button clicked');
+      if (isLoading) return;
+      
+      hideError();
+      setLoading(true);
 
-    const CODE = elements.verificationCodeInput.value.trim();
-    if (CODE.length !== 6) {
-      showError('Mã xác minh phải có 6 chữ số.');
-      setLoading(false);
-      return;
-    }
+      const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
+      const appVerId = elements.appVerInput?.value.trim() || '';
+      state.iosVersion = elements.iosVersionInput?.value.trim() || '';
 
-    setProgress(2);
-
-    try {
-      const response = await fetch('/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          APPLE_ID: state.APPLE_ID, 
-          PASSWORD: state.PASSWORD, 
-          CODE,
-          dsid: state.dsid 
-        })
-      });
-
-      const data = await response.json();
-      console.log('Verify response:', data);
-
-      if (!response.ok) {
-        showError(data.error || 'Xác minh thất bại.');
+      if (!APPID) {
+        showError('Vui lòng nhập App ID hợp lệ.');
         setLoading(false);
         return;
       }
 
-      if (data.success) {
-        state.CODE = CODE;
-        state.verified2FA = true;
-        state.dsid = data.dsid || state.dsid;
-        showToast('Xác thực 2FA thành công!');
-        elements.step2.classList.add('hidden');
-        elements.step2.style.display = 'none';
-        elements.verificationCodeInput.value = '';
-        elements.verifyMessage.textContent = '';
-        transition(elements.step2, elements.step3);
-        setProgress(3);
-      } else {
-        showError(data.error || 'Mã xác minh không đúng.');
+      if (state.requires2FA && !state.verified2FA) {
+        showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
+        setLoading(false);
+        elements.step2.style.display = 'block';
+        elements.step2.classList.remove('hidden');
+        transition(elements.step3, elements.step2);
+        return;
+      }
+
+      setProgress(3);
+
+      try {
+        console.log('Sending /download request');
+        const response = await fetch('/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            APPLE_ID: state.APPLE_ID,
+            PASSWORD: state.PASSWORD,
+            CODE: state.CODE,
+            APPID,
+            appVerId,
+            dsid: state.dsid
+          })
+        });
+
+        const data = await response.json();
+        console.log('Download response:', data);
+
+        if (data.require2FA) {
+          handle2FARedirect(data);
+          setLoading(false);
+        } else if (data.success && data.requestId) {
+          state.requestId = data.requestId;
+          console.log(`Starting progress listener for requestId: ${data.requestId}`);
+          listenProgress(data.requestId);
+        } else {
+          showError(data.error || 'Tải ứng dụng thất bại.');
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Download error:', error);
+        showError('Không thể kết nối tới máy chủ.');
         setLoading(false);
       }
-    } catch (error) {
-      console.error('Verify error:', error);
-      showError('Không thể kết nối tới máy chủ.');
-      setLoading(false);
-    }
-  });
-
-  elements.downloadBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    console.log('Download button clicked');
-    if (isLoading) return;
-    
-    hideError();
-    setLoading(true);
-
-    const APPID = elements.appIdInput.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
-    const appVerId = elements.appVerInput.value.trim();
-    state.iosVersion = elements.iosVersionInput?.value.trim() || '';
-
-    if (!APPID) {
-      showError('Vui lòng nhập App ID hợp lệ.');
-      setLoading(false);
-      return;
-    }
-
-    if (state.requires2FA && !state.verified2FA) {
-      showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
-      setLoading(false);
-      elements.step2.style.display = 'block';
-      elements.step2.classList.remove('hidden');
-      transition(elements.step3, elements.step2);
-      return;
-    }
-
-    setProgress(3);
-
-    try {
-      console.log('Sending /download request');
-      const response = await fetch('/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          APPLE_ID: state.APPLE_ID,
-          PASSWORD: state.PASSWORD,
-          CODE: state.CODE,
-          APPID,
-          appVerId,
-          dsid: state.dsid
-        })
-      });
-
-      const data = await response.json();
-      console.log('Download response:', data);
-
-      if (data.require2FA) {
-        handle2FARedirect(data);
-        setLoading(false);
-      } else if (data.success && data.requestId) {
-        state.requestId = data.requestId;
-        console.log(`Starting progress listener for requestId: ${data.requestId}`);
-        listenProgress(data.requestId);
-      } else {
-        showError(data.error || 'Tải ứng dụng thất bại.');
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Download error:', error);
-      showError('Không thể kết nối tới máy chủ.');
-      setLoading(false);
-    }
-  });
+    });
+  }
 });
