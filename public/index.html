@@ -138,6 +138,35 @@
             box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
     </style>
+
+<style>
+  .tooltip-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+  }
+  .tooltip-wrapper:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 0.4rem;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    z-index: 10;
+  }
+  #installLink.incompatible {
+    background-color: #d1d5db !important;
+    color: #6b7280 !important;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+</style>
+
 </head>
 <body class="min-h-screen flex flex-col font-sans">
     <!-- Header -->
@@ -149,7 +178,7 @@
             </div>
             <!-- Desktop Menu -->
             <div class="hidden md:flex items-center space-x-6">
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a>
+                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a></div>
                 <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">About</a>
                 <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Support</a>
                 <button id="themeToggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
@@ -253,7 +282,7 @@
                     <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">App Version (Optional)</label>
                     <div class="relative">
                         <i class="fas fa-code-branch absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <input type="text" id="APP_VER_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App Version">
+                        <div class="relative flex"><input type="text" id="APP_VER_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App Version"><a href="https://appinfo.storeios.net" target="_blank" class="ml-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold whitespace-nowrap">Tìm ID</a></div>
                     </div>
                 </div>
                 <button id="downloadBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Download</button>
@@ -293,7 +322,7 @@
                 <a id="downloadLink" href="#" download class="flex items-center justify-center w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition transform hover:scale-105 text-lg font-semibold">
                     <i class="fas fa-download mr-2"></i> Download IPA
                 </a>
-                <a id="installLink" href="#" class="flex items-center justify-center w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">
+                <div class="tooltip-wrapper"><a id="installLink" data-tooltip="" href="#" class="flex items-center justify-center w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">
                     <i class="fas fa-mobile-alt mr-2"></i> Install Directly
                 </a>
             </div>
@@ -367,5 +396,55 @@
         });
     </script>
     <script src="/index.js"></script>
+
+<script>
+function detectIOSVersion() {
+  const ua = navigator.userAgent;
+  const match = ua.match(/OS (\d+)[_.](\d+)(?:[_.](\d+))?/);
+  if (match) {
+    return [match[1], match[2], match[3] || '0'].join('.');
+  }
+  return 'Unknown';
+}
+
+function compareVersions(v1, v2) {
+  const a = v1.split('.').map(Number);
+  const b = v2.split('.').map(Number);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const n1 = a[i] || 0;
+    const n2 = b[i] || 0;
+    if (n1 > n2) return 1;
+    if (n1 < n2) return -1;
+  }
+  return 0;
+}
+
+function updateInstallButton(minVersion, userVersion, installUrl = '#', downloadUrl = '#') {
+  const installBtn = document.getElementById('installLink');
+  const tooltipWrapper = installBtn.closest('.tooltip-wrapper');
+
+  installBtn.href = installUrl || downloadUrl || '#';
+
+  if (!installBtn || !tooltipWrapper) return;
+
+  if (minVersion === 'Unknown' || userVersion === 'Unknown') {
+    tooltipWrapper.setAttribute('data-tooltip', 'Không xác định được phiên bản iOS');
+    installBtn.classList.remove('incompatible');
+    return;
+  }
+
+  const isCompatible = compareVersions(userVersion, minVersion) >= 0;
+
+  if (isCompatible) {
+    installBtn.classList.remove('incompatible');
+    tooltipWrapper.setAttribute('data-tooltip', 'Phiên bản tương thích với iOS của bạn (iOS ' + userVersion + ')');
+  } else {
+    installBtn.classList.add('incompatible');
+    tooltipWrapper.setAttribute('data-tooltip', 'Phiên bản iOS hiện tại là ' + userVersion + '. Ứng dụng yêu cầu iOS ' + minVersion);
+  }
+}
+</script>
+
 </body>
 </html>
