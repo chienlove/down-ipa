@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('main.js loaded'); // Debug: Xác nhận file được tải
+
   // DOM Elements
   const elements = {
     step1: document.getElementById('step1'),
@@ -20,6 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
     appVerInput: document.getElementById('APP_VER_ID')
   };
 
+  // Kiểm tra DOM elements
+  Object.keys(elements).forEach(key => {
+    if (!elements[key]) console.error(`DOM element ${key} not found`);
+  });
+
   // App State
   const state = {
     APPLE_ID: '',
@@ -36,13 +43,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== UI HELPERS ========== */
 
-  // Create toast container
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
   toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
   document.body.appendChild(toastContainer);
 
-  // Add CSS styles
   const addStyles = () => {
     const style = document.createElement('style');
     style.textContent = `
@@ -108,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ========== CORE FUNCTIONS ========== */
 
   const showToast = (message, type = 'success') => {
+    console.log(`Toast: ${message}, Type: ${type}`); // Debug
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `
@@ -125,6 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const showError = (msg) => {
+    console.log(`Error: ${msg}`); // Debug
     elements.errorMessage.textContent = msg;
     elements.errorBox.classList.remove('hidden');
     setTimeout(() => {
@@ -138,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const transition = (from, to) => {
+    console.log(`Transition from ${from.id} to ${to.id}`); // Debug
     from.classList.add('animate__fadeOut');
     setTimeout(() => {
       from.classList.add('hidden');
@@ -149,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setProgress = (stepOrPercent) => {
+    console.log(`Set progress: ${stepOrPercent}`); // Debug
     if (typeof stepOrPercent === 'number') {
       elements.progressBar.style.width = `${stepOrPercent}%`;
     } else {
@@ -158,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setLoading = (loading) => {
+    console.log(`Set loading: ${loading}`); // Debug
     isLoading = loading;
     if (loading) {
       elements.progressBar.classList.add('progress-loading');
@@ -175,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const handle2FARedirect = (responseData) => {
+    console.log('Handle 2FA redirect:', responseData); // Debug
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
@@ -195,60 +206,85 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const listenProgress = (requestId) => {
+    console.log(`Start SSE for requestId: ${requestId}`); // Debug
     if (eventSource) {
+      console.log('Closing existing EventSource');
       eventSource.close();
     }
 
     eventSource = new EventSource(`/download-progress/${requestId}`);
+    eventSource.onopen = () => {
+      console.log('SSE connection opened'); // Debug
+    };
+
     eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log(`Progress: ${data.progress}%`);
-      setProgress(data.progress);
-      showToast(`Tiến trình: ${data.progress}%`, 'success');
+      console.log('SSE message received:', event.data); // Debug
+      try {
+        const data = JSON.parse(event.data);
+        console.log(`Progress: ${data.progress}%`); // Debug
+        setProgress(data.progress);
+        showToast(`Tiến trình: ${data.progress}%`, 'success');
 
-      if (data.status === 'complete') {
-        document.getElementById('appName').textContent = data.appInfo?.name || 'Unknown';
-        document.getElementById('appAuthor').textContent = data.appInfo?.artist || 'Unknown';
-        document.getElementById('appVersion').textContent = data.appInfo?.version || 'Unknown';
-        document.getElementById('appBundleId').textContent = data.appInfo?.bundleId || 'Unknown';
-        document.getElementById('appDate').textContent = data.appInfo?.releaseDate || 'Unknown';
-        const downloadLink = document.getElementById('downloadLink');
-        downloadLink.href = data.downloadUrl;
-        downloadLink.download = data.fileName || 'app.ipa';
-        const installLink = document.getElementById('installLink');
-        if (data.installUrl) {
-          installLink.href = data.installUrl;
-          installLink.classList.remove('hidden');
-        } else {
-          installLink.classList.add('hidden');
+        if (data.status === 'complete') {
+          console.log('Download complete:', data); // Debug
+          document.getElementById('appName').textContent = data.appInfo?.name || 'Unknown';
+          document.getElementById('appAuthor').textContent = data.appInfo?.artist || 'Unknown';
+          document.getElementById('appVersion').textContent = data.appInfo?.version || 'Unknown';
+          document.getElementById('appBundleId').textContent = data.appInfo?.bundleId || 'Unknown';
+          document.getElementById('appDate').textContent = data.appInfo?.releaseDate || 'Unknown';
+          const downloadLink = document.getElementById('downloadLink');
+          downloadLink.href = data.downloadUrl;
+          downloadLink.download = data.fileName || 'app.ipa';
+          const installLink = document.getElementById('installLink');
+          if (data.installUrl) {
+            installLink.href = data.installUrl;
+            installLink.classList.remove('hidden');
+          } else {
+            installLink.classList.add('hidden');
+          }
+
+          showToast('Tải thành công!', 'success');
+          transition(elements.step3, elements.result);
+          setProgress(4);
+          eventSource.close();
+          eventSource = null;
+          console.log('SSE closed after completion'); // Debug
+        } else if (data.status === 'error') {
+          console.error('SSE error:', data.error); // Debug
+          showError(data.error || 'Tải ứng dụng thất bại.');
+          showToast('Lỗi tải ứng dụng!', 'error');
+          setLoading(false);
+          eventSource.close();
+          eventSource = null;
+          console.log('SSE closed after error'); // Debug
         }
-
-        showToast('Tải thành công!', 'success');
-        transition(elements.step3, elements.result);
-        setProgress(4);
-        eventSource.close();
-        eventSource = null;
-      } else if (data.status === 'error') {
-        showError(data.error || 'Tải ứng dụng thất bại.');
-        showToast('Lỗi tải ứng dụng!', 'error');
+      } catch (error) {
+        console.error('SSE parse error:', error, event.data); // Debug
+        showError('Lỗi xử lý tiến trình tải.');
+        showToast('Lỗi tiến trình!', 'error');
         setLoading(false);
-        eventSource.close();
-        eventSource = null;
       }
     };
 
     eventSource.onerror = () => {
-      showError('Lỗi kết nối với server.');
+      console.error('SSE connection error'); // Debug
+      showError('Mất kết nối với server. Đang thử kết nối lại...');
       showToast('Lỗi kết nối!', 'error');
       setLoading(false);
       eventSource.close();
       eventSource = null;
+      // Thử reconnect sau 5s
+      setTimeout(() => {
+        console.log('Reconnecting SSE...'); // Debug
+        listenProgress(requestId);
+      }, 5000);
     };
   };
 
   /* ========== EVENT HANDLERS ========== */
 
   elements.togglePassword.addEventListener('click', () => {
+    console.log('Toggle password clicked'); // Debug
     const isPassword = elements.passwordInput.type === 'password';
     elements.passwordInput.type = isPassword ? 'text' : 'password';
     elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
@@ -256,6 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.loginBtn.addEventListener('click', async (e) => {
     e.preventDefault();
+    console.log('Login button clicked'); // Debug
     if (isLoading) return;
 
     hideError();
@@ -287,11 +324,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         showError(data.error || 'Lỗi từ máy chủ.');
+        setLoading(false);
         return;
       }
 
       if (data.require2FA || data.authType === '2fa') {
         handle2FARedirect(data);
+        setLoading(false);
         return;
       }
 
@@ -315,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.verifyBtn.addEventListener('click', async (e) => {
     e.preventDefault();
+    console.log('Verify button clicked'); // Debug
     if (isLoading) return;
 
     hideError();
@@ -346,6 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) {
         showError(data.error || 'Xác minh thất bại.');
+        setLoading(false);
         return;
       }
 
@@ -354,12 +395,10 @@ document.addEventListener('DOMContentLoaded', () => {
         state.verified2FA = true;
         state.dsid = data.dsid || state.dsid;
         showToast('Xác thực 2FA thành công!');
-
         elements.step2.classList.add('hidden');
         elements.step2.style.display = 'none';
         elements.verificationCodeInput.value = '';
         elements.verifyMessage.textContent = '';
-
         transition(elements.step2, elements.step3);
         setProgress(3);
       } else {
@@ -375,6 +414,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   elements.downloadBtn.addEventListener('click', async (e) => {
     e.preventDefault();
+    console.log('Download button clicked'); // Debug
     if (isLoading) return;
 
     hideError();
@@ -392,7 +432,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.requires2FA && !state.verified2FA) {
       showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
       setLoading(false);
-
       elements.step2.style.display = 'block';
       elements.step2.classList.remove('hidden');
       transition(elements.step3, elements.step2);
@@ -402,6 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setProgress(3);
 
     try {
+      console.log('Sending /download request'); // Debug
       const response = await fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -423,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       } else if (data.success && data.requestId) {
         state.requestId = data.requestId;
+        console.log(`Starting progress listener for requestId: ${data.requestId}`); // Debug
         listenProgress(data.requestId);
       } else {
         showError(data.error || 'Tải ứng dụng thất bại.');
