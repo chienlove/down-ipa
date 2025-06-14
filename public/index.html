@@ -1,450 +1,157 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Downloader</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --background: #f3f4f6;
-            --card-bg: #ffffff;
-        }
-        [data-theme="dark"] {
-            --primary: #3b82f6;
-            --primary-hover: #60a5fa;
-            --background: #1f2937;
-            --card-bg: #374151;
-            --text: #f3f4f6;
-        }
-        body {
-            background-color: var(--background);
-            color: var(--text, #1f2937);
-            transition: all 0.3s ease;
-            overflow-x: hidden;
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-out;
-        }
-        .fade-out {
-            animation: fadeOut 0.5s ease-out;
-        }
-        .progress-loading {
-            background: linear-gradient(90deg, var(--primary), var(--primary-hover), var(--primary));
-            background-size: 200%;
-            animation: loading 1.5s linear infinite;
-        }
-        .button-loading {
-            opacity: 0.6;
-            cursor: not-allowed;
-            animation: pulse 1.5s infinite;
-        }
-        .toast-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-        .toast {
-            display: flex;
-            align-items: center;
-            padding: 12px 20px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            color: white;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            opacity: 0;
-            transform: translateX(100%);
-            transition: all 0.4s ease;
-        }
-        .toast.show {
-            opacity: 1;
-            transform: translateX(0);
-        }
-        .toast-success {
-            background-color: #10b981;
-        }
-        .toast-error {
-            background-color: #ef4444;
-        }
-        .toast-icon {
-            margin-right: 10px;
-            font-size: 1.2rem;
-        }
-        .step-indicator {
-            display: flex;
-            justify-content: space-between;
-            position: relative;
-        }
-        .step-indicator::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: #e5e7eb;
-            z-index: 1;
-        }
-        .step-indicator .step {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #e5e7eb;
-            color: #6b7280;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            z-index: 2;
-            transition: all 0.3s ease;
-        }
-        .step-indicator .step.active {
-            background: var(--primary);
-            color: white;
-        }
-        .step-indicator .step.completed {
-            background: #10b981;
-            color: white;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeOut {
-            from { opacity: 1; transform: translateY(0); }
-            to { opacity: 0; transform: translateY(20px); }
-        }
-        @keyframes loading {
-            0% { background-position: 0%; }
-            100% { background-position: 200%; }
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 0.6; }
-            50% { opacity: 0.8; }
-        }
-        /* Hamburger menu styles */
-        #mobileMenu {
-            transition: transform 0.3s ease-in-out;
-        }
-        #mobileMenu.open {
-            transform: translateX(0);
-        }
-        /* Input focus and hover enhancements */
-        input:focus {
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-    </style>
-
-<style>
-  .tooltip-wrapper {
-    position: relative;
-    display: inline-block;
-    width: 100%;
-  }
-  .tooltip-wrapper:hover::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.75);
-    color: white;
-    padding: 0.5rem;
-    border-radius: 0.4rem;
-    white-space: nowrap;
-    font-size: 0.85rem;
-    z-index: 10;
-  }
-  #installLink.incompatible {
-    background-color: #d1d5db !important;
-    color: #6b7280 !important;
-    pointer-events: none;
-    cursor: not-allowed;
-  }
-</style>
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App Downloader</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #10b981;
+    }
+    body {
+      background-color: #f9fafb;
+      color: #1f2937;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .step-indicator .step.active {
+      background-color: var(--primary);
+      color: white;
+    }
+    .tooltip-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+    .tooltip-wrapper:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 120%;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 0, 0, 0.75);
+      color: white;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.4rem;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    #installLink.incompatible {
+      background-color: #d1d5db !important;
+      color: #6b7280 !important;
+      pointer-events: none;
+    }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col font-sans">
-    <!-- Header -->
-    <header class="bg-white dark:bg-gray-800 shadow sticky top-0 z-50 transition-colors duration-300">
-        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center space-x-2">
-                <i class="fa-solid fa-cloud-download-alt text-2xl text-blue-600 dark:text-blue-400"></i>
-                <h1 class="text-2xl font-bold text-blue-600 dark:text-blue-400">App Downloader</h1>
-            </div>
-            <!-- Desktop Menu -->
-            <div class="hidden md:flex items-center space-x-6">
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a></div>
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">About</a>
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Support</a>
-                <button id="themeToggle" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <i class="fas fa-moon text-gray-600 dark:text-gray-300"></i>
-                </button>
-            </div>
-            <!-- Hamburger Button -->
-            <button id="hamburger" class="md:hidden p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                <i class="fas fa-bars text-gray-600 dark:text-gray-300"></i>
-            </button>
-        </nav>
-        <!-- Mobile Menu -->
-        <div id="mobileMenu" class="md:hidden fixed top-0 right-0 h-full w-64 bg-white dark:bg-gray-800 shadow-lg transform translate-x-full z-40">
-            <div class="flex justify-end p-4">
-                <button id="closeMenu" class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <i class="fas fa-times text-gray-600 dark:text-gray-300"></i>
-                </button>
-            </div>
-            <div class="flex flex-col space-y-4 p-4">
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Home</a>
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">About</a>
-                <a href="#" class="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition">Support</a>
-                <button id="themeToggleMobile" class="flex items-center text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400">
-                    <i class="fas fa-moon mr-2"></i> Toggle Theme
-                </button>
-            </div>
+<body class="min-h-screen flex flex-col">
+
+  <header class="bg-white shadow sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-cloud-download-alt text-2xl text-blue-600"></i>
+        <h1 class="text-2xl font-bold text-blue-600">App Downloader</h1>
+      </div>
+      <nav class="hidden md:flex space-x-6">
+        <a href="#" class="text-gray-700 hover:text-blue-600">Home</a>
+        <a href="#" class="text-gray-700 hover:text-blue-600">About</a>
+        <a href="#" class="text-gray-700 hover:text-blue-600">Support</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="flex-grow max-w-2xl mx-auto p-6">
+    <div class="step-indicator flex justify-between mb-8">
+      <div class="step w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-gray-700" id="step-indicator-1">1</div>
+      <div class="step w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-gray-700" id="step-indicator-2">2</div>
+      <div class="step w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-gray-700" id="step-indicator-3">3</div>
+      <div class="step w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center font-bold text-gray-700" id="step-indicator-4">4</div>
+    </div>
+
+    <!-- Step 1 -->
+    <div id="step1" class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-bold mb-4">Bước 1: Đăng nhập Apple ID</h2>
+      <div class="mb-4">
+        <label class="block mb-1 font-medium">Apple ID</label>
+        <input type="email" id="APPLE_ID" class="w-full border rounded px-3 py-2" placeholder="yourname@icloud.com">
+        <small class="text-gray-500">Email đăng nhập tài khoản App Store</small>
+      </div>
+      <div class="mb-4 relative">
+        <label class="block mb-1 font-medium">Mật khẩu</label>
+        <input type="password" id="PASSWORD" class="w-full border rounded px-3 py-2 pr-10" placeholder="Nhập mật khẩu">
+        <i id="togglePassword" class="fas fa-eye absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 cursor-pointer"></i>
+        <small class="text-gray-500">Chúng tôi không lưu thông tin của bạn</small>
+      </div>
+      <button id="loginBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 font-semibold">Đăng nhập</button>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="step2" class="hidden bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-bold mb-4">Bước 2: Xác minh 2FA</h2>
+      <p id="verifyMessage" class="mb-4 text-gray-600">Nhập mã xác minh gửi tới thiết bị tin cậy của bạn.</p>
+      <div class="mb-4">
+        <label class="block mb-1 font-medium">Mã xác minh</label>
+        <input type="text" id="VERIFICATION_CODE" class="w-full border rounded px-3 py-2" placeholder="6 chữ số">
+      </div>
+      <button id="verifyBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 font-semibold">Xác minh</button>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="step3" class="hidden bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-bold mb-4">Bước 3: Nhập App cần tải</h2>
+      <div class="mb-4">
+        <label class="block mb-1 font-medium">App ID</label>
+        <input type="text" id="APPID" class="w-full border rounded px-3 py-2" placeholder="id123456789 hoặc 123456789">
+      </div>
+      <div class="mb-4">
+        <label class="block mb-1 font-medium">App Version ID</label>
+        <div class="flex gap-2">
+          <input type="text" id="APP_VER_ID" class="flex-1 border rounded px-3 py-2" placeholder="ID phiên bản (tuỳ chọn)">
+          <a class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold" href="https://appinfo.storeios.net" target="_blank">Tìm ID</a>
         </div>
-    </header>
+      </div>
+      <button id="downloadBtn" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 font-semibold">Tải xuống</button>
+    </div>
 
-    <!-- Main Content -->
-    <main class="flex-grow max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <!-- Step Indicator -->
-        <div class="step-indicator mb-12">
-            <div class="step active">1</div>
-            <div class="step">2</div>
-            <div class="step">3</div>
-            <div class="step">4</div>
+    <!-- Step 4 / Result -->
+    <div id="result" class="hidden bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-bold mb-4">Bước 4: Kết quả</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-sm text-gray-700">
+        <div><strong>Tên:</strong> <span id="appName">-</span></div>
+        <div><strong>Tác giả:</strong> <span id="appAuthor">-</span></div>
+        <div><strong>Phiên bản:</strong> <span id="appVersion">-</span></div>
+        <div><strong>Bundle ID:</strong> <span id="appBundleId">-</span></div>
+        <div><strong>Ngày phát hành:</strong> <span id="appDate">-</span></div>
+        <div><strong>Yêu cầu iOS:</strong> <span id="minimumOSVersion">-</span></div>
+      </div>
+      <div class="space-y-2">
+        <a id="downloadLink" href="#" download class="block w-full text-center bg-green-600 text-white py-2 rounded hover:bg-green-700 font-semibold">
+          <i class="fas fa-download mr-2"></i> Tải IPA
+        </a>
+        <div class="tooltip-wrapper" id="installTooltip" data-tooltip="">
+          <a id="installLink" href="#" class="block text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700 font-semibold">
+            <i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp
+          </a>
         </div>
+      </div>
+    </div>
 
-        <!-- Progress Bar -->
-        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-8 overflow-hidden">
-            <div id="progressBar" class="h-full bg-blue-600 rounded-full transition-all duration-500" style="width: 0%"></div>
-        </div>
+    <!-- Error Box -->
+    <div id="error" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mt-6" role="alert">
+      <strong class="font-bold">Lỗi:</strong>
+      <span class="block sm:inline" id="errorMessage">Có lỗi xảy ra.</span>
+    </div>
 
-        <!-- Error Message -->
-        <div id="error" class="hidden bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg relative mb-6 shadow">
-            <span id="errorMessage"></span>
-        </div>
+    <!-- Progress Bar -->
+    <div class="w-full bg-gray-200 h-2 mt-6 rounded">
+      <div id="progressBar" class="h-full bg-blue-600 transition-all duration-500" style="width: 0%"></div>
+    </div>
+  </main>
 
-        <!-- Step 1: Login -->
-        <div id="step1" class="bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Login with Apple ID</h2>
-            <form>
-                <div class="mb-6">
-                    <label for="APPLE_ID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Apple ID</label>
-                    <div class="relative">
-                        <i class="fas fa-envelope absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <input type="email" id="APPLE_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter your Apple ID">
-                    </div>
-                </div>
-                <div class="mb-6 relative">
-                    <label for="PASSWORD" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
-                    <div class="relative">
-                        <i class="fas fa-lock absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <input type="password" id="PASSWORD" class="pl-12 pr-12 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter your password">
-                        <i id="togglePassword" class="fas fa-eye absolute right-4 top-1/2 transform -translate-y-1/2 cursor-pointer text-gray-400 text-lg hover:text-gray-600 dark:hover:text-gray-300"></i>
-                    </div>
-                </div>
-                <button id="loginBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Login</button>
-            </form>
-        </div>
-
-        <!-- Step 2: Verify -->
-        <div id="step2" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Two-Factor Authentication</h2>
-            <p id="verifyMessage" class="text-gray-600 dark:text-gray-400 mb-6 text-lg">Enter the 6-digit code sent to your trusted device.</p>
-            <form>
-                <div class="mb-6">
-                    <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Verification Code</label>
-                    <div class="relative">
-                        <i class="fas fa-shield-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <input type="text" id="VERIFICATION_CODE" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter 6-digit code">
-                    </div>
-                </div>
-                <button id="verifyBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Verify</button>
-            </form>
-        </div>
-
-        <!-- Step 3: Download -->
-        <div id="step3" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Download App</h2>
-            <form>
-                <div class="mb-6">
-                    <label for="APPID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">App ID</label>
-                    <div class="relative">
-                        <i class="fas fa-mobile-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <input type="text" id="APPID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App ID (e.g., id123456789)">
-                    </div>
-                </div>
-                <div class="mb-6">
-                    <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">App Version (Optional)</label>
-                    <div class="relative">
-                        <i class="fas fa-code-branch absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-lg"></i>
-                        <div class="relative flex"><input type="text" id="APP_VER_ID" class="pl-12 pr-4 py-3 block w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-lg text-gray-900 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 dark:focus:ring-blue-500" placeholder="Enter App Version"><a href="https://appinfo.storeios.net" target="_blank" class="ml-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold whitespace-nowrap">Tìm ID</a></div>
-                    </div>
-                </div>
-                <button id="downloadBtn" type="submit" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">Download</button>
-            </form>
-        </div>
-
-        <!-- Result -->
-        <div id="result" class="hidden bg-white dark:bg-gray-700 p-8 rounded-xl shadow-lg transition-all duration-300">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800 dark:text-gray-100">Download Complete</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Name</p>
-                    <p id="appName" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Author</p>
-                    <p id="appAuthor" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Version</p>
-                    <p id="appVersion" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Bundle ID</p>
-                    <p id="appBundleId" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Release Date</p>
-                    <p id="appDate" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Minimum iOS</p>
-                    <p id="minimumOSVersion" class="text-gray-900 dark:text-gray-100 text-lg">Unknown</p>
-                </div>
-            </div>
-            <div class="space-y-3">
-                <a id="downloadLink" href="#" download class="flex items-center justify-center w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition transform hover:scale-105 text-lg font-semibold">
-                    <i class="fas fa-download mr-2"></i> Download IPA
-                </a>
-                <div class="tooltip-wrapper"><a id="installLink" data-tooltip="" href="#" class="flex items-center justify-center w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition transform hover:scale-105 text-lg font-semibold">
-                    <i class="fas fa-mobile-alt mr-2"></i> Install Directly
-                </a>
-            </div>
-        </div>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-gray-900 text-gray-300 py-12">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">App Downloader</h3>
-                    <p class="text-sm">Securely download your favorite iOS apps with ease and confidence.</p>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">Links</h3>
-                    <ul class="space-y-2 text-sm">
-                        <li><a href="#" class="hover:text-blue-400 transition">Privacy Policy</a></li>
-                        <li><a href="#" class="hover:text-blue-400 transition">Terms of Service</a></li>
-                        <li><a href="#" class="hover:text-blue-400 transition">Contact Us</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h3 class="text-lg font-semibold mb-4">Connect</h3>
-                    <div class="flex space-x-4">
-                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-twitter"></i></a>
-                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-github"></i></a>
-                        <a href="#" class="text-2xl hover:text-blue-400 transition"><i class="fab fa-linkedin"></i></a>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-8 border-t border-gray-700 pt-6 text-center text-sm">
-                <p>© 2025 App Downloader. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
-
-    <script>
-        // Theme Toggle
-        const themeToggle = document.getElementById('themeToggle');
-        const themeToggleMobile = document.getElementById('themeToggleMobile');
-        const themeIcon = themeToggle.querySelector('i');
-        const themeIconMobile = themeToggleMobile.querySelector('i');
-        const currentTheme = localStorage.getItem('theme') || 'light';
-        if (currentTheme === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-            themeIcon.classList.replace('fa-moon', 'fa-sun');
-            themeIconMobile.classList.replace('fa-moon', 'fa-sun');
-        }
-        const toggleTheme = () => {
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
-            localStorage.setItem('theme', isDark ? 'light' : 'dark');
-            themeIcon.classList.toggle('fa-moon');
-            themeIcon.classList.toggle('fa-sun');
-            themeIconMobile.classList.toggle('fa-moon');
-            themeIconMobile.classList.toggle('fa-sun');
-        };
-        themeToggle.addEventListener('click', toggleTheme);
-        themeToggleMobile.addEventListener('click', toggleTheme);
-
-        // Hamburger Menu
-        const hamburger = document.getElementById('hamburger');
-        const mobileMenu = document.getElementById('mobileMenu');
-        const closeMenu = document.getElementById('closeMenu');
-        hamburger.addEventListener('click', () => {
-            mobileMenu.classList.add('open');
-        });
-        closeMenu.addEventListener('click', () => {
-            mobileMenu.classList.remove('open');
-        });
-    </script>
-    <script src="/index.js"></script>
-
-<script>
-function detectIOSVersion() {
-  const ua = navigator.userAgent;
-  const match = ua.match(/OS (\d+)[_.](\d+)(?:[_.](\d+))?/);
-  if (match) {
-    return [match[1], match[2], match[3] || '0'].join('.');
-  }
-  return 'Unknown';
-}
-
-function compareVersions(v1, v2) {
-  const a = v1.split('.').map(Number);
-  const b = v2.split('.').map(Number);
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const n1 = a[i] || 0;
-    const n2 = b[i] || 0;
-    if (n1 > n2) return 1;
-    if (n1 < n2) return -1;
-  }
-  return 0;
-}
-
-function updateInstallButton(minVersion, userVersion, installUrl = '#', downloadUrl = '#') {
-  const installBtn = document.getElementById('installLink');
-  const tooltipWrapper = installBtn.closest('.tooltip-wrapper');
-
-  installBtn.href = installUrl || downloadUrl || '#';
-
-  if (!installBtn || !tooltipWrapper) return;
-
-  if (minVersion === 'Unknown' || userVersion === 'Unknown') {
-    tooltipWrapper.setAttribute('data-tooltip', 'Không xác định được phiên bản iOS');
-    installBtn.classList.remove('incompatible');
-    return;
-  }
-
-  const isCompatible = compareVersions(userVersion, minVersion) >= 0;
-
-  if (isCompatible) {
-    installBtn.classList.remove('incompatible');
-    tooltipWrapper.setAttribute('data-tooltip', 'Phiên bản tương thích với iOS của bạn (iOS ' + userVersion + ')');
-  } else {
-    installBtn.classList.add('incompatible');
-    tooltipWrapper.setAttribute('data-tooltip', 'Phiên bản iOS hiện tại là ' + userVersion + '. Ứng dụng yêu cầu iOS ' + minVersion);
-  }
-}
-</script>
-
+  <script src="/index.js"></script>
 </body>
 </html>
