@@ -39,11 +39,24 @@ document.addEventListener('DOMContentLoaded', () => {
     dsid: null,
     requires2FA: false,
     requestId: null,
-    iosVersion: ''
+    iosVersion: null
   };
 
   let isLoading = false;
   let eventSource = null;
+  let deviceOSVersion = null;
+
+  // Detect device iOS version
+  function detectIOSVersion() {
+    const ua = navigator.userAgent;
+    const match = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
+    if (match) {
+      return `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
+    }
+    return null; // Unknown if not detected
+  }
+
+  deviceOSVersion = detectIOSVersion() || state.iosVersion;
 
   /* ========== UI HELPERS ========== */
   
@@ -51,8 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
   toastContainer.id = 'toast-container';
   toastContainer.className = 'toast-container';
   document.body.appendChild(toastContainer);
-
-  /* ========== CORE FUNCTIONS ========== */
 
   const showToast = (message, type = 'success') => {
     console.log(`Toast: ${message}, Type: ${type}`);
@@ -82,12 +93,25 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const transition = (from, to) => {
-    console.log(`Transition from ${from.id} to ${to.id}`);
+    console.log(`Transition from ${from?.id} to ${to?.id}`);
+    if (!from || !to) {
+      console.error('Invalid transition elements:', { from, to });
+      return;
+    }
+    // Ẩn tất cả steps trước
+    [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
+      if (step && step !== to) {
+        step.classList.add('hidden');
+        step.style.display = 'none';
+      }
+    });
     from.classList.add('fade-out');
     setTimeout(() => {
       from.classList.add('hidden');
+      from.style.display = 'none';
       from.classList.remove('fade-out');
       to.classList.remove('hidden');
+      to.style.display = 'block';
       to.classList.add('fade-in');
       setTimeout(() => to.classList.remove('fade-in'), 300);
     }, 300);
@@ -122,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const compareVersions = (version1, version2) => {
+    if (!version1 || !version2) return 0;
     const v1Parts = version1.split('.').map(Number);
     const v2Parts = version2.split('.').map(Number);
     const maxLength = Math.max(v1Parts.length, v2Parts.length);
@@ -135,22 +160,24 @@ document.addEventListener('DOMContentLoaded', () => {
     return 0;
   };
 
-  const updateInstallButton = (minimumOSVersion, userIOSVersion) => {
+  const updateInstallButton = (minimumOSVersion, userIOSVersion, installUrl, downloadUrl) => {
     const installLink = document.getElementById('installLink');
+    installLink.href = installUrl || downloadUrl || '#';
     if (!userIOSVersion || minimumOSVersion === 'Unknown') {
-      installLink.textContent = '📲 Cài đặt trực tiếp';
+      installLink.innerHTML = '<span class="icon">📲</span> Cài trực tiếp (Chưa rõ)';
       installLink.classList.remove('compatible', 'incompatible');
-      return;
-    }
-
-    if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
-      installLink.textContent = '📲 Tương thích';
+      installLink.classList.add('unknown');
+      installLink.title = 'Không xác định được phiên bản iOS thiết bị';
+    } else if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
+      installLink.innerHTML = '<span class="icon">✔</span> Cài trực tiếp (Tương thích)';
       installLink.classList.add('compatible');
-      installLink.classList.remove('incompatible');
+      installLink.classList.remove('incompatible', 'unknown');
+      installLink.title = `Tương thích với iOS ${userIOSVersion}`;
     } else {
-      installLink.textContent = '📲 Không tương thích';
+      installLink.innerHTML = '<span class="icon">⚠</span> Cài trực tiếp (Không tương thích)';
       installLink.classList.add('incompatible');
-      installLink.classList.remove('compatible');
+      installLink.classList.remove('compatible', 'unknown');
+      installLink.title = `Yêu cầu iOS ${minimumOSVersion}, thiết bị của bạn là iOS ${userIOSVersion}`;
     }
   };
 
@@ -167,9 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     elements.verifyMessage.textContent = message || 'Vui lòng nhập mã xác minh 6 chữ số';
-    elements.step2.style.display = 'block';
-    elements.step2.classList.remove('hidden');
-    transition(elements.step3, elements.step2);
+    transition(elements.step1, elements.step2);
     setProgress(2);
     setLoading(false);
   };
@@ -214,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
             installLink.classList.add('hidden');
           }
 
-          updateInstallButton(appInfo.minimumOSVersion, state.iosVersion);
+          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion || state.iosVersion, data.installUrl, data.downloadUrl);
           showToast('Tải thành công!', 'success');
           transition(elements.step3, elements.result);
           setProgress(4);
@@ -378,8 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
           state.verified2FA = true;
           state.dsid = data.dsid || state.dsid;
           showToast('Xác thực 2FA thành công!');
-          elements.step2.classList.add('hidden');
-          elements.step2.style.display = 'none';
           elements.verificationCodeInput.value = '';
           elements.verifyMessage.textContent = '';
           transition(elements.step2, elements.step3);
@@ -408,7 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
-      state.iosVersion = elements.iosVersionInput?.value.trim() || '';
+      state.iosVersion = elements.iosVersionInput?.value.trim() || deviceOSVersion;
 
       if (!APPID) {
         showError('Vui lòng nhập App ID hợp lệ.');
@@ -419,8 +442,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.requires2FA && !state.verified2FA) {
         showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
         setLoading(false);
-        elements.step2.style.display = 'block';
-        elements.step2.classList.remove('hidden');
         transition(elements.step3, elements.step2);
         return;
       }
