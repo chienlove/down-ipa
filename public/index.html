@@ -2,170 +2,71 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🚀 IPADL Pro</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
-      background-color: #f0f0f0;
-    }
-    .container {
-      background-color: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-    .progress-bar {
-      height: 20px;
-      background-color: #e0e0e0;
-      border-radius: 10px;
-      overflow: hidden;
-      margin-bottom: 20px;
-    }
-    .progress-bar div {
-      height: 100%;
-      background-color: #10B981;
-      transition: width 0.3s ease;
-    }
-    .form-group {
-      margin-bottom: 15px;
-    }
-    input {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      background-color: #2563EB;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #1E40AF;
-    }
-    .hidden {
-      display: none;
-    }
-    .error {
-      color: red;
-      margin-bottom: 15px;
-    }
-    .password-container {
-      position: relative;
-    }
-    .password-toggle {
-      position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      cursor: pointer;
-    }
-    .result-box {
-      margin-top: 20px;
-      padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-    .result-box a {
-      display: inline-block;
-      margin: 10px 5px;
-      padding: 8px 15px;
-      background-color: #2563EB;
-      color: white;
-      text-decoration: none;
-      border-radius: 5px;
-    }
-    .result-box a:hover {
-      background-color: #1E40AF;
-    }
-    .security-notice {
-      font-size: 0.9em;
-      color: #555;
-      margin-bottom: 15px;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Store iOS</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <div class="container">
-    <h1>🚀 IPADL Pro</h1>
-    <div class="progress-bar">
-      <div id="progressBar" style="width: 0%"></div>
-    </div>
-
-    <div id="step1">
-      <p class="security-notice">
-        Lưu ý bảo mật: Chúng tôi không lưu trữ thông tin đăng nhập của bạn. Mọi thông tin chỉ được sử dụng để xác thực với Apple và sẽ bị xóa ngay sau khi hoàn tất.
-      </p>
+    <div id="progressBar" class="progress-bar"></div>
+    <div id="step1" class="step">
+      <h2>Đăng nhập Apple ID</h2>
+      <div id="error" class="error-box hidden">
+        <span id="errorMessage"></span>
+      </div>
       <div class="form-group">
         <label for="APPLE_ID">Apple ID</label>
-        <input type="email" id="APPLE_ID" placeholder="Nhập Apple ID">
+        <input type="email" id="APPLE_ID" placeholder="Nhập Apple ID" autocomplete="username">
       </div>
-      <div class="form-group password-container">
-        <label for="PASSWORD">Mật khẩu Apple ID</label>
-        <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu">
-        <i class="fas fa-eye password-toggle" id="togglePassword"></i>
-        <p class="security-notice">
-          Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.
-        </p>
+      <div class="form-group password-group">
+        <label for="PASSWORD">Mật khẩu</label>
+        <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu" autocomplete="current-password">
+        <i id="togglePassword" class="fas fa-eye password-toggle"></i>
       </div>
-      <button id="loginBtn">Đăng nhập</button>
+      <button id="loginBtn" class="btn primary">Đăng nhập</button>
     </div>
-
-    <div id="step2" class="hidden">
-      <p id="verifyMessage">Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn</p>
+    <div id="step2" class="step hidden">
+      <h2>Xác minh 2FA</h2>
+      <p id="verifyMessage"></p>
       <div class="form-group">
-        <label for="VERIFICATION_CODE">Mã xác minh 2FA</label>
-        <input type="text" id="VERIFICATION_CODE" placeholder="Nhập mã 6 chữ số">
+        <label for="VERIFICATION_CODE">Mã xác minh</label>
+        <input type="text" id="VERIFICATION_CODE" placeholder="Nhập mã 6 chữ số" maxlength="6">
       </div>
-      <button id="verifyBtn">Xác thực</button>
+      <button id="verifyBtn" class="btn primary">Xác minh</button>
     </div>
-
-    <div id="step3" class="hidden">
+    <div id="step3" class="step hidden">
+      <h2>Tải ứng dụng</h2>
       <div class="form-group">
-        <label for="APPID">App ID hoặc URL App Store</label>
-        <input type="text" id="APPID" placeholder="Nhập ID ứng dụng (số) hoặc URL từ App Store">
+        <label for="APPID">App ID</label>
+        <input type="text" id="APPID" placeholder="Nhập App ID (ví dụ: id123456789)">
       </div>
       <div class="form-group">
-        <label for="APP_VER_ID">Phiên bản ứng dụng (tùy chọn)</label>
-        <input type="text" id="APP_VER_ID" placeholder="Để trống nếu muốn tải phiên bản mới nhất">
+        <label for="APP_VER_ID">Phiên bản ứng dụng (tuỳ chọn)</label>
+        <input type="text" id="APP_VER_ID" placeholder="Nhập phiên bản (ví dụ: 1.0.0)">
       </div>
       <div class="form-group">
-        <label for="IOS_VERSION">Phiên bản iOS của bạn</label>
-        <input type="text" id="IOS_VERSION" placeholder="Ví dụ: 15.0">
+        <label for="IOS_VERSION">Phiên bản iOS</label>
+        <input type="text" id="IOS_VERSION" placeholder="Nhập phiên bản iOS (ví dụ: 15.0)">
       </div>
-      <button id="downloadBtn">📥 Tải IPA</button>
+      <button id="downloadBtn" class="btn primary">Tải xuống</button>
     </div>
-
-    <div id="result" class="hidden">
-      <h2>🎉 Tải thành công!</h2>
-      <div class="result-box">
-        <p>Tên ứng dụng: <span id="appName">Unknown</span></p>
-        <p>Tác giả: <span id="appAuthor">Unknown</span></p>
-        <p>Phiên bản: <span id="appVersion">Unknown</span></p>
-        <p>Bundle ID: <span id="appBundleId">Unknown</span></p>
-        <p>Ngày phát hành: <span id="appDate">Unknown</span></p>
-        <p>Phiên bản iOS tối thiểu: <span id="minimumOSVersion">Unknown</span></p>
-        <a id="downloadLink" href="#" download>Tải xuống ngay</a>
-        <a id="installLink" href="#" class="hidden">📲 Cài đặt trực tiếp</a>
-        <a id="tryAgain" href="#" onclick="location.reload()">🔁 Tải ứng dụng khác</a>
+    <div id="result" class="step hidden">
+      <h2>Kết quả tải xuống</h2>
+      <div class="app-info">
+        <p><strong>Tên ứng dụng:</strong> <span id="appName"></span></p>
+        <p><strong>Tác giả:</strong> <span id="appAuthor"></span></p>
+        <p><strong>Phiên bản:</strong> <span id="appVersion"></span></p>
+        <p><strong>Bundle ID:</strong> <span id="appBundleId"></span></p>
+        <p><strong>Ngày phát hành:</strong> <span id="appDate"></span></p>
+        <p><strong>Phiên bản iOS tối thiểu:</strong> <span id="minimumOSVersion"></span></p>
       </div>
-    </div>
-
-    <div id="error" class="hidden error">
-      <p id="errorMessage"></p>
+      <div class="download-links">
+        <a id="downloadLink" href="#" class="btn secondary">Tải file IPA</a>
+        <a id="installLink" href="#" class="btn secondary hidden">📲 Cài đặt trực tiếp</a>
+      </div>
     </div>
   </div>
-
-  <script src="index.js"></script>
+  <script src="/index.js"></script>
 </body>
 </html>

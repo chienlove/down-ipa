@@ -213,27 +213,48 @@ async function checkDiskSpace(path, requiredSpace) {
 
 async function extractMinimumOSVersion(ipaPath) {
   try {
+    console.log(`Extracting MinimumOSVersion from IPA: ${ipaPath}`);
     const unzipDir = path.join(__dirname, 'temp_unzip', uuidv4());
     await fsPromises.mkdir(unzipDir, { recursive: true });
-    
+    console.log(`Created temp unzip directory: ${unzipDir}`);
+
     const AdmZip = (await import('adm-zip')).default;
     const zip = new AdmZip(ipaPath);
+    console.log('Extracting IPA file...');
     zip.extractAllTo(unzipDir, true);
+    console.log(`Extracted IPA to: ${unzipDir}`);
 
     const payloadDir = path.join(unzipDir, 'Payload');
+    console.log(`Checking Payload directory: ${payloadDir}`);
     const appDir = (await fsPromises.readdir(payloadDir, { withFileTypes: true }))
       .find(dirent => dirent.isDirectory() && dirent.name.endsWith('.app'))?.name;
-    if (!appDir) throw new Error('No .app directory found in IPA');
+    
+    if (!appDir) {
+      console.error('No .app directory found in Payload');
+      throw new Error('No .app directory found in IPA');
+    }
+    console.log(`Found .app directory: ${appDir}`);
 
     const infoPlistPath = path.join(payloadDir, appDir, 'Info.plist');
+    console.log(`Reading Info.plist: ${infoPlistPath}`);
+    await fsPromises.access(infoPlistPath, fs.constants.F_OK);
     const plistContent = await fsPromises.readFile(infoPlistPath, 'utf8');
+    console.log('Parsing Info.plist...');
     const plistData = plist.parse(plistContent);
     
-    await fsPromises.rm(unzipDir, { recursive: true, force: true });
+    const minimumOSVersion = plistData.MinimumOSVersion || 'Unknown';
+    console.log(`Extracted MinimumOSVersion: ${minimumOSVersion}`);
     
-    return plistData.MinimumOSVersion || 'Unknown';
+    await fsPromises.rm(unzipDir, { recursive: true, force: true });
+    console.log(`Cleaned up temp directory: ${unzipDir}`);
+    
+    return minimumOSVersion;
   } catch (error) {
-    console.error('Error extracting MinimumOSVersion:', error);
+    console.error('Error extracting MinimumOSVersion:', {
+      message: error.message,
+      stack: error.stack,
+      ipaPath,
+    });
     return 'Unknown';
   }
 }
@@ -347,7 +368,7 @@ class IPATool {
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
-      const signedDir = path.join(downloadPath, 'signed'); // Sửa lỗi cú pháp
+      const signedDir = path.join(downloadPath, 'signed');
       await fsPromises.mkdir(signedDir, { recursive: true });
       await sigClient.processIPA(outputFilePath, signedDir);
       console.log('🔧 Using archiver to zip signed IPA...');

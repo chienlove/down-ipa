@@ -49,76 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
-  toastContainer.className = 'fixed top-4 right-4 z-50 space-y-2 w-80';
+  toastContainer.className = 'toast-container';
   document.body.appendChild(toastContainer);
-
-  const addStyles = () => {
-    const style = document.createElement('style');
-    style.textContent = `
-      .progress-loading {
-        width: 100% !important;
-        animation: progress 2s linear infinite !important;
-      }
-      .button-loading {
-        position: relative;
-        color: transparent !important;
-      }
-      .button-loading::after {
-        content: '';
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        top: 50%;
-        left: 50%;
-        margin: -10px 0 0 -10px;
-        border: 2px solid rgba(255,255,255,0.3);
-        border-radius: 50%;
-        border-top-color: #fff;
-        animation: spin 1s ease-in-out infinite;
-      }
-      .toast {
-        padding: 12px 16px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        color: white;
-        display: flex;
-        align-items: center;
-        animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-in 2.5s forwards;
-        transform: translateX(100%);
-        opacity: 0;
-      }
-      .toast-success {
-        background-color: #10B981;
-      }
-      .toast-error {
-        background-color: #EF4444;
-      }
-      .toast-icon {
-        margin-right: 12px;
-        font-size: 20px;
-      }
-      .compatible {
-        background-color: #10B981;
-      }
-      .incompatible {
-        background-color: #EF4444;
-      }
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-      @keyframes slideIn {
-        to { transform: translateX(0); opacity: 1; }
-      }
-      @keyframes fadeOut {
-        to { opacity: 0; }
-      }
-      #step2 {
-        display: none;
-      }
-    `;
-    document.head.appendChild(style);
-  };
-  addStyles();
 
   /* ========== CORE FUNCTIONS ========== */
 
@@ -133,8 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toastContainer.appendChild(toast);
     
     setTimeout(() => {
-      toast.style.transform = 'translateX(0)';
-      toast.style.opacity = '1';
+      toast.classList.add('show');
     }, 10);
 
     setTimeout(() => toast.remove(), 3000);
@@ -144,25 +75,21 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`Error: ${msg}`);
     elements.errorMessage.textContent = msg;
     elements.errorBox.classList.remove('hidden');
-    setTimeout(() => {
-      elements.errorBox.classList.add('animate__fadeIn');
-    }, 10);
   };
 
   const hideError = () => {
     elements.errorBox.classList.add('hidden');
-    elements.errorBox.classList.remove('animate__fadeIn');
   };
 
   const transition = (from, to) => {
     console.log(`Transition from ${from.id} to ${to.id}`);
-    from.classList.add('animate__fadeOut');
+    from.classList.add('fade-out');
     setTimeout(() => {
       from.classList.add('hidden');
-      from.classList.remove('animate__fadeOut');
+      from.classList.remove('fade-out');
       to.classList.remove('hidden');
-      to.classList.add('animate__fadeIn');
-      setTimeout(() => to.classList.remove('animate__fadeIn'), 500);
+      to.classList.add('fade-in');
+      setTimeout(() => to.classList.remove('fade-in'), 300);
     }, 300);
   };
 
@@ -326,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== EVENT HANDLERS ========== */
 
-  // Kiểm tra và gắn sự kiện cho loginBtn
   if (elements.loginBtn) {
     elements.loginBtn.addEventListener('click', async (e) => {
       e.preventDefault();
