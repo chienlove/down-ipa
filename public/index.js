@@ -430,7 +430,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
-      state.iosVersion = elements.iosVersionInput?.value.trim() || deviceOSVersion;
+      state.iosVersion = deviceOSVersion;
 
       if (!APPID) {
         showError('Vui lòng nhập App ID hợp lệ.');
