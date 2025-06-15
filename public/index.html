@@ -3,441 +3,897 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>IPA Downloader - Tải Ứng Dụng iOS</title>
-        <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-        <style>
-            :root {
-                --primary: #1e3b8a;
-                --primary-light: #3b82f6;
-                --success: #047857;
-                --error: #b91c1c;
-                --neutral: #4b5563;
-                --bg-light: #fafafa;
-                --bg-dark: #0f172a;
-                --card-bg: rgba(255, 255, 255, 0.98);
-                --accent: #8b5cf6;
-            }
-            body {
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                background: linear-gradient(to bottom, var(--bg-light), #e5e7eb);
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                overflow-x: hidden;
-            }
-            .fade-in {
-                animation: fadeIn 0.4s ease-in-out;
-            }
-            .fade-out {
-                animation: fadeOut 0.4s ease-in-out;
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(12px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes fadeOut {
-                from { opacity: 1; transform: translateY(0); }
-                to { opacity: 0; transform: translateY(12px); }
-            }
-            .progress-bar {
-                transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-                background: linear-gradient(to right, var(--primary), var(--primary-light));
-                position: relative;
-            }
-            .progress-bar.progress-loading::after {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-image: linear-gradient(
-                    45deg,
-                    rgba(255, 255, 255, 0.25) 25%,
-                    transparent 25%,
-                    transparent 50%,
-                    rgba(255, 255, 255, 0.25) 50%,
-                    rgba(255, 255, 255, 0.25) 75%,
-                    transparent 75%,
-                    transparent
-                );
-                background-size: 30px 30px;
-                animation: progress 1.2s linear infinite;
-            }
-            @keyframes progress {
-                0% { background-position: 0 0; }
-                100% { background-position: 30px 30px; }
-            }
-            .button-loading {
-                position: relative;
-                opacity: 0.7;
-                pointer-events: none;
-            }
-            .button-loading::after {
-                content: '';
-                position: absolute;
-                width: 18px;
-                height: 18px;
-                border: 3px solid #fff;
-                border-top: 3px solid transparent;
-                border-radius: 50%;
-                animation: spin 0.8s linear infinite;
-                right: 12px;
-                top: 50%;
-                transform: translateY(-50%);
-            }
-            @keyframes spin {
-                0% { transform: translateY(-50%) rotate(0deg); }
-                100% { transform: translateY(-50%) rotate(360deg); }
-            }
-            .toast-container {
-                position: fixed;
-                top: 24px;
-                right: 24px;
-                z-index: 1000;
-            }
-            .toast {
-                padding: 12px 24px;
-                margin-bottom: 12px;
-                border-radius: 12px;
-                color: white;
-                display: flex;
-                align-items: center;
-                opacity: 0;
-                transform: translateX(100%);
-                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
-                backdrop-filter: blur(8px);
-            }
-            .toast.show {
-                opacity: 1;
-                transform: translateX(0);
-            }
-            .toast-success {
-                background: rgba(4, 120, 87, 0.9);
-            }
-            .toast-error {
-                background: rgba(185, 28, 28, 0.9);
-            }
-            .toast-icon {
-                margin-right: 10px;
-                font-size: 18px;
-            }
-            .password-toggle {
-                cursor: pointer;
-                transition: color 0.2s;
-            }
-            .password-toggle:hover {
-                color: var(--primary-light);
-            }
-            .incompatible {
-                background: var(--error) !important;
-                opacity: 0.5;
-                pointer-events: none;
-            }
-            .compatible {
-                background: var(--success) !important;
-            }
-            .unknown {
-                background: var(--neutral) !important;
-            }
-            .compatibility-message {
-                font-size: 0.875rem;
-                margin-top: 8px;
-                text-align: center;
-                font-weight: 500;
-                transition: opacity 0.3s ease;
-            }
-            .compatibility-message.compatible {
-                color: var(--success);
-            }
-            .compatibility-message.incompatible {
-                color: var(--error);
-            }
-            .compatibility-message.unknown {
-                color: var(--neutral);
-            }
-            .card {
-                background: var(--card-bg);
-                backdrop-filter: blur(12px);
-                border: 1px solid rgba(255, 255, 255, 0.2);
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }
-            .card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-            }
-            .result-grid {
-                background: linear-gradient(to bottom, #f9fafb, #f3f4f6);
-                padding: 24px;
-                border-radius: 12px;
-                border: 1px solid rgba(0, 0, 0, 0.05);
-                box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
-            }
-            .result-grid div {
-                transition: transform 0.2s ease, background 0.2s ease;
-            }
-            .result-grid div:hover {
-                transform: scale(1.02);
-                background: rgba(255, 255, 255, 0.8);
-            }
-            .hamburger-menu {
-                display: none;
-            }
-            .nav-menu {
-                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            }
-            @media (max-width: 768px) {
-                .hamburger-menu {
-                    display: block;
-                }
-                .nav-menu {
-                    display: none;
-                    position: fixed;
-                    top: 0;
-                    right: 0;
-                    height: 100%;
-                    width: 40%;
-                    max-width: 200px;
-                    background: var(--card-bg);
-                    box-shadow: -6px 0 12px rgba(0, 0, 0, 0.15);
-                    transform: translateX(100%);
-                    border-top-left-radius: 20px;
-                    border-bottom-left-radius: 20px;
-                    z-index: 50;
-                    backdrop-filter: blur(12px);
-                }
-                .nav-menu.open {
-                    display: block;
-                    transform: translateX(0);
-                }
-                .nav-menu ul {
-                    flex-direction: column;
-                    padding: 24px;
-                }
-                .nav-menu li {
-                    margin: 14px 0;
-                }
-                .close-menu {
-                    position: absolute;
-                    top: 20px;
-                    right: 20px;
-                    font-size: 26px;
-                    color: #1f2937;
-                    cursor: pointer;
-                    transition: color 0.2s;
-                }
-                .close-menu:hover {
-                    color: var(--primary);
-                }
-                .overlay {
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: rgba(0, 0, 0, 0.7);
-                    z-index: 40;
-                    display: none;
-                }
-                .overlay.active {
-                    display: block;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <!-- Header with Hamburger Menu -->
-        <header class="bg-white shadow-lg sticky top-0 z-30">
-            <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
-                <div class="text-2xl font-bold text-blue-600">IPA Downloader</div>
-                <button class="hamburger-menu md:hidden text-gray-700 focus:outline-none">
-                    <i class="fas fa-bars text-2xl"></i>
+  <title>IPA Downloader Pro - Tải Ứng Dụng iOS Chuyên Nghiệp</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4361ee;
+      --primary-dark: #3a56d4;
+      --primary-light: #4cc9f0;
+      --success: #2ecc71;
+      --error: #e74c3c;
+      --warning: #f39c12;
+      --dark: #1a1a2e;
+      --light: #f8f9fa;
+      --card-bg: rgba(255, 255, 255, 0.98);
+      --glass: rgba(255, 255, 255, 0.15);
+      --text-primary: #2d3748;
+      --text-secondary: #4a5568;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+      min-height: 100vh;
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+    
+    .glass-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
+      border-radius: 16px;
+    }
+    
+    .progress-gradient {
+      background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    }
+    
+    .btn-primary {
+      background: var(--primary);
+      transition: all 0.3s ease;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(67, 97, 238, 0.25);
+    }
+    
+    .btn-secondary {
+      background: var(--light);
+      color: var(--text-primary);
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn-secondary:hover {
+      background: white;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+    
+    .fade-out {
+      animation: fadeOut 0.3s ease-in forwards;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes fadeOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(10px); }
+    }
+    
+    .progress-loading::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      animation: shimmer 1.5s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    
+    .button-loading::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top: 3px solid white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    
+    .toast {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+      border-radius: 12px;
+      overflow: hidden;
+      transform: translateX(120%);
+      transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+    
+    .toast.show {
+      transform: translateX(0);
+    }
+    
+    .toast-success {
+      background: rgba(46, 204, 113, 0.9);
+    }
+    
+    .toast-error {
+      background: rgba(231, 76, 60, 0.9);
+    }
+    
+    .toast-warning {
+      background: rgba(243, 156, 18, 0.9);
+    }
+    
+    .input-field {
+      transition: all 0.3s ease;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    .input-field:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.2);
+    }
+    
+    .password-toggle {
+      transition: all 0.2s ease;
+    }
+    
+    .password-toggle:hover {
+      color: var(--primary);
+    }
+    
+    .app-info-card {
+      transition: all 0.3s ease;
+      background: white;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    .app-info-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+    }
+    
+    .nav-link {
+      position: relative;
+    }
+    
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: var(--primary);
+      transition: width 0.3s ease;
+    }
+    
+    .nav-link:hover::after {
+      width: 100%;
+    }
+    
+    .mobile-menu {
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .mobile-menu.open {
+      transform: translateX(0);
+    }
+    
+    .overlay {
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+    
+    .overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    .compatible {
+      background: var(--success) !important;
+    }
+    
+    .incompatible {
+      background: var(--error) !important;
+      opacity: 0.7;
+    }
+    
+    .unknown {
+      background: var(--warning) !important;
+    }
+    
+    .wave-shape {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      overflow: hidden;
+      line-height: 0;
+    }
+    
+    .wave-shape svg {
+      position: relative;
+      display: block;
+      width: calc(100% + 1.3px);
+      height: 150px;
+    }
+    
+    .wave-shape .shape-fill {
+      fill: #FFFFFF;
+    }
+    
+    @media (max-width: 768px) {
+      .wave-shape svg {
+        height: 80px;
+      }
+    }
+  </style>
+</head>
+<body class="antialiased">
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white shadow-sm">
+    <div class="container mx-auto px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-400 text-white mr-3">
+            <i class="fas fa-mobile-alt text-xl"></i>
+          </div>
+          <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-500 to-blue-300 bg-clip-text text-transparent">
+            IPA Downloader Pro
+          </h1>
+        </div>
+        
+        <nav class="hidden md:flex items-center space-x-8">
+          <a href="#features" class="nav-link text-gray-700 hover:text-blue-600 font-medium">Tính năng</a>
+          <a href="#how-it-works" class="nav-link text-gray-700 hover:text-blue-600 font-medium">Cách hoạt động</a>
+          <a href="#faq" class="nav-link text-gray-700 hover:text-blue-600 font-medium">FAQ</a>
+          <a href="#contact" class="nav-link text-gray-700 hover:text-blue-600 font-medium">Liên hệ</a>
+        </nav>
+        
+        <button class="md:hidden text-gray-600 focus:outline-none" id="mobile-menu-button">
+          <i class="fas fa-bars text-2xl"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Menu -->
+  <div class="fixed inset-0 z-40">
+    <div class="overlay" id="mobile-menu-overlay"></div>
+    <div class="mobile-menu fixed top-0 right-0 w-64 h-full bg-white shadow-xl z-50 p-6" id="mobile-menu">
+      <div class="flex justify-between items-center mb-8">
+        <h2 class="text-xl font-bold text-gray-800">Menu</h2>
+        <button class="text-gray-500 hover:text-gray-700" id="close-mobile-menu">
+          <i class="fas fa-times text-2xl"></i>
+        </button>
+      </div>
+      <nav class="flex flex-col space-y-6">
+        <a href="#features" class="text-gray-700 hover:text-blue-600 font-medium">Tính năng</a>
+        <a href="#how-it-works" class="text-gray-700 hover:text-blue-600 font-medium">Cách hoạt động</a>
+        <a href="#faq" class="text-gray-700 hover:text-blue-600 font-medium">FAQ</a>
+        <a href="#contact" class="text-gray-700 hover:text-blue-600 font-medium">Liên hệ</a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="flex-grow">
+    <!-- Hero Section -->
+    <section class="relative pt-16 pb-24 md:pt-24 md:pb-32 bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div class="container mx-auto px-6">
+        <div class="flex flex-col md:flex-row items-center">
+          <div class="md:w-1/2 mb-12 md:mb-0">
+            <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight">
+              Tải ứng dụng iOS <span class="text-blue-600">dễ dàng</span> và <span class="text-blue-600">an toàn</span>
+            </h2>
+            <p class="text-lg text-gray-600 mb-8 max-w-lg">
+              Công cụ tải file IPA từ App Store với xác thực 2 lớp, tốc độ cao và hỗ trợ nhiều phiên bản iOS.
+            </p>
+            <div class="flex space-x-4">
+              <a href="#download-section" class="btn-primary text-white px-8 py-3 rounded-lg font-medium">
+                Bắt đầu ngay <i class="fas fa-arrow-right ml-2"></i>
+              </a>
+              <a href="#how-it-works" class="btn-secondary px-8 py-3 rounded-lg font-medium">
+                <i class="fas fa-play-circle mr-2"></i> Xem hướng dẫn
+              </a>
+            </div>
+          </div>
+          <div class="md:w-1/2 flex justify-center">
+            <div class="relative max-w-md">
+              <div class="absolute -top-6 -left-6 w-32 h-32 bg-blue-200 rounded-full opacity-20"></div>
+              <div class="absolute -bottom-6 -right-6 w-32 h-32 bg-indigo-200 rounded-full opacity-20"></div>
+              <div class="relative glass-card p-6 rounded-2xl shadow-xl">
+                <div class="flex items-center mb-4">
+                  <div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+                  <div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                  <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                </div>
+                <div class="bg-gray-100 rounded-lg p-4 mb-4">
+                  <div class="flex items-center mb-3">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+                      <i class="fas fa-apple-alt text-blue-600"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-medium text-gray-800">App Store</h3>
+                      <p class="text-xs text-gray-500">Tải ứng dụng từ Apple</p>
+                    </div>
+                  </div>
+                  <div class="flex items-center">
+                    <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
+                      <i class="fas fa-download text-purple-600"></i>
+                    </div>
+                    <div>
+                      <h3 class="font-medium text-gray-800">IPA Downloader</h3>
+                      <p class="text-xs text-gray-500">Tải file IPA về thiết bị</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-center py-3">
+                  <p class="text-sm text-gray-600">Đăng nhập để bắt đầu tải ứng dụng</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wave-shape">
+        <svg data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" preserveAspectRatio="none">
+          <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" class="shape-fill"></path>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download-section" class="py-16 bg-white">
+      <div class="container mx-auto px-6">
+        <div class="max-w-4xl mx-auto">
+          <div class="glass-card p-8 md:p-10 rounded-2xl shadow-lg">
+            <!-- Progress Bar -->
+            <div class="w-full bg-gray-100 rounded-full h-2.5 mb-10 overflow-hidden">
+              <div id="progressBar" class="h-2.5 rounded-full progress-gradient" style="width: 0%"></div>
+            </div>
+
+            <!-- Step 1: Authentication -->
+            <div id="step1" class="step">
+              <div class="flex items-center mb-8">
+                <div class="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-600 mr-4">
+                  <i class="fas fa-user-lock text-xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-900">Xác thực Apple ID</h2>
+              </div>
+              
+              <p class="text-gray-600 mb-8">Nhập thông tin Apple ID để xác thực an toàn. Chúng tôi không lưu trữ thông tin đăng nhập của bạn.</p>
+              
+              <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6">
+                <div class="flex items-center">
+                  <i class="fas fa-exclamation-circle mr-3"></i>
+                  <span id="errorMessage"></span>
+                </div>
+              </div>
+              
+              <form class="space-y-6">
+                <div>
+                  <label for="APPLE_ID" class="block text-gray-700 font-medium mb-2">Apple ID</label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <i class="fas fa-envelope text-gray-400"></i>
+                    </div>
+                    <input type="text" id="APPLE_ID" placeholder="email@example.com" class="input-field w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none">
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">Ví dụ: example@icloud.com hoặc example@me.com</p>
+                </div>
+                
+                <div>
+                  <label for="PASSWORD" class="block text-gray-700 font-medium mb-2">Mật khẩu</label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <i class="fas fa-lock text-gray-400"></i>
+                    </div>
+                    <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu" class="input-field w-full pl-10 pr-10 py-3 rounded-lg focus:outline-none">
+                    <button type="button" id="togglePassword" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
+                      <i class="fas fa-eye password-toggle"></i>
+                    </button>
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">Mật khẩu tài khoản Apple của bạn</p>
+                </div>
+                
+                <button id="loginBtn" type="button" class="btn-primary w-full text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center">
+                  <span>Đăng nhập</span>
+                  <i class="fas fa-arrow-right ml-2"></i>
                 </button>
-                <div class="nav-menu md:flex md:items-center">
-                    <i class="fas fa-times close-menu md:hidden"></i>
-                    <ul class="flex md:flex-row flex-col md:space-x-8">
-                        <li><a href="#home" class="text-gray-700 hover:text-blue-600 font-medium transition">Trang chủ</a></li>
-                        <li><a href="#about" class="text-gray-700 hover:text-blue-600 font-medium transition">Giới thiệu</a></li>
-                        <li><a href="#guide" class="text-gray-700 hover:text-blue-600 font-medium transition">Hướng dẫn</a></li>
-                    </ul>
-                </div>
-            </nav>
-            <div class="overlay"></div>
-        </header>
-
-        <!-- Main Content -->
-        <main class="flex-grow container mx-auto px-6 py-12">
-            <div class="max-w-6xl mx-auto card rounded-2xl shadow-2xl p-8 md:p-12">
-                <!-- Progress Bar -->
-                <div class="w-full bg-gray-200 rounded-full h-3 mb-8 overflow-hidden">
-                    <div id="progressBar" class="h-3 rounded-full progress-bar" style="width: 0%"></div>
-                </div>
-
-                <!-- Step 1: Authentication -->
-                <div id="step1" class="step">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">Đăng nhập Apple ID</h2>
-                    <p class="text-gray-600 mb-6">Nhập Apple ID và mật khẩu để xác thực. Dữ liệu được mã hóa an toàn.</p>
-                    <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                        <span id="errorMessage"></span>
-                    </div>
-                    <form>
-                        <div class="mb-5">
-                            <label for="APPLE_ID" class="block text-gray-700 text-sm font-medium mb-2">Apple ID</label>
-                            <input type="text" id="APPLE_ID" placeholder="Nhập email Apple ID" class="w-full max-w-sm px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
-                            <p class="text-xs text-gray-500 mt-1">Ví dụ: example@icloud.com</p>
-                        </div>
-                        <div class="mb-6 relative">
-                            <label for="PASSWORD" class="block text-gray-700 text-sm font-medium mb-2">Mật khẩu</label>
-                            <input type="password" id="PASSWORD" placeholder="Nhập mật khẩu" class="w-full max-w-sm px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
-                            <i id="togglePassword" class="fas fa-eye password-toggle absolute right-4 top-11 text-gray-500"></i>
-                            <p class="text-xs text-gray-500 mt-1">Mật khẩu tài khoản Apple của bạn</p>
-                        </div>
-                        <button id="loginBtn" type="button" class="w-full max-w-sm bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Đăng nhập</button>
-                    </form>
-                </div>
-
-                <!-- Step 2: 2FA Verification -->
-                <div id="step2" class="step hidden">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">Xác minh hai bước</h2>
-                    <p class="text-gray-600 mb-4">Nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy.</p>
-                    <p id="verifyMessage" class="text-gray-600 mb-6"></p>
-                    <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                        <span id="errorMessage"></span>
-                    </div>
-                    <form>
-                        <div class="mb-6">
-                            <label for="VERIFICATION_CODE" class="block text-gray-700 text-sm font-medium mb-2">Mã xác minh</label>
-                            <input type="text" id="VERIFICATION_CODE" placeholder="Nhập mã 6 chữ số" class="w-full max-w-sm px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" maxlength="6" required>
-                            <p class="text-xs text-gray-500 mt-1">Mã được gửi qua tin nhắn hoặc thông báo</p>
-                        </div>
-                        <button id="verifyBtn" type="button" class="w-full max-w-sm bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Xác minh</button>
-                    </form>
-                </div>
-
-                <!-- Step 3: Download -->
-                <div id="step3" class="step hidden">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">Tải ứng dụng</h2>
-                    <p class="text-gray-600 mb-6">Nhập App ID và phiên bản (nếu cần) để tải file IPA từ App Store.</p>
-                    <div id="error" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
-                        <span id="errorMessage"></span>
-                    </div>
-                    <form>
-                        <div class="mb-5">
-                            <label for="APPID" class="block text-gray-700 text-sm font-medium mb-2">App ID</label>
-                            <input type="text" id="APPID" placeholder="Nhập App ID (ví dụ: id123456789)" class="w-full max-w-sm px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition" required>
-                            <p class="text-xs text-gray-500 mt-1">ID ứng dụng từ App Store (tìm trong URL ứng dụng)</p>
-                        </div>
-                        <div class="mb-6">
-                            <label for="APP_VER_ID" class="block text-gray-700 text-sm font-medium mb-2">Phiên bản ứng dụng (tuỳ chọn)</label>
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:space-x-3 space-y-3 sm:space-y-0">
-                                <input type="text" id="APP_VER_ID" placeholder="Nhập phiên bản (ví dụ: 1.0.0)" class="w-full max-w-sm px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 transition">
-                                <a href="https://appinfo.storeios.net" target="_blank" class="bg-gray-100 text-gray-700 px-3 py-3 rounded-lg hover:bg-gray-200 transition font-medium whitespace-nowrap"><i class="fas fa-search mr-1"></i>Tìm phiên bản</a>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Để trống để tải phiên bản mới nhất</p>
-                        </div>
-                        <button id="downloadBtn" type="button" class="w-full max-w-sm bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition font-medium">Tải ứng dụng</button>
-                    </form>
-                </div>
-
-                <!-- Result -->
-                <div id="result" class="step hidden">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">Kết quả tải</h2>
-                    <p class="text-gray-600 mb-8">Thông tin ứng dụng và liên kết tải xuống được hiển thị bên dưới.</p>
-                    <div class="result-grid mb-8">
-                        <h3 class="text-xl font-semibold text-gray-900 mb-4">Thông tin ứng dụng</h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">Tên ứng dụng</p>
-                                <p id="appName" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">Tác giả</p>
-                                <p id="appAuthor" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">Phiên bản</p>
-                                <p id="appVersion" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">Bundle ID</p>
-                                <p id="appBundleId" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">Ngày phát hành</p>
-                                <p id="appDate" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                            <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-100">
-                                <p class="text-sm text-gray-500">iOS tối thiểu</p>
-                                <p id="minimumOSVersion" class="font-medium text-gray-800">Unknown</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex flex-col sm:flex-row sm:space-x-4 space-y-4 sm:space-y-0">
-                        <div class="flex-1">
-                            <a id="downloadLink" href="#" download class="block bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition text-center font-medium">
-                                <span class="icon mr-2"><i class="fas fa-download"></i></span>Tải file IPA
-                            </a>
-                        </div>
-                        <div class="flex-1">
-                            <a id="installLink" href="#" class="block bg-gray-500 text-white py-3 px-6 rounded-lg text-center font-medium hidden">
-                                <span class="icon mr-2"><i class="fas fa-mobile-alt"></i></span>Cài trực tiếp
-                            </a>
-                            <p id="compatibilityMessage" class="compatibility-message hidden"></p>
-                        </div>
-                    </div>
-                </div>
+              </form>
+              
+              <div class="mt-6 pt-6 border-t border-gray-100">
+                <p class="text-sm text-gray-500 text-center">
+                  <i class="fas fa-shield-alt mr-2"></i> Dữ liệu được mã hóa end-to-end và không được lưu trữ
+                </p>
+              </div>
             </div>
 
-            <!-- Toast Container -->
-            <div id="toast-container" class="toast-container"></div>
-        </main>
-
-        <!-- Footer -->
-        <footer class="bg-gray-900 text-white py-8">
-            <div class="container mx-auto px-6">
-                <div class="flex flex-col md:flex-row justify-between items-center">
-                    <div class="mb-6 md:mb-0 text-center md:text-left">
-                        <h3 class="text-xl font-semibold">IPA Downloader</h3>
-                        <p class="text-gray-400 text-sm mt-1">Tải ứng dụng iOS dễ dàng, an toàn và nhanh chóng.</p>
-                    </div>
-                    <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-6">
-                        <a href="#privacy" class="text-gray-400 hover:text-white transition">Chính sách bảo mật</a>
-                        <a href="#terms" class="text-gray-400 hover:text-white transition">Điều khoản sử dụng</a>
-                        <a href="#contact" class="text-gray-400 hover:text-white transition">Liên hệ</a>
-                    </div>
+            <!-- Step 2: 2FA Verification -->
+            <div id="step2" class="step hidden">
+              <div class="flex items-center mb-8">
+                <div class="flex items-center justify-center w-12 h-12 rounded-full bg-purple-100 text-purple-600 mr-4">
+                  <i class="fas fa-mobile-alt text-xl"></i>
                 </div>
-                <div class="mt-6 text-center text-gray-400 text-sm">
-                    © 2025 IPA Downloader. Mọi quyền được bảo lưu.
+                <h2 class="text-3xl font-bold text-gray-900">Xác minh hai bước</h2>
+              </div>
+              
+              <p class="text-gray-600 mb-4" id="verifyMessage">Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy của bạn.</p>
+              
+              <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6">
+                <div class="flex items-center">
+                  <i class="fas fa-exclamation-circle mr-3"></i>
+                  <span id="errorMessage"></span>
                 </div>
+              </div>
+              
+              <form class="space-y-6">
+                <div>
+                  <label for="VERIFICATION_CODE" class="block text-gray-700 font-medium mb-2">Mã xác minh</label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <i class="fas fa-key text-gray-400"></i>
+                    </div>
+                    <input type="text" id="VERIFICATION_CODE" placeholder="123456" maxlength="6" class="input-field w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none text-center tracking-widest font-mono">
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">Nhập mã 6 chữ số từ thiết bị tin cậy hoặc tin nhắn SMS</p>
+                </div>
+                
+                <button id="verifyBtn" type="button" class="btn-primary w-full text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center">
+                  <span>Xác minh</span>
+                  <i class="fas fa-check-circle ml-2"></i>
+                </button>
+              </form>
+              
+              <div class="mt-6 pt-6 border-t border-gray-100">
+                <p class="text-sm text-gray-500 text-center">
+                  <i class="fas fa-info-circle mr-2"></i> Mã xác minh sẽ hết hạn sau 5 phút
+                </p>
+              </div>
             </div>
-        </footer>
 
-        <script>
-            // Hamburger Menu Toggle
-            document.addEventListener('DOMContentLoaded', () => {
-                const hamburger = document.querySelector('.hamburger-menu');
-                const closeMenu = document.querySelector('.close-menu');
-                const navMenu = document.querySelector('.nav-menu');
-                const overlay = document.querySelector('.overlay');
+            <!-- Step 3: Download -->
+            <div id="step3" class="step hidden">
+              <div class="flex items-center mb-8">
+                <div class="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 text-green-600 mr-4">
+                  <i class="fas fa-cloud-download-alt text-xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-900">Tải ứng dụng</h2>
+              </div>
+              
+              <p class="text-gray-600 mb-6">Nhập thông tin ứng dụng bạn muốn tải từ App Store.</p>
+              
+              <div id="error" class="hidden bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6">
+                <div class="flex items-center">
+                  <i class="fas fa-exclamation-circle mr-3"></i>
+                  <span id="errorMessage"></span>
+                </div>
+              </div>
+              
+              <form class="space-y-6">
+                <div>
+                  <label for="APPID" class="block text-gray-700 font-medium mb-2">App ID</label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <i class="fas fa-app-store-ios text-gray-400"></i>
+                    </div>
+                    <input type="text" id="APPID" placeholder="id123456789" class="input-field w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none">
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">Tìm App ID trong URL ứng dụng trên App Store (ví dụ: id284882215 cho Facebook)</p>
+                </div>
+                
+                <div>
+                  <label for="APP_VER_ID" class="block text-gray-700 font-medium mb-2">Phiên bản ứng dụng (tuỳ chọn)</label>
+                  <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="relative flex-grow">
+                      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-code-branch text-gray-400"></i>
+                      </div>
+                      <input type="text" id="APP_VER_ID" placeholder="1.0.0" class="input-field w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none">
+                    </div>
+                    <a href="https://appinfo.storeios.net" target="_blank" class="btn-secondary px-6 py-3 rounded-lg font-medium flex items-center justify-center whitespace-nowrap">
+                      <i class="fas fa-search mr-2"></i> Tìm phiên bản
+                    </a>
+                  </div>
+                  <p class="text-xs text-gray-500 mt-2">Để trống để tải phiên bản mới nhất từ App Store</p>
+                </div>
+                
+                <button id="downloadBtn" type="button" class="btn-primary w-full text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center">
+                  <span>Tải ứng dụng</span>
+                  <i class="fas fa-download ml-2"></i>
+                </button>
+              </form>
+              
+              <div class="mt-6 pt-6 border-t border-gray-100">
+                <p class="text-sm text-gray-500 text-center">
+                  <i class="fas fa-clock mr-2"></i> Quá trình tải có thể mất vài phút tuỳ thuộc vào kích thước ứng dụng
+                </p>
+              </div>
+            </div>
 
-                hamburger.addEventListener('click', () => {
-                    navMenu.classList.add('open');
-                    overlay.classList.add('active');
-                });
+            <!-- Result -->
+            <div id="result" class="step hidden">
+              <div class="flex items-center mb-8">
+                <div class="flex items-center justify-center w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 mr-4">
+                  <i class="fas fa-check-circle text-xl"></i>
+                </div>
+                <h2 class="text-3xl font-bold text-gray-900">Tải thành công!</h2>
+              </div>
+              
+              <p class="text-gray-600 mb-8">Thông tin ứng dụng và liên kết tải xuống được hiển thị bên dưới.</p>
+              
+              <div class="bg-gray-50 rounded-xl p-6 mb-8">
+                <h3 class="text-xl font-semibold text-gray-900 mb-6">Thông tin ứng dụng</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Tên ứng dụng</p>
+                    <p id="appName" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Nhà phát triển</p>
+                    <p id="appAuthor" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Phiên bản</p>
+                    <p id="appVersion" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Bundle ID</p>
+                    <p id="appBundleId" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Ngày phát hành</p>
+                    <p id="appDate" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                  <div class="app-info-card p-4 rounded-lg">
+                    <p class="text-sm text-gray-500 mb-1">Yêu cầu iOS</p>
+                    <p id="minimumOSVersion" class="font-semibold text-gray-800 text-lg">Unknown</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a id="downloadLink" href="#" download class="btn-primary text-white py-3 px-6 rounded-lg font-medium flex items-center justify-center">
+                  <i class="fas fa-download mr-3"></i> Tải file IPA
+                </a>
+                <a id="installLink" href="#" class="btn-secondary py-3 px-6 rounded-lg font-medium flex items-center justify-center hidden">
+                  <i class="fas fa-mobile-alt mr-3"></i> Cài trực tiếp
+                </a>
+              </div>
+              
+              <div class="mt-6 pt-6 border-t border-gray-100">
+                <p class="text-sm text-gray-500 text-center">
+                  <i class="fas fa-info-circle mr-2"></i> File IPA có thể được cài đặt thông qua AltStore, Sideloadly hoặc các công cụ khác
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-                closeMenu.addEventListener('click', () => {
-                    navMenu.classList.remove('open');
-                    overlay.classList.remove('active');
-                });
+    <!-- Features Section -->
+    <section id="features" class="py-16 bg-gray-50">
+      <div class="container mx-auto px-6">
+        <div class="text-center mb-16">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Tính năng nổi bật</h2>
+          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Công cụ tải ứng dụng iOS với nhiều tính năng hữu ích</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="glass-card p-8 rounded-xl">
+            <div class="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center mb-6 text-blue-600">
+              <i class="fas fa-shield-alt text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-3">Bảo mật cao</h3>
+            <p class="text-gray-600">Xác thực 2 lớp an toàn, mã hóa dữ liệu đầu cuối, không lưu trữ thông tin đăng nhập.</p>
+          </div>
+          
+          <div class="glass-card p-8 rounded-xl">
+            <div class="w-16 h-16 bg-purple-100 rounded-xl flex items-center justify-center mb-6 text-purple-600">
+              <i class="fas fa-bolt text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-3">Tốc độ cao</h3>
+            <p class="text-gray-600">Tải ứng dụng với tốc độ nhanh chóng, hỗ trợ đa luồng và tiếp tục tải khi mất kết nối.</p>
+          </div>
+          
+          <div class="glass-card p-8 rounded-xl">
+            <div class="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center mb-6 text-green-600">
+              <i class="fas fa-history text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-3">Nhiều phiên bản</h3>
+            <p class="text-gray-600">Tải các phiên bản ứng dụng khác nhau, hỗ trợ tìm kiếm phiên bản cũ nếu cần.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-                overlay.addEventListener('click', () => {
-                    navMenu.classList.remove('open');
-                    overlay.classList.remove('active');
-                });
-            });
-        </script>
-        <script src="/index.js"></script>
-    </body>
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-16 bg-white">
+      <div class="container mx-auto px-6">
+        <div class="text-center mb-16">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Cách sử dụng</h2>
+          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Chỉ với 3 bước đơn giản để tải ứng dụng iOS</p>
+        </div>
+        
+        <div class="max-w-4xl mx-auto">
+          <div class="relative">
+            <!-- Timeline -->
+            <div class="hidden md:block absolute left-1/2 transform -translate-x-1/2 h-full w-0.5 bg-gray-200"></div>
+            
+            <!-- Step 1 -->
+            <div class="flex flex-col md:flex-row items-center mb-12">
+              <div class="flex-shrink-0 w-16 h-16 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-4 md:mb-0 md:mr-8">
+                <span class="text-2xl font-bold">1</span>
+              </div>
+              <div class="glass-card p-8 rounded-xl flex-grow">
+                <h3 class="text-xl font-bold text-gray-900 mb-3">Đăng nhập Apple ID</h3>
+                <p class="text-gray-600 mb-4">Nhập Apple ID và mật khẩu để xác thực. Bạn có thể sử dụng tài khoản thứ cấp không chứa thông tin quan trọng để đảm bảo an toàn.</p>
+                <div class="flex items-center text-sm text-gray-500">
+                  <i class="fas fa-info-circle mr-2"></i>
+                  <span>Không lưu trữ thông tin đăng nhập của bạn</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Step 2 -->
+            <div class="flex flex-col md:flex-row items-center mb-12">
+              <div class="flex-shrink-0 w-16 h-16 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mb-4 md:mb-0 md:mr-8">
+                <span class="text-2xl font-bold">2</span>
+              </div>
+              <div class="glass-card p-8 rounded-xl flex-grow">
+                <h3 class="text-xl font-bold text-gray-900 mb-3">Xác minh bảo mật (nếu cần)</h3>
+                <p class="text-gray-600 mb-4">Nếu tài khoản của bạn bật xác thực 2 yếu tố, nhập mã xác minh 6 chữ số được gửi đến thiết bị tin cậy hoặc qua SMS.</p>
+                <div class="flex items-center text-sm text-gray-500">
+                  <i class="fas fa-info-circle mr-2"></i>
+                  <span>Mã xác minh sẽ hết hạn sau 5 phút</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Step 3 -->
+            <div class="flex flex-col md:flex-row items-center">
+              <div class="flex-shrink-0 w-16 h-16 rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-4 md:mb-0 md:mr-8">
+                <span class="text-2xl font-bold">3</span>
+              </div>
+              <div class="glass-card p-8 rounded-xl flex-grow">
+                <h3 class="text-xl font-bold text-gray-900 mb-3">Tải ứng dụng</h3>
+                <p class="text-gray-600 mb-4">Nhập App ID của ứng dụng bạn muốn tải (có thể tìm trong URL App Store) và phiên bản nếu cần. Sau đó nhấn nút tải về.</p>
+                <div class="flex items-center text-sm text-gray-500">
+                  <i class="fas fa-info-circle mr-2"></i>
+                  <span>Để trống phiên bản để tải bản mới nhất</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="py-16 bg-gray-50">
+      <div class="container mx-auto px-6">
+        <div class="text-center mb-16">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Câu hỏi thường gặp</h2>
+          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Những câu hỏi phổ biến về IPA Downloader</p>
+        </div>
+        
+        <div class="max-w-3xl mx-auto">
+          <div class="space-y-4">
+            <div class="glass-card p-6 rounded-xl">
+              <button class="faq-question flex items-center justify-between w-full text-left font-medium text-gray-900">
+                <span>Có an toàn khi sử dụng Apple ID trên công cụ này không?</span>
+                <i class="fas fa-chevron-down transition-transform duration-300"></i>
+              </button>
+              <div class="faq-answer mt-3 text-gray-600 hidden">
+                <p>Công cụ sử dụng xác thực chính thức của Apple và không lưu trữ thông tin đăng nhập của bạn. Tuy nhiên, để đảm bảo an toàn tuyệt đối, bạn nên sử dụng tài khoản Apple ID thứ cấp không chứa thông tin quan trọng.</p>
+              </div>
+            </div>
+            
+            <div class="glass-card p-6 rounded-xl">
+              <button class="faq-question flex items-center justify-between w-full text-left font-medium text-gray-900">
+                <span>Làm cách nào để tìm App ID của một ứng dụng?</span>
+                <i class="fas fa-chevron-down transition-transform duration-300"></i>
+              </button>
+              <div class="faq-answer mt-3 text-gray-600 hidden">
+                <p>App ID có thể được tìm thấy trong URL của ứng dụng trên App Store. Ví dụ: với URL "https://apps.apple.com/us/app/facebook/id284882215", App ID là "284882215". Bạn cũng có thể sử dụng công cụ tìm kiếm App ID được tích hợp sẵn.</p>
+              </div>
+            </div>
+            
+            <div class="glass-card p-6 rounded-xl">
+              <button class="faq-question flex items-center justify-between w-full text-left font-medium text-gray-900">
+                <span>Tôi có thể tải phiên bản cũ của ứng dụng không?</span>
+                <i class="fas fa-chevron-down transition-transform duration-300"></i>
+              </button>
+              <div class="faq-answer mt-3 text-gray-600 hidden">
+                <p>Có, bạn có thể chỉ định phiên bản ứng dụng muốn tải trong trường "Phiên bản ứng dụng". Nếu để trống, công cụ sẽ tự động tải phiên bản mới nhất hiện có trên App Store.</p>
+              </div>
+            </div>
+            
+            <div class="glass-card p-6 rounded-xl">
+              <button class="faq-question flex items-center justify-between w-full text-left font-medium text-gray-900">
+                <span>Làm thế nào để cài đặt file IPA sau khi tải về?</span>
+                <i class="fas fa-chevron-down transition-transform duration-300"></i>
+              </button>
+              <div class="faq-answer mt-3 text-gray-600 hidden">
+                <p>File IPA có thể được cài đặt trên thiết bị iOS bằng các công cụ như AltStore, Sideloadly hoặc Cydia Impactor. Một số phiên bản iOS cũ hơn có thể yêu cầu jailbreak để cài đặt.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-white pt-16 pb-8">
+    <div class="container mx-auto px-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+        <div>
+          <div class="flex items-center mb-4">
+            <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-400 text-white mr-3">
+              <i class="fas fa-mobile-alt text-xl"></i>
+            </div>
+            <h3 class="text-xl font-bold">IPA Downloader Pro</h3>
+          </div>
+          <p class="text-gray-400">Công cụ tải ứng dụng iOS chuyên nghiệp, an toàn và dễ sử dụng.</p>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Liên kết</h4>
+          <ul class="space-y-2">
+            <li><a href="#features" class="text-gray-400 hover:text-white transition">Tính năng</a></li>
+            <li><a href="#how-it-works" class="text-gray-400 hover:text-white transition">Cách hoạt động</a></li>
+            <li><a href="#faq" class="text-gray-400 hover:text-white transition">FAQ</a></li>
+            <li><a href="#contact" class="text-gray-400 hover:text-white transition">Liên hệ</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Pháp lý</h4>
+          <ul class="space-y-2">
+            <li><a href="#" class="text-gray-400 hover:text-white transition">Điều khoản sử dụng</a></li>
+            <li><a href="#" class="text-gray-400 hover:text-white transition">Chính sách bảo mật</a></li>
+            <li><a href="#" class="text-gray-400 hover:text-white transition">Cookie Policy</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Liên hệ</h4>
+          <ul class="space-y-2">
+            <li class="flex items-center">
+              <i class="fas fa-envelope mr-3 text-gray-400"></i>
+              <span class="text-gray-400">support@ipadownloader.pro</span>
+            </li>
+            <li class="flex items-center">
+              <i class="fab fa-telegram mr-3 text-gray-400"></i>
+              <span class="text-gray-400">@ipadownloader_support</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="pt-8 border-t border-gray-800">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+          <p class="text-gray-400 text-sm mb-4 md:mb-0">© 2025 IPA Downloader Pro. Mọi quyền được bảo lưu.</p>
+          <div class="flex space-x-4">
+            <a href="#" class="text-gray-400 hover:text-white transition">
+              <i class="fab fa-facebook-f"></i>
+            </a>
+            <a href="#" class="text-gray-400 hover:text-white transition">
+              <i class="fab fa-twitter"></i>
+            </a>
+            <a href="#" class="text-gray-400 hover:text-white transition">
+              <i class="fab fa-github"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-6 right-6 z-50 space-y-3"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Mobile Menu Toggle
+      const mobileMenuButton = document.getElementById('mobile-menu-button');
+      const mobileMenu = document.getElementById('mobile-menu');
+      const mobileMenuOverlay = document.getElementById('mobile-menu-overlay');
+      const closeMobileMenu = document.getElementById('close-mobile-menu');
+      
+      mobileMenuButton.addEventListener('click', () => {
+        mobileMenuOverlay.classList.add('active');
+        mobileMenu.classList.add('open');
+      });
+      
+      closeMobileMenu.addEventListener('click', () => {
+        mobileMenuOverlay.classList.remove('active');
+        mobileMenu.classList.remove('open');
+      });
+      
+      mobileMenuOverlay.addEventListener('click', () => {
+        mobileMenuOverlay.classList.remove('active');
+        mobileMenu.classList.remove('open');
+      });
+      
+      // FAQ Accordion
+      const faqQuestions = document.querySelectorAll('.faq-question');
+      faqQuestions.forEach(question => {
+        question.addEventListener('click', () => {
+          const answer = question.nextElementSibling;
+          const icon = question.querySelector('i');
+          
+          answer.classList.toggle('hidden');
+          icon.classList.toggle('rotate-180');
+        });
+      });
+      
+      // Password Toggle
+      const togglePassword = document.getElementById('togglePassword');
+      const passwordInput = document.getElementById('PASSWORD');
+      
+      if (togglePassword && passwordInput) {
+        togglePassword.addEventListener('click', () => {
+          const isPassword = passwordInput.type === 'password';
+          passwordInput.type = isPassword ? 'text' : 'password';
+          togglePassword.innerHTML = isPassword ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+        });
+      }
+      
+      // Toast Function
+      const showToast = (message, type = 'success') => {
+        const toastContainer = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type} text-white px-6 py-4 flex items-center`;
+        toast.innerHTML = `
+          <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-times-circle' : 'fa-exclamation-circle'} mr-3"></i>
+          <span>${message}</span>
+        `;
+        toastContainer.appendChild(toast);
+        
+        setTimeout(() => {
+          toast.classList.add('show');
+        }, 10);
+        
+        setTimeout(() => {
+          toast.classList.remove('show');
+          setTimeout(() => toast.remove(), 300);
+        }, 3000);
+      };
+      
+      // Demo toasts (remove in production)
+      // showToast('Đăng nhập thành công!', 'success');
+      // setTimeout(() => showToast('Lỗi xác thực', 'error'), 1000);
+      // setTimeout(() => showToast('Cảnh báo bảo mật', 'warning'), 2000);
+    });
+  </script>
+  <script src="/index.js"></script>
+</body>
 </html>
