@@ -92,16 +92,6 @@ const showError = (msg) => {
     setTimeout(() => toast.remove(), 3000);
   };
 
-  const showError = (msg) => {
-    console.log(`Error: ${msg}`);
-    elements.errorMessage.textContent = msg;
-    elements.errorBox.classList.remove('hidden');
-  };
-
-  const hideError = () => {
-    elements.errorBox.classList.add('hidden');
-  };
-
   const transition = (from, to) => {
     console.log(`Transition from ${from?.id} to ${to?.id}`);
     if (!from || !to) {
