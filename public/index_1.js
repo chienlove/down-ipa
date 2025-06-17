@@ -18,10 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
-    appVerInput: document.getElementById('APP_VER_ID'),
-    downloadLink: document.getElementById('downloadLink'),
-    installLink: document.getElementById('installLink'),
-    compatNote: document.getElementById('compatNote')
+    appVerInput: document.getElementById('APP_VER_ID')
   };
 
   // Kiểm tra DOM elements
@@ -55,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (match) {
       return `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
     }
-    return 'Unknown';
+    return 'Unknown'; // Mặc định nếu không phát hiện
   }
 
   deviceOSVersion = detectIOSVersion();
@@ -101,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Invalid transition elements:', { from, to });
       return;
     }
+    // Ẩn tất cả steps trước
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
       if (step && step !== to) {
         step.classList.add('hidden');
@@ -174,27 +172,24 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const updateInstallButton = (minimumOSVersion, userIOSVersion, installUrl, downloadUrl) => {
-    elements.installLink.href = installUrl || downloadUrl || '#';
+    const installLink = document.getElementById('installLink');
+    installLink.href = installUrl || downloadUrl || '#';
     userIOSVersion = userIOSVersion || 'Unknown';
-    
     if (minimumOSVersion === 'Unknown' || userIOSVersion === 'Unknown') {
-      elements.compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
-      elements.compatNote.innerHTML = '<i class="fas fa-question-circle mr-2 mt-1"></i>Không xác định được phiên bản iOS thiết bị.';
-      elements.installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-yellow-400 flex items-center justify-center';
-      elements.installLink.innerHTML = '<i class="fas fa-question mr-2"></i> 📲 Cài trực tiếp';
-      elements.installLink.removeAttribute('disabled');
+      installLink.innerHTML = '<span class="icon">📲</span> Cài trực tiếp (Chưa rõ)';
+      installLink.classList.remove('compatible', 'incompatible');
+      installLink.classList.add('unknown');
+      installLink.title = 'Không xác định được phiên bản iOS thiết bị';
     } else if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
-      elements.compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-300 flex items-start';
-      elements.compatNote.innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userIOSVersion} tương thích (yêu cầu iOS ${minimumOSVersion})`;
-      elements.installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-green-500 hover:bg-green-600 flex items-center justify-center';
-      elements.installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> 📲 Cài trực tiếp';
-      elements.installLink.removeAttribute('disabled');
+      installLink.innerHTML = '<span class="icon">✔</span> Cài trực tiếp (Tương thích)';
+      installLink.classList.add('compatible');
+      installLink.classList.remove('incompatible', 'unknown');
+      installLink.title = `Tương thích với iOS ${userIOSVersion}`;
     } else {
-      elements.compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex items-start';
-      elements.compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userIOSVersion}) KHÔNG tương thích. Yêu cầu iOS ${minimumOSVersion}.`;
-      elements.installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-red-500 opacity-80 cursor-not-allowed flex items-center justify-center';
-      elements.installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> 📲 Cài trực tiếp';
-      elements.installLink.setAttribute('disabled', 'true');
+      installLink.innerHTML = '<span class="icon">⚠</span> Cài trực tiếp (Không tương thích)';
+      installLink.classList.add('incompatible');
+      installLink.classList.remove('compatible', 'unknown');
+      installLink.title = `Yêu cầu iOS ${minimumOSVersion}, thiết bị của bạn là iOS ${userIOSVersion}`;
     }
   };
 
@@ -245,13 +240,15 @@ document.addEventListener('DOMContentLoaded', () => {
           document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
           document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
           document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
-          elements.downloadLink.href = data.downloadUrl || '#';
-          elements.downloadLink.download = data.fileName || 'app.ipa';
+          const downloadLink = document.getElementById('downloadLink');
+          downloadLink.href = data.downloadUrl || '#';
+          downloadLink.download = data.fileName || 'app.ipa';
+          const installLink = document.getElementById('installLink');
           if (data.installUrl) {
-            elements.installLink.href = data.installUrl;
-            elements.installLink.classList.remove('hidden');
+            installLink.href = data.installUrl;
+            installLink.classList.remove('hidden');
           } else {
-            elements.installLink.classList.add('hidden');
+            installLink.classList.add('hidden');
           }
 
           updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
@@ -370,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Toggle password clicked');
       const isPassword = elements.passwordInput.type === 'password';
       elements.passwordInput.type = isPassword ? 'text' : 'password';
-      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle absolute right-3 top-3 text-gray-500 cursor-pointer' : 'fas fa-eye password-toggle absolute right-3 top-3 text-gray-500 cursor-pointer';
+      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
     });
   }
 
