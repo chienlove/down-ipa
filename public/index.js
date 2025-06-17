@@ -38,6 +38,14 @@ const showError = (msg) => {
     alert(msg); // fallback nếu thiếu phần tử trong DOM
   }
 };
+  
+const hideError = () => {
+  if (elements.errorBox) {
+    elements.errorBox.classList.add('hidden');
+  } else {
+    console.warn('Không tìm thấy phần tử errorBox để ẩn');
+  }
+};
 
   // App State
   const state = {
