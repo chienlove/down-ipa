@@ -21,13 +21,23 @@ document.addEventListener('DOMContentLoaded', () => {
     appVerInput: document.getElementById('APP_VER_ID')
   };
 
-  // Kiểm tra DOM elements
-  Object.keys(elements).forEach(key => {
-    if (!elements[key]) {
-      console.error(`DOM element ${key} not found`);
-      showError(`Lỗi giao diện: Không tìm thấy phần tử ${key}`);
-    }
-  });
+  // Kiểm tra DOM elements an toàn, không dừng toàn bộ script nếu thiếu
+Object.keys(elements).forEach(key => {
+  if (!elements[key]) {
+    console.warn(`⚠ DOM element "${key}" not found`);
+  }
+});
+
+// Hàm showError an toàn nếu thiếu phần tử error
+const showError = (msg) => {
+  console.log(`Error: ${msg}`);
+  if (elements.errorMessage && elements.errorBox) {
+    elements.errorMessage.textContent = msg;
+    elements.errorBox.classList.remove('hidden');
+  } else {
+    alert(msg); // fallback nếu thiếu phần tử trong DOM
+  }
+};
 
   // App State
   const state = {
