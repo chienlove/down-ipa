@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     requires2FA: false,
     requestId: null,
     iosVersion: null,
-    lastProgressStep: null // Thêm để theo dõi bước cuối cùng
+    lastProgressStep: null
   };
 
   let isLoading = false;
@@ -436,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (elements.verifyBtn) {
-    elements.loginBtn.addEventListener('click', async (e) => {
+    elements.verifyBtn.addEventListener('click', async (e) => {
       e.preventDefault();
       console.log('Verify button clicked');
       if (isLoading) return;
@@ -494,6 +494,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
+  } else {
+    console.error('verifyBtn not found in DOM');
+    showError('Lỗi giao diện: Nút xác thực không được tìm thấy.');
   }
 
   if (elements.downloadBtn) {
