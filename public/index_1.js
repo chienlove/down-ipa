@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
     appVerInput: document.getElementById('APP_VER_ID'),
-    progressSteps: document.getElementById('progressSteps') // Thêm phần tử progressSteps
+    progressSteps: document.getElementById('progressSteps')
   };
 
   // Kiểm tra DOM elements an toàn
@@ -57,7 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
     dsid: null,
     requires2FA: false,
     requestId: null,
-    iosVersion: null
+    iosVersion: null,
+    lastProgressStep: null
   };
 
   let isLoading = false;
@@ -138,6 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Hiển thị chi tiết tiến trình
   const updateProgressSteps = (message, status = 'pending') => {
     if (!elements.progressSteps) return;
+    if (state.lastProgressStep === message) return; // Ngăn lặp lại bước
+    state.lastProgressStep = message;
     const step = document.createElement('div');
     step.className = `progress-step ${status}`;
     step.innerHTML = `
@@ -150,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearProgressSteps = () => {
     if (elements.progressSteps) {
       elements.progressSteps.innerHTML = '';
+      state.lastProgressStep = null; // Reset bước cuối
     }
   };
 
@@ -256,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onopen = () => {
       console.log('SSE connection opened');
-      updateProgressSteps('Đã kết nối với máy chủ', 'success');
+      updateProgressSteps('Đang kết nối với máy chủ', 'success');
     };
 
     eventSource.onmessage = (event) => {
@@ -264,7 +268,32 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const data = JSON.parse(event.data);
         console.log(`Progress: ${data.progress}%`);
-        updateProgressSteps(`Tiến trình tải: ${data.progress}%`, 'success');
+
+        // Ánh xạ tiến trình thành các bước chi tiết
+        let stepMessage = '';
+        switch (data.progress) {
+          case 10:
+            stepMessage = 'Đang xác thực Apple ID';
+            break;
+          case 20:
+            stepMessage = 'Đang tải file IPA';
+            break;
+          case 40:
+            stepMessage = 'Đang giải nén IPA';
+            break;
+          case 60:
+            stepMessage = 'Đang ký IPA';
+            break;
+          case 80:
+            stepMessage = 'Đang tải IPA lên';
+            break;
+          case 100:
+            stepMessage = 'Hoàn tất tải ứng dụng';
+            break;
+          default:
+            return; // Bỏ qua nếu progress không khớp
+        }
+        updateProgressSteps(stepMessage, 'success');
 
         if (data.status === 'complete') {
           console.log('Download complete:', data);
@@ -465,6 +494,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
+  } else {
+    console.error('verifyBtn not found in DOM');
+    showError('Lỗi giao diện: Nút xác thực không được tìm thấy.');
   }
 
   if (elements.downloadBtn) {
@@ -476,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
       hideError();
       setLoading(true);
       clearProgressSteps();
-      updateProgressSteps('Bắt đầu tải ứng dụng', 'pending');
+      updateProgressSteps('Bắt đầu quá trình tải', 'pending');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';

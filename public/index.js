@@ -148,6 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     elements.progressSteps.appendChild(step);
+    // Cuộn xuống cuối để thấy bước mới nhất
+    elements.progressSteps.scrollTop = elements.progressSteps.scrollHeight;
   };
 
   const clearProgressSteps = () => {
@@ -267,7 +269,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('SSE message received:', event.data);
       try {
         const data = JSON.parse(event.data);
-        console.log(`Progress: ${data.progress}%`);
+        console.log(`Progress: ${data.progress}%, Status: ${data.status}`);
 
         // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
@@ -291,38 +293,42 @@ document.addEventListener('DOMContentLoaded', () => {
             stepMessage = 'Hoàn tất tải ứng dụng';
             break;
           default:
+            console.log(`Ignoring unknown progress: ${data.progress}`);
             return; // Bỏ qua nếu progress không khớp
         }
         updateProgressSteps(stepMessage, 'success');
 
         if (data.status === 'complete') {
           console.log('Download complete:', data);
-          const appInfo = data.appInfo || {};
-          document.getElementById('appName').textContent = appInfo.name || 'Unknown';
-          document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
-          document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
-          document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
-          document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
-          document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
-          const downloadLink = document.getElementById('downloadLink');
-          downloadLink.href = data.downloadUrl || '#';
-          downloadLink.download = data.fileName || 'app.ipa';
-          const installLink = document.getElementById('installLink');
-          installLink.dataset.href = data.installUrl || '#';
-          if (data.installUrl) {
-            installLink.href = data.installUrl;
-            installLink.classList.remove('hidden');
-          } else {
-            installLink.classList.add('hidden');
-          }
+          // Trì hoãn chuyển bước để đảm bảo hiển thị tất cả tiến trình
+          setTimeout(() => {
+            const appInfo = data.appInfo || {};
+            document.getElementById('appName').textContent = appInfo.name || 'Unknown';
+            document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
+            document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
+            document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
+            document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
+            document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = data.downloadUrl || '#';
+            downloadLink.download = data.fileName || 'app.ipa';
+            const installLink = document.getElementById('installLink');
+            installLink.dataset.href = data.installUrl || '#';
+            if (data.installUrl) {
+              installLink.href = data.installUrl;
+              installLink.classList.remove('hidden');
+            } else {
+              installLink.classList.add('hidden');
+            }
 
-          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
-          transition(elements.step3, elements.result);
-          setProgress(4);
-          setLoading(false);
-          eventSource.close();
-          eventSource = null;
-          console.log('SSE closed after completion');
+            updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
+            transition(elements.step3, elements.result);
+            setProgress(4);
+            setLoading(false);
+            eventSource.close();
+            eventSource = null;
+            console.log('SSE closed after completion');
+          }, 500);
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
           showError(data.error || 'Tải ứng dụng thất bại.');
