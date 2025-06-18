@@ -18,34 +18,35 @@ document.addEventListener('DOMContentLoaded', () => {
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
-    appVerInput: document.getElementById('APP_VER_ID')
+    appVerInput: document.getElementById('APP_VER_ID'),
+    progressSteps: document.getElementById('progressSteps') // Thêm phần tử progressSteps
   };
 
-  // Kiểm tra DOM elements an toàn, không dừng toàn bộ script nếu thiếu
-Object.keys(elements).forEach(key => {
-  if (!elements[key]) {
-    console.warn(`⚠ DOM element "${key}" not found`);
-  }
-});
+  // Kiểm tra DOM elements an toàn
+  Object.keys(elements).forEach(key => {
+    if (!elements[key]) {
+      console.warn(`⚠ DOM element "${key}" not found`);
+    }
+  });
 
-// Hàm showError an toàn nếu thiếu phần tử error
-const showError = (msg) => {
-  console.log(`Error: ${msg}`);
-  if (elements.errorMessage && elements.errorBox) {
-    elements.errorMessage.textContent = msg;
-    elements.errorBox.classList.remove('hidden');
-  } else {
-    alert(msg); // fallback nếu thiếu phần tử trong DOM
-  }
-};
+  // Hàm showError
+  const showError = (msg) => {
+    console.log(`Error: ${msg}`);
+    if (elements.errorMessage && elements.errorBox) {
+      elements.errorMessage.textContent = msg;
+      elements.errorBox.classList.remove('hidden');
+    } else {
+      alert(msg);
+    }
+  };
   
-const hideError = () => {
-  if (elements.errorBox) {
-    elements.errorBox.classList.add('hidden');
-  } else {
-    console.warn('Không tìm thấy phần tử errorBox để ẩn');
-  }
-};
+  const hideError = () => {
+    if (elements.errorBox) {
+      elements.errorBox.classList.add('hidden');
+    } else {
+      console.warn('Không tìm thấy phần tử errorBox để ẩn');
+    }
+  };
 
   // App State
   const state = {
@@ -70,7 +71,7 @@ const hideError = () => {
     if (match) {
       return `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
     }
-    return 'Unknown'; // Mặc định nếu không phát hiện
+    return 'Unknown';
   }
 
   deviceOSVersion = detectIOSVersion();
@@ -106,7 +107,6 @@ const hideError = () => {
       console.error('Invalid transition elements:', { from, to });
       return;
     }
-    // Ẩn tất cả steps trước
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
       if (step && step !== to) {
         step.classList.add('hidden');
@@ -132,6 +132,24 @@ const hideError = () => {
     } else {
       const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
       elements.progressBar.style.width = map[stepOrPercent] || '0%';
+    }
+  };
+
+  // Hiển thị chi tiết tiến trình
+  const updateProgressSteps = (message, status = 'pending') => {
+    if (!elements.progressSteps) return;
+    const step = document.createElement('div');
+    step.className = `progress-step ${status}`;
+    step.innerHTML = `
+      <span class="progress-icon">${status === 'success' ? '✓' : status === 'error' ? '✗' : '⏳'}</span>
+      <span>${message}</span>
+    `;
+    elements.progressSteps.appendChild(step);
+  };
+
+  const clearProgressSteps = () => {
+    if (elements.progressSteps) {
+      elements.progressSteps.innerHTML = '';
     }
   };
 
@@ -184,20 +202,29 @@ const hideError = () => {
     installLink.href = installUrl || downloadUrl || '#';
     userIOSVersion = userIOSVersion || 'Unknown';
     if (minimumOSVersion === 'Unknown' || userIOSVersion === 'Unknown') {
-      installLink.innerHTML = '<span class="icon">📲</span> Cài trực tiếp (Chưa rõ)';
+      installLink.innerHTML = '<i class="fas fa-question-circle mr-2"></i> Không rõ tương thích';
       installLink.classList.remove('compatible', 'incompatible');
       installLink.classList.add('unknown');
+      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-yellow-400 flex items-center justify-center';
       installLink.title = 'Không xác định được phiên bản iOS thiết bị';
+      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex';
+      document.getElementById('compatNote').innerHTML = '<i class="fas fa-question-circle mr-2 mt-1"></i>Không xác định được phiên bản iOS thiết bị.';
     } else if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
-      installLink.innerHTML = '<span class="icon">✔</span> Cài trực tiếp (Tương thích)';
+      installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
       installLink.classList.add('compatible');
       installLink.classList.remove('incompatible', 'unknown');
+      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-green-500 hover:bg-green-600 flex items-center justify-center';
       installLink.title = `Tương thích với iOS ${userIOSVersion}`;
+      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-300 flex';
+      document.getElementById('compatNote').innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userIOSVersion} tương thích (yêu cầu iOS ${minimumOSVersion})`;
     } else {
-      installLink.innerHTML = '<span class="icon">⚠</span> Cài trực tiếp (Không tương thích)';
+      installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('incompatible');
       installLink.classList.remove('compatible', 'unknown');
+      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-red-500 opacity-80 cursor-not-allowed flex items-center justify-center';
       installLink.title = `Yêu cầu iOS ${minimumOSVersion}, thiết bị của bạn là iOS ${userIOSVersion}`;
+      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
+      document.getElementById('compatNote').innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userIOSVersion}) KHÔNG tương thích. Yêu cầu iOS ${minimumOSVersion}.`;
     }
   };
 
@@ -229,6 +256,7 @@ const hideError = () => {
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onopen = () => {
       console.log('SSE connection opened');
+      updateProgressSteps('Đã kết nối với máy chủ', 'success');
     };
 
     eventSource.onmessage = (event) => {
@@ -236,8 +264,7 @@ const hideError = () => {
       try {
         const data = JSON.parse(event.data);
         console.log(`Progress: ${data.progress}%`);
-        setProgress(data.progress);
-        showToast(`Tiến trình: ${data.progress}%`, 'success');
+        updateProgressSteps(`Tiến trình tải: ${data.progress}%`, 'success');
 
         if (data.status === 'complete') {
           console.log('Download complete:', data);
@@ -252,6 +279,7 @@ const hideError = () => {
           downloadLink.href = data.downloadUrl || '#';
           downloadLink.download = data.fileName || 'app.ipa';
           const installLink = document.getElementById('installLink');
+          installLink.dataset.href = data.installUrl || '#';
           if (data.installUrl) {
             installLink.href = data.installUrl;
             installLink.classList.remove('hidden');
@@ -260,7 +288,6 @@ const hideError = () => {
           }
 
           updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
-          showToast('Tải thành công!', 'success');
           transition(elements.step3, elements.result);
           setProgress(4);
           setLoading(false);
@@ -270,7 +297,7 @@ const hideError = () => {
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
           showError(data.error || 'Tải ứng dụng thất bại.');
-          showToast('Lỗi tải ứng dụng!', 'error');
+          updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
           eventSource.close();
           eventSource = null;
@@ -279,7 +306,7 @@ const hideError = () => {
       } catch (error) {
         console.error('SSE parse error:', error, event.data);
         showError('Lỗi xử lý tiến trình tải.');
-        showToast('Lỗi tiến trình!', 'error');
+        updateProgressSteps('Lỗi xử lý tiến trình', 'error');
         setLoading(false);
         eventSource?.close();
         eventSource = null;
@@ -289,7 +316,7 @@ const hideError = () => {
     eventSource.onerror = () => {
       console.error('SSE connection error');
       showError('Mất kết nối với server.');
-      showToast('Lỗi kết nối!', 'error');
+      updateProgressSteps('Lỗi kết nối với server', 'error');
       setLoading(false);
       eventSource?.close();
       eventSource = null;
@@ -448,6 +475,8 @@ const hideError = () => {
       
       hideError();
       setLoading(true);
+      clearProgressSteps();
+      updateProgressSteps('Bắt đầu tải ứng dụng', 'pending');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
@@ -455,12 +484,14 @@ const hideError = () => {
 
       if (!APPID) {
         showError('Vui lòng nhập App ID hợp lệ.');
+        updateProgressSteps('Lỗi: App ID không hợp lệ', 'error');
         setLoading(false);
         return;
       }
 
       if (state.requires2FA && !state.verified2FA) {
         showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
+        updateProgressSteps('Lỗi: Yêu cầu xác thực 2FA', 'error');
         setLoading(false);
         transition(elements.step3, elements.step2);
         return;
@@ -470,6 +501,7 @@ const hideError = () => {
 
       try {
         console.log('Sending /download request');
+        updateProgressSteps('Gửi yêu cầu tải đến máy chủ', 'pending');
         const response = await fetch('/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -487,19 +519,23 @@ const hideError = () => {
         console.log('Download response:', data);
 
         if (data.require2FA) {
+          updateProgressSteps('Yêu cầu xác thực 2FA', 'pending');
           handle2FARedirect(data);
           setLoading(false);
         } else if (data.success && data.requestId) {
           state.requestId = data.requestId;
           console.log(`Starting progress listener for requestId: ${data.requestId}`);
+          updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
         } else {
           showError(data.error || 'Tải ứng dụng thất bại.');
+          updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
         }
       } catch (error) {
         console.error('Download error:', error);
         showError('Không thể kết nối tới máy chủ.');
+        updateProgressSteps('Lỗi kết nối máy chủ', 'error');
         setLoading(false);
       }
     });
