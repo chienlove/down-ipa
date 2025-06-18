@@ -58,7 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
     requires2FA: false,
     requestId: null,
     iosVersion: null,
-    lastProgressStep: null
+    lastProgressStep: null,
+    progressHistory: [] // Theo dõi các mốc progress đã nhận
   };
 
   let isLoading = false;
@@ -156,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (elements.progressSteps) {
       elements.progressSteps.innerHTML = '';
       state.lastProgressStep = null; // Reset bước cuối
+      state.progressHistory = []; // Reset lịch sử progress
     }
   };
 
@@ -271,6 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = JSON.parse(event.data);
         console.log(`Progress: ${data.progress}%, Status: ${data.status}`);
 
+        // Theo dõi lịch sử progress
+        if (!state.progressHistory.includes(data.progress)) {
+          state.progressHistory.push(data.progress);
+        }
+
         // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
         switch (data.progress) {
@@ -296,11 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Ignoring unknown progress: ${data.progress}`);
             return; // Bỏ qua nếu progress không khớp
         }
-        updateProgressSteps(stepMessage, 'success');
+        if (stepMessage) updateProgressSteps(stepMessage, 'success');
 
+        // Xử lý khi hoàn thành
         if (data.status === 'complete') {
           console.log('Download complete:', data);
-          // Trì hoãn chuyển bước để đảm bảo hiển thị tất cả tiến trình
+          // Đợi 500ms để hiển thị bước 100 trước khi chuyển
           setTimeout(() => {
             const appInfo = data.appInfo || {};
             document.getElementById('appName').textContent = appInfo.name || 'Unknown';
@@ -348,10 +356,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    eventSource.onerror = () => {
-      console.error('SSE connection error');
-      showError('Mất kết nối với server.');
-      updateProgressSteps('Lỗi kết nối với server', 'error');
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      // Chỉ hiển thị lỗi nếu chưa nhận status: complete
+      if (!state.progressHistory.includes(100)) {
+        showError('Mất kết nối với server.');
+        updateProgressSteps('Lỗi kết nối với server', 'error');
+      }
       setLoading(false);
       eventSource?.close();
       eventSource = null;
