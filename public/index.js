@@ -12,7 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
     errorBox: document.getElementById('error'),
     errorMessage: document.getElementById('errorMessage'),
     verifyMessage: document.getElementById('verifyMessage'),
-    progressBar: document.getElementById('progressBar'),
     togglePassword: document.getElementById('togglePassword'),
     passwordInput: document.getElementById('PASSWORD'),
     appleIdInput: document.getElementById('APPLE_ID'),
