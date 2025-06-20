@@ -17,7 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
-    appVerInput: document.getElementById('APP_VER_ID')
+    appVerInput: document.getElementById('APP_VER_ID'),
+    progressBar: document.getElementById('progressBar') // Thêm thanh tiến trình
   };
 
   // Kiểm tra DOM elements an toàn
@@ -156,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressSteps.innerHTML = '';
       state.lastProgressStep = null; // Reset bước cuối
       state.progressHistory = []; // Reset lịch sử progress
+      elements.progressBar.style.width = '0%'; // Reset thanh tiến trình về 0
     }
   };
 
@@ -522,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       hideError();
       setLoading(true);
-      clearProgressSteps();
+      clearProgressSteps(); // Xóa sạch tiến trình trước khi bắt đầu
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
