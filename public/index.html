@@ -32,10 +32,39 @@
     .progress-step.success .progress-icon { color: #10b981; }
     .progress-step.error .progress-icon { color: #ef4444; }
     .progress-step.pending .progress-icon { color: #6b7280; }
-    /* Đảm bảo card container không bị tràn */
-    #step3 {
-      max-width: 100%;
-      overflow: hidden;
+
+    /* Thanh tiến trình đẹp hơn */
+    #progressBar {
+      width: 0%;
+      height: 8px;
+      background-color: #3b82f6;
+      border-radius: 4px;
+      transition: width 0.3s ease-in-out;
+      margin-top: 8px;
+      box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+    }
+
+    /* CSS cho trạng thái loading */
+    .progress-loading {
+      background-color: #d1d5db;
+      animation: pulse 1.5s infinite;
+    }
+    .button-loading {
+      position: relative;
+      opacity: 0.7;
+    }
+    .button-loading::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffffff;
+      border-top: 2px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
     }
     .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
     .toast { padding: 10px 20px; margin-bottom: 10px; border-radius: 5px; display: flex; align-items: center; }
@@ -172,6 +201,7 @@
           📥 Tải IPA
         </button>
         <div id="progressSteps" class="mt-4"></div>
+        <div id="progressBar" class="mt-4">
     </div>
 
     <div id="result" class="hidden">
