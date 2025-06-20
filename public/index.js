@@ -57,8 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dsid: null,
     requires2FA: false,
     requestId: null,
-    iosVersion: null,
-    lastProgressStep: null
+    iosVersion: null
   };
 
   let isLoading = false;
@@ -106,10 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`Transition from ${from?.id} to ${to?.id}`);
     if (!from || !to) {
       console.error('Invalid transition elements:', { from, to });
+      showError('Lỗi chuyển đổi giao diện');
       return;
     }
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
       if (step && step !== to) {
+        console.log(`Hiding step: ${step.id}`);
         step.classList.add('hidden');
         step.style.display = 'none';
       }
@@ -121,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
       from.classList.remove('fade-out');
       to.classList.remove('hidden');
       to.style.display = 'block';
+      console.log(`Showing step: ${to.id}`);
       to.classList.add('fade-in');
       setTimeout(() => to.classList.remove('fade-in'), 300);
     }, 300);
@@ -136,10 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Hiển thị chi tiết tiến trình
   const updateProgressSteps = (message, status = 'pending') => {
     if (!elements.progressSteps) return;
-    if (state.lastProgressStep === message) return; // Ngăn lặp lại bước
+    if (state.lastProgressStep === message) return;
     state.lastProgressStep = message;
     const step = document.createElement('div');
     step.className = `progress-step ${status}`;
@@ -153,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearProgressSteps = () => {
     if (elements.progressSteps) {
       elements.progressSteps.innerHTML = '';
-      state.lastProgressStep = null; // Reset bước cuối
+      state.lastProgressStep = null;
     }
   };
 
@@ -171,6 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn) {
           btn.classList.add('button-loading');
           btn.disabled = true;
+          if (!btn.dataset.originalText) {
+            btn.dataset.originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>' + btn.innerHTML;
+          }
         }
       });
     } else {
@@ -180,6 +185,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (btn) {
             btn.classList.remove('button-loading');
             btn.disabled = false;
+            if (btn.dataset.originalText) {
+              btn.innerHTML = btn.dataset.originalText;
+              delete btn.dataset.originalText;
+            }
           }
         });
       }, 300);
@@ -269,7 +278,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = JSON.parse(event.data);
         console.log(`Progress: ${data.progress}%`);
 
-        // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
         switch (data.progress) {
           case 10:
@@ -291,12 +299,20 @@ document.addEventListener('DOMContentLoaded', () => {
             stepMessage = 'Hoàn tất tải ứng dụng';
             break;
           default:
-            return; // Bỏ qua nếu progress không khớp
+            return;
         }
         updateProgressSteps(stepMessage, 'success');
 
         if (data.status === 'complete') {
-          console.log('Download complete:', data);
+          console.log('Download complete data:', JSON.stringify(data, null, 2));
+          if (!elements.result) {
+            console.error('Result element not found');
+            showError('Lỗi giao diện: Không tìm thấy phần tử kết quả');
+            setLoading(false);
+            eventSource.close();
+            eventSource = null;
+            return;
+          }
           const appInfo = data.appInfo || {};
           document.getElementById('appName').textContent = appInfo.name || 'Unknown';
           document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
@@ -431,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Toggle password clicked');
       const isPassword = elements.passwordInput.type === 'password';
       elements.passwordInput.type = isPassword ? 'text' : 'password';
-      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
+      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer' : 'fas fa-eye password-toggle absolute right-3 top-1/2 transform -translate-y-1/2 cursor-pointer';
     });
   }
 
