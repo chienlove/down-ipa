@@ -12,13 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
     errorBox: document.getElementById('error'),
     errorMessage: document.getElementById('errorMessage'),
     verifyMessage: document.getElementById('verifyMessage'),
+    progressBar: document.getElementById('progressBar'),
     togglePassword: document.getElementById('togglePassword'),
     passwordInput: document.getElementById('PASSWORD'),
     appleIdInput: document.getElementById('APPLE_ID'),
     verificationCodeInput: document.getElementById('VERIFICATION_CODE'),
     appIdInput: document.getElementById('APPID'),
     appVerInput: document.getElementById('APP_VER_ID'),
-    progressBar: document.getElementById('progressBar') // Thêm thanh tiến trình
+    progressSteps: document.getElementById('progressSteps')
   };
 
   // Kiểm tra DOM elements an toàn
@@ -57,8 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     requires2FA: false,
     requestId: null,
     iosVersion: null,
-    lastProgressStep: null,
-    progressHistory: [] // Theo dõi các mốc progress đã nhận
+    lastProgressStep: null
   };
 
   let isLoading = false;
@@ -148,16 +148,12 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     elements.progressSteps.appendChild(step);
-    // Cuộn xuống cuối để thấy bước mới nhất
-    elements.progressSteps.scrollTop = elements.progressSteps.scrollHeight;
   };
 
   const clearProgressSteps = () => {
     if (elements.progressSteps) {
       elements.progressSteps.innerHTML = '';
       state.lastProgressStep = null; // Reset bước cuối
-      state.progressHistory = []; // Reset lịch sử progress
-      elements.progressBar.style.width = '0%'; // Reset thanh tiến trình về 0
     }
   };
 
@@ -271,12 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('SSE message received:', event.data);
       try {
         const data = JSON.parse(event.data);
-        console.log(`Progress: ${data.progress}%, Status: ${data.status}`);
-
-        // Theo dõi lịch sử progress
-        if (!state.progressHistory.includes(data.progress)) {
-          state.progressHistory.push(data.progress);
-        }
+        console.log(`Progress: ${data.progress}%`);
 
         // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
@@ -300,43 +291,38 @@ document.addEventListener('DOMContentLoaded', () => {
             stepMessage = 'Hoàn tất tải ứng dụng';
             break;
           default:
-            console.log(`Ignoring unknown progress: ${data.progress}`);
             return; // Bỏ qua nếu progress không khớp
         }
-        if (stepMessage) updateProgressSteps(stepMessage, 'success');
+        updateProgressSteps(stepMessage, 'success');
 
-        // Xử lý khi hoàn thành
         if (data.status === 'complete') {
           console.log('Download complete:', data);
-          // Đợi 500ms để hiển thị bước 100 trước khi chuyển
-          setTimeout(() => {
-            const appInfo = data.appInfo || {};
-            document.getElementById('appName').textContent = appInfo.name || 'Unknown';
-            document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
-            document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
-            document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
-            document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
-            document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
-            const downloadLink = document.getElementById('downloadLink');
-            downloadLink.href = data.downloadUrl || '#';
-            downloadLink.download = data.fileName || 'app.ipa';
-            const installLink = document.getElementById('installLink');
-            installLink.dataset.href = data.installUrl || '#';
-            if (data.installUrl) {
-              installLink.href = data.installUrl;
-              installLink.classList.remove('hidden');
-            } else {
-              installLink.classList.add('hidden');
-            }
+          const appInfo = data.appInfo || {};
+          document.getElementById('appName').textContent = appInfo.name || 'Unknown';
+          document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
+          document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
+          document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
+          document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
+          document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
+          const downloadLink = document.getElementById('downloadLink');
+          downloadLink.href = data.downloadUrl || '#';
+          downloadLink.download = data.fileName || 'app.ipa';
+          const installLink = document.getElementById('installLink');
+          installLink.dataset.href = data.installUrl || '#';
+          if (data.installUrl) {
+            installLink.href = data.installUrl;
+            installLink.classList.remove('hidden');
+          } else {
+            installLink.classList.add('hidden');
+          }
 
-            updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
-            transition(elements.step3, elements.result);
-            setProgress(4);
-            setLoading(false);
-            eventSource.close();
-            eventSource = null;
-            console.log('SSE closed after completion');
-          }, 500);
+          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
+          transition(elements.step3, elements.result);
+          setProgress(4);
+          setLoading(false);
+          eventSource.close();
+          eventSource = null;
+          console.log('SSE closed after completion');
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
           showError(data.error || 'Tải ứng dụng thất bại.');
@@ -356,13 +342,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      // Chỉ hiển thị lỗi nếu chưa nhận status: complete
-      if (!state.progressHistory.includes(100)) {
-        showError('Mất kết nối với server.');
-        updateProgressSteps('Lỗi kết nối với server', 'error');
-      }
+    eventSource.onerror = () => {
+      console.error('SSE connection error');
+      showError('Mất kết nối với server.');
+      updateProgressSteps('Lỗi kết nối với server', 'error');
       setLoading(false);
       eventSource?.close();
       eventSource = null;
@@ -524,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       hideError();
       setLoading(true);
-      clearProgressSteps(); // Xóa sạch tiến trình trước khi bắt đầu
+      clearProgressSteps();
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
