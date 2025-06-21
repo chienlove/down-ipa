@@ -504,7 +504,8 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
         downloadUrl: ipaUrl, 
         installUrl, 
         r2Success,
-        appInfo
+        appInfo,
+        fileSizeMB: (fileSize / 1024 / 1024).toFixed(2)
       });
 
       return {
