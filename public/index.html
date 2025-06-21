@@ -2,135 +2,118 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>IPADL Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <script src="https://kit.fontawesome.com/a2e0da8488.js" crossorigin="anonymous"></script>
+  <title>IPADL Pro</title>
   <style>
-    .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; }
-    .toast { padding: 10px 20px; margin-bottom: 10px; border-radius: 5px; display: flex; align-items: center; }
-    .toast-success { background: #4caf50; color: white; }
-    .toast-error { background: #f44336; color: white; }
-    .toast-icon { margin-right: 10px; }
-    .toast.show { opacity: 1; }
-    .hidden { display: none !important; }
+    /* Thêm style cho progressSteps và progress-step */
+    #progressSteps {
+      max-height: 150px;
+      overflow-y: auto;
+      padding: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background-color: #f9fafb;
+      margin-top: 8px;
+    }
+    .progress-step {
+      display: flex;
+      align-items: center;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 4px;
+    }
+    .progress-icon {
+      margin-right: 8px;
+      font-size: 16px;
+    }
+    .progress-step.success .progress-icon { color: #10b981; }
+    .progress-step.error .progress-icon { color: #ef4444; }
+    .progress-step.pending .progress-icon { color: #6b7280; }
+    /* Style cho icon trong tiêu đề thành công */
+    .success-icon {
+      margin-right: 8px;
+      color: #10b981;
+      font-size: 18px;
+    }
+    /* Đảm bảo card container không bị tràn */
+    #step3 {
+      max-width: 100%;
+      overflow: hidden;
+    }
+    /* Các style khác (giả định từ file gốc) */
+    .hidden { display: none; }
+    .btn { padding: 8px 16px; }
+    .btn-primary { background-color: #2563eb; color: white; }
     .fade-in { animation: fadeIn 0.3s; }
     .fade-out { animation: fadeOut 0.3s; }
-    .progress-loading { animation: pulse 1.5s infinite; }
-    .button-loading { opacity: 0.6; cursor: not-allowed; }
-    .progress-step { display: flex; align-items: center; margin-top: 10px; }
-    .progress-step.success .progress-icon { color: #4caf50; }
-    .progress-step.error .progress-icon { color: #f44336; }
-    .progress-step.pending .progress-icon { color: #ff9800; }
-    .progress-icon { margin-right: 10px; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+    }
+    .toast {
+      background: #fff;
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+    }
+    .toast-success { border-left: 4px solid #10b981; }
+    .toast-icon { margin-right: 8px; }
   </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans p-6">
-  <div class="max-w-3xl mx-auto bg-white shadow-xl rounded-2xl p-8">
-    <h1 class="text-3xl font-bold mb-6"><i class="fas fa-rocket mr-2"></i> IPADL Pro</h1>
+<body>
+  <div id="step1">
+    <h2>Apple ID</h2>
+    <input id="APPLE_ID" type="text" placeholder="Apple ID">
+    <h2>Mật khẩu Apple ID</h2>
+    <input id="PASSWORD" type="password" placeholder="Mật khẩu">
+    <p>Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.</p>
+    <button id="loginBtn" class="btn btn-primary">Đăng nhập</button>
+  </div>
 
-    <div id="error" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-      <span id="errorMessage"></span>
+  <div id="step2" class="hidden">
+    <div id="verifyMessage"></div>
+    <input id="VERIFICATION_CODE" type="text" placeholder="Mã xác minh 2FA">
+    <button id="verifyBtn" class="btn btn-primary">Xác thực</button>
+  </div>
+
+  <div id="step3" class="hidden">
+    <input id="APPID" type="text" placeholder="App ID hoặc URL AppStore">
+    <input id="APP_VER_ID" type="text" placeholder="ID VerSion (tùy chọn)">
+    <button id="downloadBtn" class="btn btn-primary">Tải IPA</button>
+    <div id="progressSteps"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <h2><span class="success-icon">✓</span> Tải thành công!</h2>
+    <p>Thông tin chi tiết và các lựa chọn cài đặt ứng dụng:</p>
+    <div>
+      <p><strong>Tên ứng dụng</strong> <span id="appName">Unknown</span></p>
+      <p><strong>Phiên bản</strong> <span id="appVersion">Unknown</span></p>
+      <p><strong>Ngày phát hành</strong> <span id="appDate">Unknown</span></p>
     </div>
-
-    <div id="step1">
-      <div class="mb-4">
-        <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
-        <input id="APPLE_ID" type="email" class="mt-1 p-2 w-full border rounded" placeholder="abc@example.com">
-      </div>
-      <div class="mb-4 relative">
-        <label for="PASSWORD" class="block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
-        <input id="PASSWORD" type="password" class="mt-1 p-2 w-full border rounded">
-        <i id="togglePassword" class="fas fa-eye password-toggle absolute right-3 top-9 cursor-pointer"></i>
-      </div>
-      <p class="text-sm text-gray-500 mb-4">
-        Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.
-      </p>
-      <button id="loginBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Đăng nhập</button>
+    <div>
+      <p><strong>Tác giả</strong> <span id="appAuthor">Unknown</span></p>
+      <p><strong>Bundle ID</strong> <span id="appBundleId">Unknown</span></p>
+      <p><strong>Yêu cầu iOS</strong> <span id="minimumOSVersion">Unknown</span></p>
     </div>
-
-    <div id="step2" class="hidden">
-      <div class="mb-4">
-        <p id="verifyMessage" class="text-gray-700"></p>
-      </div>
-      <div class="mb-4">
-        <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
-        <input id="VERIFICATION_CODE" type="text" class="mt-1 p-2 w-full border rounded" maxlength="6">
-      </div>
-      <button id="verifyBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Xác thực</button>
+    <div>
+      <a id="downloadLink" class="btn btn-primary"><i class="fas fa-download"></i> Tải file IPA</a>
+      <a id="installLink" class="btn btn-primary hidden"><i class="fas fa-mobile-alt"></i> Cài trực tiếp</a>
     </div>
+    <div id="compatNote">Đang kiểm tra khả năng tương thích với thiết bị của bạn...</div>
+    <p>File IPA có thể được cài qua AltStore, Sideloadly hoặc công cụ bên thứ ba khác.</p>
+  </div>
 
-    <div id="step3" class="hidden">
-      <div class="mb-4">
-        <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL AppStore</label>
-        <input id="APPID" type="text" class="mt-1 p-2 w-full border rounded" placeholder="Nhập ID ứng dụng (số) hoặc URL từ App Store">
-      </div>
-      <div class="mb-4">
-        <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">ID VerSion (tùy chọn)</label>
-        <input id="APP_VER_ID" type="text" class="mt-1 p-2 w-full border rounded" placeholder="Để trống sẽ tải phiên bản mới nhất">
-      </div>
-      <button id="downloadBtn" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fas fa-download mr-2"></i> Tải IPA</button>
-      <div id="progressSteps" class="mt-4"></div>
-      <div id="progressBar" class="mt-4"></div>
-
-    <div id="result" class="hidden">
-      <div class="flex items-center mb-6">
-        <div class="w-12 h-12 bg-indigo-100 text-indigo-600 flex items-center justify-center rounded-full mr-4">
-          <i class="fas fa-check-circle text-xl"></i>
-        </div>
-        <h2 class="text-2xl font-bold text-gray-900">Tải thành công!</h2>
-      </div>
-      <p class="text-gray-600 mb-6">Thông tin chi tiết và các lựa chọn cài đặt ứng dụng:</p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 text-sm mb-6 bg-white">
-        <div class="divide-y divide-gray-200">
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Tên ứng dụng</span>
-            <span class="text-gray-800 font-medium text-right" id="appName">Unknown</span>
-          </div>
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Phiên bản</span>
-            <span class="text-gray-800 font-medium text-right" id="appVersion">Unknown</span>
-          </div>
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Ngày phát hành</span>
-            <span class="text-gray-800 font-medium text-right" id="appDate">Unknown</span>
-          </div>
-        </div>
-        <div class="divide-y divide-gray-200">
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Tác giả</span>
-            <span class="text-gray-800 font-medium text-right" id="appAuthor">Unknown</span>
-          </div>
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Bundle ID</span>
-            <span class="text-gray-800 font-medium text-right" id="appBundleId">Unknown</span>
-          </div>
-          <div class="flex justify-between px-4 py-3">
-            <span class="text-gray-500">Yêu cầu iOS</span>
-            <span class="text-gray-800 font-medium text-right" id="minimumOSVersion">Unknown</span>
-          </div>
-        </div>
-      </div>
-      <div class="flex flex-col sm:flex-row gap-4 mb-4">
-        <a id="downloadLink" href="#" download class="px-6 py-3 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition flex items-center justify-center">
-          <i class="fas fa-download mr-2"></i> Tải file IPA
-        </a>
-        <a id="installLink" href="#" class="px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center">
-          <i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp
-        </a>
-      </div>
-      <div id="compatNote" class="mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start">
-        <i class="fas fa-spinner fa-spin mr-2 mt-1"></i>
-        <span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>
-      </div>
-      <p class="text-xs text-gray-400 mt-6">
-        <i class="fas fa-info-circle mr-1"></i>
-        File IPA có thể được cài qua AltStore, Sideloadly hoặc công cụ bên thứ ba khác.
-      </p>
-    </div>
+  <div id="error" class="hidden">
+    <p id="errorMessage"></p>
+  </div>
 
   <script src="index.js"></script>
 </body>
