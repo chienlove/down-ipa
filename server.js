@@ -314,6 +314,8 @@ class IPATool {
         version: songList0.metadata.bundleShortVersionString || 'Unknown',
         bundleId: songList0.metadata.softwareVersionBundleId || 'Unknown',
         releaseDate: songList0.metadata.releaseDate || 'Unknown',
+        fileSize:
+songList0.metadata.fileSize || 'unknown',
       };
 
       await fsPromises.mkdir(downloadPath, { recursive: true });
