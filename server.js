@@ -515,6 +515,7 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
         downloadUrl: ipaUrl,
         installUrl,
         r2UploadSuccess: r2Success,
+        fileSizeMB: (fileSize / 1024 / 1024).toFixed(2)
       };
     } catch (error) {
       console.error('Download error:', error);
