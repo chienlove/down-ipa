@@ -1,0 +1,4 @@
+services:
+  - name: down-ipa
+    docker:
+      file: Dockerfile
