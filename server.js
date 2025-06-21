@@ -333,6 +333,12 @@ class IPATool {
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
+      const MAX_FILE_SIZE_MB = 300;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+if (fileSize > MAX_FILE_SIZE_BYTES) {
+  throw new Error(`File IPA vượt quá giới hạn ${MAX_FILE_SIZE_MB}MB. Kích thước thực: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+}
       const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
