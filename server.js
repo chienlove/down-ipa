@@ -333,7 +333,7 @@ class IPATool {
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
       const fileSize = Number(resp.headers.get('content-length'));
-      const MAX_FILE_SIZE_MB = 1500;
+      const MAX_FILE_SIZE_MB = 300;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 if (fileSize > MAX_FILE_SIZE_BYTES) {
