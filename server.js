@@ -567,45 +567,53 @@ app.get('/status/:id', (req, res) => {
 });
 
 app.post('/auth', async (req, res) => {
-  console.log('Received /auth request:', { body: req.body });
+  const { email, password } = req.body;
+
   try {
-    const { APPLE_ID, PASSWORD } = req.body;
-    if (!APPLE_ID || !PASSWORD) {
-      console.log('Missing APPLE_ID or PASSWORD');
-      return res.status(400).json({
+    const response = await fetch('https://idmsa.apple.com/appleauth/auth/signin', {
+      method: 'POST',
+      headers: {
+  'Content-Type': 'application/json',
+  'X-Apple-Widget-Key': 'd79d0f94cbda3d175c4e6e06c3c05d4f',
+},
+      body: JSON.stringify({
+        accountName: email,
+        password,
+        rememberMe: true,
+      }),
+    });
+
+    const debugLog = await response.json();
+    const user = debugLog || {};
+
+    const messageLower = user.customerMessage?.toLowerCase() || '';
+    const failureLower = user.failureType?.toLowerCase() || '';
+
+    const is2FA = (
+      failureLower.includes('mfa') ||
+      messageLower.includes('two-factor') ||
+      messageLower.includes('trusted') ||
+      messageLower.includes('verification code') ||
+      messageLower.includes('code') ||
+      messageLower.includes('2fa')
+    );
+
+    const isBadLogin = messageLower.includes('badlogin') || messageLower.includes('incorrect') || messageLower.includes('invalid');
+
+    // 🟥 Trường hợp sai tài khoản/mật khẩu
+    if (isBadLogin) {
+      console.log('❌ Invalid Apple ID or password');
+      return res.status(401).json({
         success: false,
-        error: 'APPLE_ID và PASSWORD là bắt buộc',
+        require2FA: false,
+        message: 'Apple ID hoặc mật khẩu không đúng.',
+        debug: debugLog,
       });
     }
 
-    console.log(`Authenticating Apple ID: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD);
-
-    console.log('Authentication result:', {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      dsid: user.dsPersonId,
-    });
-
-    const debugLog = {
-      _state: user._state,
-      failureType: user.failureType,
-      customerMessage: user.customerMessage,
-      authOptions: user.authOptions,
-      dsid: user.dsPersonId,
-    };
-
-    const needs2FA = (
-      user.customerMessage?.toLowerCase().includes('mã xác minh') ||
-      user.customerMessage?.toLowerCase().includes('two-factor') ||
-      user.customerMessage?.toLowerCase().includes('mfa') ||
-      user.customerMessage?.toLowerCase().includes('code') ||
-      user.customerMessage?.includes('Configurator_message')
-    );
-
-    if (needs2FA || user.failureType?.toLowerCase().includes('mfa')) {
-      console.log('2FA required');
+    // 🟨 Trường hợp cần xác minh 2FA
+    if (is2FA) {
+      console.log('🔐 2FA required');
       return res.json({
         success: false,
         require2FA: true,
@@ -615,8 +623,9 @@ app.post('/auth', async (req, res) => {
       });
     }
 
+    // ✅ Đăng nhập thành công, không cần 2FA
     if (user._state === 'success') {
-      console.log('Authentication successful');
+      console.log('✅ Authentication successful');
       return res.json({
         success: true,
         dsid: user.dsPersonId,
@@ -624,17 +633,20 @@ app.post('/auth', async (req, res) => {
       });
     }
 
-    console.log('Authentication failed:', user.customerMessage);
+    // ❓ Trường hợp không xác định
+    console.log('❌ Unknown failure:', user.customerMessage);
     return res.status(401).json({
       success: false,
-      error: user.customerMessage || 'Đăng nhập thất bại',
+      require2FA: false,
+      message: user.customerMessage || 'Đăng nhập thất bại',
       debug: debugLog,
     });
+
   } catch (error) {
-    console.error('Auth error:', error.message);
+    console.error('❌ Auth error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'Lỗi xác thực Apple ID',
+      message: 'Lỗi máy chủ',
     });
   }
 });
