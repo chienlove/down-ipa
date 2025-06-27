@@ -665,6 +665,37 @@ app.post('/auth', async (req, res) => {
   }
 });
 
+app.post('/verify', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE } = req.body;
+    
+    if (!APPLE_ID || !PASSWORD || !CODE) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      throw new Error(user.customerMessage || 'Verification failed');
+    }
+
+    res.json({ 
+      success: true,
+      dsid: user.dsPersonId
+    });
+  } catch (error) {
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
+    });
+  }
+});
+
 app.post('/download', async (req, res) => {
   console.log('Received /download request:', { body: req.body });
   try {
