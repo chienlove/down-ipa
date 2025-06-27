@@ -17,6 +17,10 @@
       border-radius: 4px;
       background-color: #f9fafb;
       margin-top: 8px;
+      display: none; /* Ẩn mặc định */
+    }
+    #progressSteps:not(:empty) {
+      display: block; /* Chỉ hiển thị khi có nội dung */
     }
     .progress-step {
       display: flex;
@@ -32,17 +36,20 @@
     .progress-step.success .progress-icon { color: #10b981; }
     .progress-step.error .progress-icon { color: #ef4444; }
     .progress-step.pending .progress-icon { color: #6b7280; }
+    
     /* Style cho icon trong tiêu đề thành công */
     .success-icon {
       margin-right: 8px;
       color: #10b981;
       font-size: 18px;
     }
+    
     /* Đảm bảo card container không bị tràn */
     #step3 {
       max-width: 100%;
       overflow: hidden;
     }
+    
     /* Animation slide-up */
     .slide-up {
       animation: slideUp 0.5s ease-out;
@@ -51,14 +58,8 @@
       from { transform: translateY(20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
-    /* Các style khác */
-    .hidden { display: none; }
-    .btn { padding: 8px 16px; }
-    .btn-primary { background-color: #2563eb; color: white; }
-    .fade-in { animation: fadeIn 0.3s; }
-    .fade-out { animation: fadeOut 0.3s; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    
+    /* Toast notification */
     .toast-container {
       position: fixed;
       top: 20px;
@@ -67,33 +68,65 @@
     }
     .toast {
       background: #fff;
-      border-radius: 4px;
-      padding: 12px;
+      border-radius: 8px;
+      padding: 12px 16px;
       margin-bottom: 10px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       display: flex;
       align-items: center;
+      max-width: 300px;
+      opacity: 0;
+      transform: translateY(-20px);
+      animation: toastFadeIn 0.3s ease-out forwards;
     }
-    .toast-success { border-left: 4px solid #10b981; }
-    .toast-icon { margin-right: 8px; }
+    .toast-success {
+      border-left: 4px solid #10b981;
+    }
+    .toast-error {
+      border-left: 4px solid #ef4444;
+    }
+    .toast-icon {
+      margin-right: 10px;
+      font-size: 18px;
+    }
+    @keyframes toastFadeIn {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    @keyframes toastFadeOut {
+      to {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+    }
+    
+    /* Input số cho mã 2FA */
     input[type="tel"]::-webkit-inner-spin-button,
-input[type="tel"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type="tel"] {
-  -moz-appearance: textfield;
-}
-#progressSteps:empty, 
-#progressBar:empty {
-  display: none !important;
-}
+    input[type="tel"]::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type="tel"] {
+      -moz-appearance: textfield;
+    }
+    
+    /* Các style khác */
+    .hidden { display: none; }
+    .btn { padding: 8px 16px; }
+    .btn-primary { background-color: #2563eb; color: white; }
+    .fade-in { animation: fadeIn 0.3s; }
+    .fade-out { animation: fadeOut 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
   <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
-    
     <div class="p-6 space-y-6">
       <h1 class="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500">
         🚀 IPADL Pro
@@ -132,7 +165,7 @@ input[type="tel"] {
               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-12"
               placeholder="••••••••"
               autocomplete="current-password">
-            <button type="button" id="togglePassword" class="absolute password-toggle text-gray-500 hover:text-gray-700">
+            <button type="button" id="togglePassword" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700">
               <svg id="eyeIcon" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -168,14 +201,14 @@ input[type="tel"] {
         <div class="space-y-1">
           <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
           <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
-       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-       placeholder="123456"
-       maxlength="6"
-       inputmode="numeric"
-       type="tel"
-       pattern="[0-9]*"
-       autocomplete="one-time-code"
-       oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            placeholder="123456"
+            maxlength="6"
+            inputmode="numeric"
+            type="tel"
+            pattern="[0-9]*"
+            autocomplete="one-time-code"
+            oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         </div>
 
         <button id="verifyBtn"
@@ -207,10 +240,13 @@ input[type="tel"] {
           📥 Tải IPA
         </button>
       </div>
+      
+      <!-- Progress Sections -->
       <div id="progressSteps" class="mt-4"></div>
-      <div id="progressBar" class="mt-4"></div>
+      <div id="progressBar" class="mt-4 hidden"></div>
     </div>
 
+    <!-- Result Section -->
     <div id="result" class="hidden">
       <div class="flex items-center mb-6">
         <div class="w-8 h-8 bg-green-100 text-green-600 flex items-center justify-center rounded-full mr-4">
@@ -272,6 +308,43 @@ input[type="tel"] {
     </div>
   </div>
 
-  <script src="index.js"></script>
+  <script>
+    // Toast Functionality
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerHTML = `
+        <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} toast-icon"></i>
+        ${message}
+      `;
+      
+      const container = document.getElementById('toastContainer');
+      container.appendChild(toast);
+      
+      // Auto remove after 3 seconds
+      setTimeout(() => {
+        toast.style.animation = 'toastFadeOut 0.3s forwards';
+        toast.addEventListener('animationend', () => toast.remove());
+      }, 3000);
+    }
+    
+    // Password Toggle
+    document.getElementById('togglePassword').addEventListener('click', function() {
+      const passwordInput = document.getElementById('PASSWORD');
+      const eyeIcon = this.querySelector('svg');
+      const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+      passwordInput.setAttribute('type', type);
+      eyeIcon.setAttribute('stroke', type === 'password' ? 'currentColor' : '#3b82f6');
+    });
+    
+    // Demo toast on login/verify
+    document.getElementById('loginBtn').addEventListener('click', () => {
+      setTimeout(() => showToast('Đăng nhập thành công!', 'success'), 1000);
+    });
+    
+    document.getElementById('verifyBtn').addEventListener('click', () => {
+      setTimeout(() => showToast('Xác thực thành công!', 'success'), 1000);
+    });
+  </script>
 </body>
 </html>
