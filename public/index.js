@@ -332,10 +332,14 @@ document.getElementById('ipaFileSize').textContent = `${data.fileSizeMB || '...'
 
             updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
             transition(elements.step3, elements.result);
-            setProgress(4);
-            setLoading(false);
-            eventSource.close();
-            eventSource = null;
+setProgress(4);
+setLoading(false);
+
+elements.progressSteps.classList.add('hidden');
+elements.progressBar.classList.add('hidden');
+
+eventSource.close();
+eventSource = null;
             console.log('SSE closed after completion');
           }, 500);
         } else if (data.status === 'error') {
