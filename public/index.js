@@ -601,4 +601,47 @@ eventSource = null;
       }
     });
   }
+
+  // === Nút "Tải ứng dụng khác" từ step 4 quay lại step 3 ===
+  const anotherDownloadBtn = document.createElement('button');
+  anotherDownloadBtn.textContent = '🔁 Tải ứng dụng khác';
+  anotherDownloadBtn.className =
+    'w-full mt-4 px-6 py-3 rounded-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition flex items-center justify-center';
+  elements.result?.appendChild(anotherDownloadBtn);
+
+  anotherDownloadBtn.addEventListener('click', () => {
+    // Ẩn kết quả
+    elements.result.classList.add('hidden');
+
+    // Hiện lại step 3
+    elements.step3.classList.remove('hidden');
+
+    // Reset các input của step 3
+    elements.appIdInput.value = '';
+    elements.appVerInput.value = '';
+
+    // Reset trạng thái tiến trình
+    elements.progressSteps.innerHTML = '';
+    elements.progressSteps.classList.add('hidden');
+    elements.progressSteps.style.display = 'none';
+
+    elements.progressBar.style.width = '0%';
+    elements.progressBar.classList.add('hidden');
+    elements.progressBar.style.display = 'none';
+
+    // Reset thông tin ứng dụng đã hiển thị
+    ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = 'Unknown';
+    });
+
+    // Reset trạng thái tiến trình nếu cần
+    if (state?.progressHistory) {
+      state.progressHistory = [];
+    }
+
+    // Focus lại input
+    elements.appIdInput?.focus();
+  });
+
 });
