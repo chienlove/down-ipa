@@ -259,10 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Reset progress UI
     elements.progressBar.style.width = '0%';
-    elements.progressBar.classList.add('hidden');
-elements.progressBar.style.display = 'none';
-elements.progressSteps.classList.add('hidden');
-elements.progressSteps.style.display = 'none';
+    elements.progressBar.classList.remove('hidden');
+    elements.progressBar.style.display = 'block';
+    elements.progressSteps.classList.remove('hidden');
+    elements.progressSteps.style.display = 'block';
 
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onopen = () => {
@@ -535,11 +535,6 @@ elements.progressSteps.style.display = 'block';
 elements.progressBar.classList.remove('hidden');
 elements.progressBar.style.display = 'block';
 elements.progressBar.style.width = '0%';
-elements.progressSteps.classList.remove('hidden');
-elements.progressSteps.style.display = 'block';
-elements.progressBar.classList.remove('hidden');
-elements.progressBar.style.display = 'block';
-elements.progressBar.style.width = '0%';
 updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
 
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
@@ -621,11 +616,6 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
       // Reset toàn bộ trạng thái liên quan đến tải
       state.requestId = null;
       clearProgressSteps();
-elements.progressSteps.classList.remove('hidden');
-elements.progressSteps.style.display = 'block';
-elements.progressBar.classList.remove('hidden');
-elements.progressBar.style.display = 'block';
-elements.progressBar.style.width = '0%';
       isLoading = false;
       
       // Thêm hiệu ứng chuyển step
