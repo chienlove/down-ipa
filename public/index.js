@@ -535,6 +535,11 @@ elements.progressSteps.style.display = 'block';
 elements.progressBar.classList.remove('hidden');
 elements.progressBar.style.display = 'block';
 elements.progressBar.style.width = '0%';
+elements.progressSteps.classList.remove('hidden');
+elements.progressSteps.style.display = 'block';
+elements.progressBar.classList.remove('hidden');
+elements.progressBar.style.display = 'block';
+elements.progressBar.style.width = '0%';
 updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
 
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
@@ -616,6 +621,11 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
       // Reset toàn bộ trạng thái liên quan đến tải
       state.requestId = null;
       clearProgressSteps();
+elements.progressSteps.classList.remove('hidden');
+elements.progressSteps.style.display = 'block';
+elements.progressBar.classList.remove('hidden');
+elements.progressBar.style.display = 'block';
+elements.progressBar.style.width = '0%';
       isLoading = false;
       
       // Thêm hiệu ứng chuyển step
