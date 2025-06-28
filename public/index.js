@@ -336,7 +336,9 @@ setProgress(4);
 setLoading(false);
 
 elements.progressSteps.classList.add('hidden');
+elements.progressSteps.style.display = 'none';
 elements.progressBar.classList.add('hidden');
+elements.progressBar.style.display = 'none';
 
 eventSource.close();
 eventSource = null;
