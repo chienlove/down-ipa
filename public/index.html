@@ -79,15 +79,15 @@
       animation: toastFadeIn 0.3s ease-out forwards;
     }
     .toast-success {
-  border-left: 4px solid #10b981;
-  background-color: #ecfdf5; /* Nền xanh nhạt */
-  color: #065f46; /* Chữ xanh đậm */
-}
-   .toast-error {
-  border-left: 4px solid #ef4444;
-  background-color: #fef2f2; /* Nền đỏ nhạt */
-  color: #991b1b; /* Chữ đỏ đậm */
-}
+      border-left: 4px solid #10b981;
+      background-color: #ecfdf5;
+      color: #065f46;
+    }
+    .toast-error {
+      border-left: 4px solid #ef4444;
+      background-color: #fef2f2;
+      color: #991b1b;
+    }
     .toast-icon {
       margin-right: 10px;
       font-size: 18px;
@@ -156,21 +156,21 @@
 
       <!-- Step 1: Apple ID Login -->
       <div id="step1" class="space-y-4 animate__animated animate__fadeIn">
-      <!-- Security notice -->
-      <div id="securityNotice" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg fade-in">
-        <div class="flex">
-          <div class="flex-shrink-0 text-yellow-400">
-            <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-          </div>
-          <div class="ml-3">
-            <p class="text-sm text-yellow-700">
-              <strong>Lưu ý bảo mật:</strong> Chúng tôi không lưu trữ thông tin đăng nhập của bạn. Mọi thông tin chỉ được sử dụng để xác thực với Apple và sẽ bị xóa ngay sau khi hoàn tất.
-            </p>
+        <!-- Security notice -->
+        <div id="securityNotice" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg fade-in">
+          <div class="flex">
+            <div class="flex-shrink-0 text-yellow-400">
+              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm text-yellow-700">
+                <strong>Lưu ý bảo mật:</strong> Chúng tôi không lưu trữ thông tin đăng nhập của bạn. Mọi thông tin chỉ được sử dụng để xác thực với Apple và sẽ bị xóa ngay sau khi hoàn tất.
+              </p>
+            </div>
           </div>
         </div>
-      </div>
         <div class="space-y-1">
           <label for="APPLE_ID" class="block text-sm font-medium text-gray-700">Apple ID</label>
           <input id="APPLE_ID" name="APPLE_ID" required type="email"
@@ -263,9 +263,9 @@
       </div>
 
       <div id="error" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-  <strong class="font-bold">Lỗi:</strong>
-  <span id="errorMessage" class="block sm:inline">Có lỗi xảy ra.</span>
-</div>
+        <strong class="font-bold">Lỗi:</strong>
+        <span id="errorMessage" class="block sm:inline">Có lỗi xảy ra.</span>
+      </div>
       
       <!-- Progress Sections -->
       <div id="progressSteps" class="mt-4"></div>
@@ -329,12 +329,11 @@
       </div>
       <p class="text-xs text-gray-400 mt-6">
         <i class="fas fa-info-circle mr-1"></i>
-        <button id="downloadAnotherBtn"
-  class="w-full sm:w-auto px-6 py-3 rounded-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition flex items-center justify-center">
-  🔁 Tải ứng dụng khác
-</button>
-       <p> File IPA có thể được cài qua AltStore, Sideloadly hoặc công cụ bên thứ ba khác.
+        File IPA có thể được cài qua AltStore, Sideloadly hoặc công cụ bên thứ ba khác.
       </p>
+      <button id="downloadAnotherBtn" class="w-full mt-4 px-6 py-3 rounded-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition flex items-center justify-center">
+        🔁 Tải ứng dụng khác
+      </button>
     </div>
   </div>
   <script src="index.js"></script>
