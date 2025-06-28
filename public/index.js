@@ -294,13 +294,12 @@ if (data.progress < 10) {
   stepMessage = 'Đang tải IPA lên';
 } else if (data.progress === 100) {
   stepMessage = 'Hoàn tất tải ứng dụng';
+} else {
+  console.log(`Ignoring unknown progress: ${data.progress}`);
+  return; // Bỏ qua nếu progress không khớp
 }
-            break;
-          default:
-            console.log(`Ignoring unknown progress: ${data.progress}`);
-            return; // Bỏ qua nếu progress không khớp
-        }
-        if (stepMessage) updateProgressSteps(stepMessage, 'success');
+
+if (stepMessage) updateProgressSteps(stepMessage, 'success');
 
         // Xử lý khi hoàn thành
         if (data.status === 'complete') {
