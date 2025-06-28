@@ -280,28 +280,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
-switch (true) {
-  case data.progress < 10:
-    stepMessage = 'Khởi động tải';
-    break;
-  case data.progress >= 10 && data.progress < 20:
-    stepMessage = 'Đang xác thực Apple ID';
-    break;
-  case data.progress >= 20 && data.progress < 40:
-    stepMessage = 'Đang tải file IPA';
-    break;
-  case data.progress >= 40 && data.progress < 60:
-    stepMessage = 'Đang giải nén IPA';
-    break;
-  case data.progress >= 60 && data.progress < 80:
-    stepMessage = 'Đang ký IPA';
-    break;
-  case data.progress >= 80 && data.progress < 100:
-    stepMessage = 'Đang tải IPA lên';
-    break;
-  case data.progress === 100:
-    stepMessage = 'Hoàn tất tải ứng dụng';
-    break;
+if (data.progress < 10) {
+  stepMessage = 'Khởi động tải';
+} else if (data.progress >= 10 && data.progress < 20) {
+  stepMessage = 'Đang xác thực Apple ID';
+} else if (data.progress >= 20 && data.progress < 40) {
+  stepMessage = 'Đang tải file IPA';
+} else if (data.progress >= 40 && data.progress < 60) {
+  stepMessage = 'Đang giải nén IPA';
+} else if (data.progress >= 60 && data.progress < 80) {
+  stepMessage = 'Đang ký IPA';
+} else if (data.progress >= 80 && data.progress < 100) {
+  stepMessage = 'Đang tải IPA lên';
+} else if (data.progress === 100) {
+  stepMessage = 'Hoàn tất tải ứng dụng';
 }
             break;
           default:
