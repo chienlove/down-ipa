@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const clearProgressSteps = () => {
   if (elements.progressSteps) {
-    clearProgressSteps();
+    elements.progressSteps.innerHTML = '';
     state.lastProgressStep = null;
     state.progressHistory = [];
   }
@@ -615,8 +615,7 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
       
       // Reset toàn bộ trạng thái liên quan đến tải
       state.requestId = null;
-      state.lastProgressStep = null;
-      state.progressHistory = [];
+      clearProgressSteps();
       isLoading = false;
       
       // Thêm hiệu ứng chuyển step
