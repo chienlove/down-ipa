@@ -280,24 +280,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ánh xạ tiến trình thành các bước chi tiết
         let stepMessage = '';
-        switch (data.progress) {
-          case 10:
-            stepMessage = 'Đang xác thực Apple ID';
-            break;
-          case 20:
-            stepMessage = 'Đang tải file IPA';
-            break;
-          case 40:
-            stepMessage = 'Đang giải nén IPA';
-            break;
-          case 60:
-            stepMessage = 'Đang ký IPA';
-            break;
-          case 80:
-            stepMessage = 'Đang tải IPA lên';
-            break;
-          case 100:
-            stepMessage = 'Hoàn tất tải ứng dụng';
+switch (true) {
+  case data.progress < 10:
+    stepMessage = 'Khởi động tải';
+    break;
+  case data.progress >= 10 && data.progress < 20:
+    stepMessage = 'Đang xác thực Apple ID';
+    break;
+  case data.progress >= 20 && data.progress < 40:
+    stepMessage = 'Đang tải file IPA';
+    break;
+  case data.progress >= 40 && data.progress < 60:
+    stepMessage = 'Đang giải nén IPA';
+    break;
+  case data.progress >= 60 && data.progress < 80:
+    stepMessage = 'Đang ký IPA';
+    break;
+  case data.progress >= 80 && data.progress < 100:
+    stepMessage = 'Đang tải IPA lên';
+    break;
+  case data.progress === 100:
+    stepMessage = 'Hoàn tất tải ứng dụng';
+    break;
+}
             break;
           default:
             console.log(`Ignoring unknown progress: ${data.progress}`);
