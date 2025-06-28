@@ -17,10 +17,10 @@
       border-radius: 4px;
       background-color: #f9fafb;
       margin-top: 8px;
-      display: none; /* Ẩn mặc định */
+      display: none;
     }
     #progressSteps:not(:empty) {
-      display: block; /* Chỉ hiển thị khi có nội dung */
+      display: block;
     }
     .progress-step {
       display: flex;
@@ -90,16 +90,10 @@
       font-size: 18px;
     }
     @keyframes toastFadeIn {
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      to { opacity: 1; transform: translateY(0); }
     }
     @keyframes toastFadeOut {
-      to {
-        opacity: 0;
-        transform: translateY(-20px);
-      }
+      to { opacity: 0; transform: translateY(-20px); }
     }
     
     /* Input số cho mã 2FA */
@@ -110,6 +104,31 @@
     }
     input[type="tel"] {
       -moz-appearance: textfield;
+    }
+    
+    /* Hiệu ứng loading */
+    .btn-loading {
+      position: relative;
+      pointer-events: none;
+    }
+    .btn-loading::after {
+      content: "";
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: auto;
+      border: 3px solid transparent;
+      border-top-color: white;
+      border-radius: 50%;
+      animation: button-loading-spinner 1s linear infinite;
+    }
+    @keyframes button-loading-spinner {
+      from { transform: rotate(0turn); }
+      to { transform: rotate(1turn); }
     }
     
     /* Các style khác */
@@ -192,7 +211,7 @@
             </div>
             <div class="ml-3">
               <p id="verifyMessage" class="text-sm text-blue-700">
-                Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn
+                Vui lòng nhập mã xác minh 6 chữ số được gửi đến thiết bị của bạn: <span id="demoCode" class="font-bold">123456</span>
               </p>
             </div>
           </div>
@@ -337,13 +356,67 @@
       eyeIcon.setAttribute('stroke', type === 'password' ? 'currentColor' : '#3b82f6');
     });
     
-    // Demo toast on login/verify
-    document.getElementById('loginBtn').addEventListener('click', () => {
-      setTimeout(() => showToast('Đăng nhập thành công!', 'success'), 1000);
+    // Set loading state for buttons
+    function setLoading(button, isLoading) {
+      if (isLoading) {
+        button.classList.add('btn-loading');
+        button.disabled = true;
+        button.innerHTML = '<span class="invisible">' + button.textContent + '</span>';
+      } else {
+        button.classList.remove('btn-loading');
+        button.disabled = false;
+        button.innerHTML = button.textContent;
+      }
+    }
+    
+    // Login Button Handler
+    document.getElementById('loginBtn').addEventListener('click', function() {
+      const btn = this;
+      setLoading(btn, true);
+      
+      // Simulate API call
+      setTimeout(() => {
+        setLoading(btn, false);
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+        showToast('Đăng nhập thành công!', 'success');
+      }, 1500);
     });
     
-    document.getElementById('verifyBtn').addEventListener('click', () => {
-      setTimeout(() => showToast('Xác thực thành công!', 'success'), 1000);
+    // Verify Button Handler
+    document.getElementById('verifyBtn').addEventListener('click', function() {
+      const btn = this;
+      const codeInput = document.getElementById('VERIFICATION_CODE');
+      const demoCode = '123456'; // Mã demo
+      
+      if (codeInput.value !== demoCode) {
+        showToast('Mã xác minh không đúng', 'error');
+        return;
+      }
+      
+      setLoading(btn, true);
+      
+      // Simulate API call
+      setTimeout(() => {
+        setLoading(btn, false);
+        document.getElementById('step2').classList.add('hidden');
+        document.getElementById('step3').classList.remove('hidden');
+        showToast('Xác thực thành công!', 'success');
+      }, 1500);
+    });
+    
+    // Download Button Handler
+    document.getElementById('downloadBtn').addEventListener('click', function() {
+      const btn = this;
+      setLoading(btn, true);
+      
+      // Simulate API call
+      setTimeout(() => {
+        setLoading(btn, false);
+        document.getElementById('step3').classList.add('hidden');
+        document.getElementById('result').classList.remove('hidden');
+        showToast('Tải IPA thành công!', 'success');
+      }, 2000);
     });
   </script>
 </body>
