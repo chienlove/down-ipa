@@ -153,12 +153,12 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const clearProgressSteps = () => {
-    if (elements.progressSteps) {
-      elements.progressSteps.innerHTML = '';
-      state.lastProgressStep = null;
-      state.progressHistory = [];
-    }
-  };
+  if (elements.progressSteps) {
+    elements.progressSteps.innerHTML = '';
+    state.lastProgressStep = null;
+    state.progressHistory = [];
+  }
+};
 
   const setLoading = (loading) => {
     console.log(`Set loading: ${loading}`);
@@ -615,8 +615,7 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
       
       // Reset toàn bộ trạng thái liên quan đến tải
       state.requestId = null;
-      state.lastProgressStep = null;
-      state.progressHistory = [];
+      clearProgressSteps();
       isLoading = false;
       
       // Thêm hiệu ứng chuyển step
