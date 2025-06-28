@@ -602,20 +602,25 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.step3.classList.remove('fade-in');
       }, 300);
       
+      // Reset toàn bộ trạng thái tải
+      state.requestId = null;
+      state.lastProgressStep = null;
+      state.progressHistory = [];
+      
       // Reset progress bar và hiển thị
       elements.progressBar.style.width = '0%';
       elements.progressBar.classList.remove('hidden');
       elements.progressBar.style.display = 'block';
       
-      // Reset các input
-      elements.appIdInput.value = '';
-      elements.appVerInput.value = '';
-      
-      // Reset progress steps
+      // Reset progress steps container
       clearProgressSteps();
       elements.progressSteps.innerHTML = '';
       elements.progressSteps.classList.remove('hidden');
       elements.progressSteps.style.display = 'block';
+      
+      // Reset các input
+      elements.appIdInput.value = '';
+      elements.appVerInput.value = '';
       
       // Reset thông tin ứng dụng
       ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
@@ -632,6 +637,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Reset compat note
       document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
       document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
+      
+      // Đóng kết nối SSE nếu đang mở
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      
+      // Reset trạng thái loading
+      setLoading(false);
       
       // Focus lại input
       elements.appIdInput?.focus();
