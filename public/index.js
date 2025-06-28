@@ -515,87 +515,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (elements.downloadBtn) {
-    elements.downloadBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      console.log('Download button clicked');
-      if (isLoading) return;
-      
-      hideError();
-      setLoading(true);
-      clearProgressSteps();
-      updateProgressSteps('Bắt đầu quá trình tải', 'pending');
-      
-      // Đảm bảo progress bar hiển thị
-      elements.progressBar.style.width = '0%';
-      elements.progressBar.classList.remove('hidden');
-      elements.progressBar.style.display = 'block';
-      elements.progressSteps.classList.remove('hidden');
-      elements.progressSteps.style.display = 'block';
-
-      const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
-      const appVerId = elements.appVerInput?.value.trim() || '';
-      state.iosVersion = deviceOSVersion;
-
-      if (!APPID) {
-        showError('Vui lòng nhập App ID hợp lệ.');
-        updateProgressSteps('Lỗi: App ID không hợp lệ', 'error');
-        setLoading(false);
-        return;
-      }
-
-      if (state.requires2FA && !state.verified2FA) {
-        showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
-        updateProgressSteps('Lỗi: Yêu cầu xác thực 2FA', 'error');
-        setLoading(false);
-        transition(elements.step3, elements.step2);
-        return;
-      }
-
-      setProgress(3);
-
-      try {
-        console.log('Sending /download request');
-        updateProgressSteps('Gửi yêu cầu tải đến máy chủ', 'pending');
-        const response = await fetch('/download', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            APPLE_ID: state.APPLE_ID,
-            PASSWORD: state.PASSWORD,
-            CODE: state.CODE,
-            APPID,
-            appVerId,
-            dsid: state.dsid
-          })
-        });
-
-        const data = await response.json();
-        console.log('Download response:', data);
-
-        if (data.require2FA) {
-          updateProgressSteps('Yêu cầu xác thực 2FA', 'pending');
-          handle2FARedirect(data);
-          setLoading(false);
-        } else if (data.success && data.requestId) {
-          state.requestId = data.requestId;
-          console.log(`Starting progress listener for requestId: ${data.requestId}`);
-          updateProgressSteps('Khởi tạo tiến trình tải', 'success');
-          listenProgress(data.requestId);
-        } else {
-          showError(data.error || 'Tải ứng dụng thất bại.');
-          updateProgressSteps('Lỗi tải ứng dụng', 'error');
-          setLoading(false);
-        }
-      } catch (error) {
-        console.error('Download error:', error);
-        showError('Không thể kết nối tới máy chủ.');
-        updateProgressSteps('Lỗi kết nối máy chủ', 'error');
-        setLoading(false);
-      }
-    });
-  }
-
   if (elements.downloadAnotherBtn) {
   elements.downloadAnotherBtn.addEventListener('click', () => {
     console.log('Download another button clicked');
@@ -612,14 +531,9 @@ document.addEventListener('DOMContentLoaded', () => {
     state.progressHistory = [];
     isLoading = false;
 
-    // 3. Reset giao diện progress
+    // 3. Reset giao diện progress - CHỈ reset nội dung, KHÔNG ẩn đi
     elements.progressBar.style.width = '0%';
-    elements.progressBar.classList.remove('hidden');
-    elements.progressBar.style.display = 'block';
-    
     elements.progressSteps.innerHTML = '';
-    elements.progressSteps.classList.remove('hidden');
-    elements.progressSteps.style.display = 'block';
 
     // 4. Hiệu ứng chuyển trang
     elements.result.classList.add('fade-out');
@@ -633,17 +547,10 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.step3.classList.add('fade-in');
       setTimeout(() => elements.step3.classList.remove('fade-in'), 300);
 
-      // 5. Đảm bảo các phần tử progress hiển thị
-      setTimeout(() => {
-        elements.progressBar.style.width = '0%';
-        elements.progressBar.classList.remove('hidden');
-        elements.progressBar.style.display = 'block';
-        
-        elements.progressSteps.innerHTML = '';
-        elements.progressSteps.classList.remove('hidden');
-        elements.progressSteps.style.display = 'block';
-      }, 50);
-
+      // 5. Đảm bảo progress bar và steps luôn hiển thị
+      elements.progressBar.style.width = '0%';
+      elements.progressSteps.innerHTML = '';
+      
       // 6. Reset các input và thông tin
       elements.appIdInput.value = '';
       elements.appVerInput.value = '';
