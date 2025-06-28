@@ -154,6 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const clearProgressSteps = () => {
     if (elements.progressSteps) {
+      elements.progressSteps.innerHTML = '';
       state.lastProgressStep = null;
       state.progressHistory = [];
     }
