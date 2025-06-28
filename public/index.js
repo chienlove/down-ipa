@@ -531,9 +531,14 @@ document.addEventListener('DOMContentLoaded', () => {
     state.progressHistory = [];
     isLoading = false;
 
-    // 3. Reset giao diện progress - CHỈ reset nội dung, KHÔNG ẩn đi
+    // 3. Reset giao diện progress
     elements.progressBar.style.width = '0%';
+    elements.progressBar.classList.remove('hidden');
+    elements.progressBar.style.display = 'block';
+    
     elements.progressSteps.innerHTML = '';
+    elements.progressSteps.classList.remove('hidden');
+    elements.progressSteps.style.display = 'block';
 
     // 4. Hiệu ứng chuyển trang
     elements.result.classList.add('fade-out');
@@ -547,10 +552,17 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.step3.classList.add('fade-in');
       setTimeout(() => elements.step3.classList.remove('fade-in'), 300);
 
-      // 5. Đảm bảo progress bar và steps luôn hiển thị
-      elements.progressBar.style.width = '0%';
-      elements.progressSteps.innerHTML = '';
-      
+      // 5. Đảm bảo các phần tử progress hiển thị
+      setTimeout(() => {
+        elements.progressBar.style.width = '0%';
+        elements.progressBar.classList.remove('hidden');
+        elements.progressBar.style.display = 'block';
+        
+        elements.progressSteps.innerHTML = '';
+        elements.progressSteps.classList.remove('hidden');
+        elements.progressSteps.style.display = 'block';
+      }, 50);
+
       // 6. Reset các input và thông tin
       elements.appIdInput.value = '';
       elements.appVerInput.value = '';
