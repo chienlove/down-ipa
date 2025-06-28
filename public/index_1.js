@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loginBtn: document.getElementById('loginBtn'),
     verifyBtn: document.getElementById('verifyBtn'),
     downloadBtn: document.getElementById('downloadBtn'),
+    downloadAnotherBtn: document.getElementById('downloadAnotherBtn'),
     errorBox: document.getElementById('error'),
     errorMessage: document.getElementById('errorMessage'),
     verifyMessage: document.getElementById('verifyMessage'),
@@ -58,7 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
     requires2FA: false,
     requestId: null,
     iosVersion: null,
-    lastProgressStep: null
+    lastProgressStep: null,
+    progressHistory: []
   };
 
   let isLoading = false;
@@ -136,10 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Hiển thị chi tiết tiến trình
   const updateProgressSteps = (message, status = 'pending') => {
     if (!elements.progressSteps) return;
-    if (state.lastProgressStep === message) return; // Ngăn lặp lại bước
+    if (state.lastProgressStep === message) return;
     state.lastProgressStep = message;
     const step = document.createElement('div');
     step.className = `progress-step ${status}`;
@@ -148,12 +149,14 @@ document.addEventListener('DOMContentLoaded', () => {
       <span>${message}</span>
     `;
     elements.progressSteps.appendChild(step);
+    elements.progressSteps.scrollTop = elements.progressSteps.scrollHeight;
   };
 
   const clearProgressSteps = () => {
     if (elements.progressSteps) {
       elements.progressSteps.innerHTML = '';
-      state.lastProgressStep = null; // Reset bước cuối
+      state.lastProgressStep = null;
+      state.progressHistory = [];
     }
   };
 
@@ -166,7 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (loading) {
-      elements.progressBar.classList.add('progress-loading');
+      elements.progressBar.classList.remove('hidden');
+      elements.progressBar.style.display = 'block';
       document.querySelectorAll('button').forEach(btn => {
         if (btn) {
           btn.classList.add('button-loading');
@@ -175,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } else {
       setTimeout(() => {
-        elements.progressBar.classList.remove('progress-loading');
         document.querySelectorAll('button').forEach(btn => {
           if (btn) {
             btn.classList.remove('button-loading');
@@ -203,32 +206,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const updateInstallButton = (minimumOSVersion, userIOSVersion, installUrl, downloadUrl) => {
     const installLink = document.getElementById('installLink');
+    const compatNote = document.getElementById('compatNote');
+    
     installLink.href = installUrl || downloadUrl || '#';
     userIOSVersion = userIOSVersion || 'Unknown';
+    
+    // Reset classes
+    installLink.className = 'px-6 py-3 rounded-lg font-medium text-white flex items-center justify-center';
+    
     if (minimumOSVersion === 'Unknown' || userIOSVersion === 'Unknown') {
       installLink.innerHTML = '<i class="fas fa-question-circle mr-2"></i> Không rõ tương thích';
-      installLink.classList.remove('compatible', 'incompatible');
-      installLink.classList.add('unknown');
-      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-yellow-400 flex items-center justify-center';
-      installLink.title = 'Không xác định được phiên bản iOS thiết bị';
-      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex';
-      document.getElementById('compatNote').innerHTML = '<i class="fas fa-question-circle mr-2 mt-1"></i>Không xác định được phiên bản iOS thiết bị.';
+      installLink.classList.add('bg-yellow-400');
+      compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex';
+      compatNote.innerHTML = '<i class="fas fa-question-circle mr-2 mt-1"></i>Không xác định được phiên bản iOS thiết bị.';
     } else if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
       installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
-      installLink.classList.add('compatible');
-      installLink.classList.remove('incompatible', 'unknown');
-      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-green-500 hover:bg-green-600 flex items-center justify-center';
-      installLink.title = `Tương thích với iOS ${userIOSVersion}`;
-      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-300 flex';
-      document.getElementById('compatNote').innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userIOSVersion} tương thích (yêu cầu iOS ${minimumOSVersion})`;
+      installLink.classList.add('bg-green-500', 'hover:bg-green-600');
+      compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-300 flex';
+      compatNote.innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userIOSVersion} tương thích (yêu cầu iOS ${minimumOSVersion})`;
     } else {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
-      installLink.classList.add('incompatible');
-      installLink.classList.remove('compatible', 'unknown');
-      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-red-500 opacity-80 cursor-not-allowed flex items-center justify-center';
-      installLink.title = `Yêu cầu iOS ${minimumOSVersion}, thiết bị của bạn là iOS ${userIOSVersion}`;
-      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      document.getElementById('compatNote').innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userIOSVersion}) KHÔNG tương thích. Yêu cầu iOS ${minimumOSVersion}.`;
+      installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
+      compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
+      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userIOSVersion}) KHÔNG tương thích. Yêu cầu iOS ${minimumOSVersion}.`;
     }
   };
 
@@ -257,6 +257,14 @@ document.addEventListener('DOMContentLoaded', () => {
       eventSource.close();
     }
 
+    // Reset progress UI
+    elements.progressBar.style.width = '0%';
+    elements.progressBar.classList.remove('hidden');
+    elements.progressBar.style.display = 'block';
+    elements.progressSteps.innerHTML = '';
+    elements.progressSteps.classList.remove('hidden');
+    elements.progressSteps.style.display = 'block';
+
     eventSource = new EventSource(`/download-progress/${requestId}`);
     eventSource.onopen = () => {
       console.log('SSE connection opened');
@@ -267,62 +275,70 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('SSE message received:', event.data);
       try {
         const data = JSON.parse(event.data);
-        console.log(`Progress: ${data.progress}%`);
+        console.log(`Progress: ${data.progress}%, Status: ${data.status}`);
 
-        // Ánh xạ tiến trình thành các bước chi tiết
-        let stepMessage = '';
-        switch (data.progress) {
-          case 10:
-            stepMessage = 'Đang xác thực Apple ID';
-            break;
-          case 20:
-            stepMessage = 'Đang tải file IPA';
-            break;
-          case 40:
-            stepMessage = 'Đang giải nén IPA';
-            break;
-          case 60:
-            stepMessage = 'Đang ký IPA';
-            break;
-          case 80:
-            stepMessage = 'Đang tải IPA lên';
-            break;
-          case 100:
-            stepMessage = 'Hoàn tất tải ứng dụng';
-            break;
-          default:
-            return; // Bỏ qua nếu progress không khớp
+        if (!state.progressHistory.includes(data.progress)) {
+          state.progressHistory.push(data.progress);
         }
-        updateProgressSteps(stepMessage, 'success');
+
+        let stepMessage = '';
+        if (data.progress < 10) {
+          stepMessage = 'Khởi động tải';
+        } else if (data.progress >= 10 && data.progress < 20) {
+          stepMessage = 'Đang xác thực Apple ID';
+        } else if (data.progress >= 20 && data.progress < 40) {
+          stepMessage = 'Đang tải file IPA';
+        } else if (data.progress >= 40 && data.progress < 60) {
+          stepMessage = 'Đang giải nén IPA';
+        } else if (data.progress >= 60 && data.progress < 80) {
+          stepMessage = 'Đang ký IPA';
+        } else if (data.progress >= 80 && data.progress < 100) {
+          stepMessage = 'Đang tải IPA lên';
+        } else if (data.progress === 100) {
+          stepMessage = 'Hoàn tất tải ứng dụng';
+        } else {
+          console.log(`Ignoring unknown progress: ${data.progress}`);
+          return;
+        }
+
+        if (stepMessage) updateProgressSteps(stepMessage, 'success');
+        setProgress(data.progress);
 
         if (data.status === 'complete') {
           console.log('Download complete:', data);
-          const appInfo = data.appInfo || {};
-          document.getElementById('appName').textContent = appInfo.name || 'Unknown';
-          document.getElementById('appAuthor').textContent = appInfo.artist || 'Unknown';
-          document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
-          document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
-          document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
-          document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
-          const downloadLink = document.getElementById('downloadLink');
-          downloadLink.href = data.downloadUrl || '#';
-          downloadLink.download = data.fileName || 'app.ipa';
-          const installLink = document.getElementById('installLink');
-          installLink.dataset.href = data.installUrl || '#';
-          if (data.installUrl) {
-            installLink.href = data.installUrl;
-            installLink.classList.remove('hidden');
-          } else {
-            installLink.classList.add('hidden');
-          }
+          setTimeout(() => {
+            const appInfo = data.appInfo || {};
+            document.getElementById('appName').textContent = appInfo.name || 'Unknown';
+            document.getElementById('appAuthor').textContent = appInfo.artistName || appInfo.artist || 'Unknown';
+            document.getElementById('appVersion').textContent = appInfo.version || 'Unknown';
+            document.getElementById('appBundleId').textContent = appInfo.bundleId || 'Unknown';
+            document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
+            document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
+            
+            const downloadLink = document.getElementById('downloadLink');
+            document.getElementById('ipaFileSize').textContent = data.fileSizeMB ? `${data.fileSizeMB} MB` : 'Unknown';
+            downloadLink.href = data.downloadUrl || '#';
+            downloadLink.download = data.fileName || 'app.ipa';
+            
+            const installLink = document.getElementById('installLink');
+            if (data.installUrl) {
+              installLink.href = data.installUrl;
+              installLink.classList.remove('cursor-not-allowed', 'bg-gray-400');
+              installLink.classList.add('bg-green-500', 'hover:bg-green-600');
+            }
 
-          updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
-          transition(elements.step3, elements.result);
-          setProgress(4);
-          setLoading(false);
-          eventSource.close();
-          eventSource = null;
-          console.log('SSE closed after completion');
+            updateInstallButton(appInfo.minimumOSVersion, deviceOSVersion, data.installUrl, data.downloadUrl);
+            transition(elements.step3, elements.result);
+            setLoading(false);
+
+            elements.progressSteps.classList.add('hidden');
+            elements.progressSteps.style.display = 'none';
+            elements.progressBar.classList.add('hidden');
+            elements.progressBar.style.display = 'none';
+
+            eventSource.close();
+            eventSource = null;
+          }, 500);
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
           showError(data.error || 'Tải ứng dụng thất bại.');
@@ -330,7 +346,6 @@ document.addEventListener('DOMContentLoaded', () => {
           setLoading(false);
           eventSource.close();
           eventSource = null;
-          console.log('SSE closed after error');
         }
       } catch (error) {
         console.error('SSE parse error:', error, event.data);
@@ -342,10 +357,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    eventSource.onerror = () => {
-      console.error('SSE connection error');
-      showError('Mất kết nối với server.');
-      updateProgressSteps('Lỗi kết nối với server', 'error');
+    eventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      if (!state.progressHistory.includes(100)) {
+        showError('Mất kết nối với server.');
+        updateProgressSteps('Lỗi kết nối với server', 'error');
+      }
       setLoading(false);
       eventSource?.close();
       eventSource = null;
@@ -431,7 +448,9 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Toggle password clicked');
       const isPassword = elements.passwordInput.type === 'password';
       elements.passwordInput.type = isPassword ? 'text' : 'password';
-      elements.togglePassword.className = isPassword ? 'fas fa-eye-slash password-toggle' : 'fas fa-eye password-toggle';
+      elements.togglePassword.innerHTML = isPassword ? 
+        '<i class="fas fa-eye-slash"></i>' : 
+        '<i class="fas fa-eye"></i>';
     });
   }
 
@@ -494,9 +513,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
-  } else {
-    console.error('verifyBtn not found in DOM');
-    showError('Lỗi giao diện: Nút xác thực không được tìm thấy.');
   }
 
   if (elements.downloadBtn) {
@@ -509,8 +525,15 @@ document.addEventListener('DOMContentLoaded', () => {
       setLoading(true);
       clearProgressSteps();
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
+      
+      // Đảm bảo progress bar hiển thị
+      elements.progressBar.style.width = '0%';
+      elements.progressBar.classList.remove('hidden');
+      elements.progressBar.style.display = 'block';
+      elements.progressSteps.classList.remove('hidden');
+      elements.progressSteps.style.display = 'block';
 
-      const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || '';
+      const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
       state.iosVersion = deviceOSVersion;
 
@@ -571,5 +594,72 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
+  }
+
+  if (elements.downloadAnotherBtn) {
+    elements.downloadAnotherBtn.addEventListener('click', () => {
+      console.log('Download another button clicked');
+      
+      // Reset toàn bộ trạng thái liên quan đến tải
+      state.requestId = null;
+      state.lastProgressStep = null;
+      state.progressHistory = [];
+      isLoading = false;
+      
+      // Thêm hiệu ứng chuyển step
+      elements.result.classList.add('fade-out');
+      setTimeout(() => {
+        elements.result.classList.add('hidden');
+        elements.result.style.display = 'none';
+        elements.result.classList.remove('fade-out');
+        
+        // Hiện lại step 3 với hiệu ứng
+        elements.step3.classList.remove('hidden');
+        elements.step3.style.display = 'block';
+        elements.step3.classList.add('fade-in');
+        setTimeout(() => {
+          elements.step3.classList.remove('fade-in');
+        }, 300);
+        
+        // Reset progress UI
+        elements.progressBar.style.width = '0%';
+        elements.progressBar.classList.remove('hidden');
+        elements.progressBar.style.display = 'block';
+        elements.progressSteps.innerHTML = '';
+        elements.progressSteps.classList.remove('hidden');
+        elements.progressSteps.style.display = 'block';
+        
+        // Reset các input
+        elements.appIdInput.value = '';
+        elements.appVerInput.value = '';
+        
+        // Reset thông tin ứng dụng
+        ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = 'Unknown';
+        });
+        
+        // Reset install link
+        const installLink = document.getElementById('installLink');
+        installLink.href = '#';
+        installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
+        installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
+        
+        // Reset compat note
+        document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
+        document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
+        
+        // Đóng kết nối SSE nếu đang mở
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        
+        // Focus lại input
+        elements.appIdInput?.focus();
+      }, 300);
+    });
+  } else {
+    console.error('downloadAnotherBtn not found in DOM');
   }
 });

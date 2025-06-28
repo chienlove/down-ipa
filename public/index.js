@@ -517,6 +517,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
+  // 🚨 Hủy tiến trình cũ nếu có
+  if (eventSource) {
+    console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới');
+    eventSource.close();
+    eventSource = null;
+  }
+
       e.preventDefault();
       console.log('Download button clicked');
       if (isLoading) return;
