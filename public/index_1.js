@@ -261,7 +261,6 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.progressBar.style.width = '0%';
     elements.progressBar.classList.remove('hidden');
     elements.progressBar.style.display = 'block';
-    elements.progressSteps.innerHTML = '';
     elements.progressSteps.classList.remove('hidden');
     elements.progressSteps.style.display = 'block';
 
@@ -517,6 +516,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
+  // 🚨 Hủy tiến trình cũ nếu có
+  if (eventSource) {
+    console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới');
+    eventSource.close();
+    eventSource = null;
+  }
+
       e.preventDefault();
       console.log('Download button clicked');
       if (isLoading) return;
@@ -524,6 +530,13 @@ document.addEventListener('DOMContentLoaded', () => {
       hideError();
       setLoading(true);
       clearProgressSteps();
+elements.progressSteps.classList.remove('hidden');
+elements.progressSteps.style.display = 'block';
+elements.progressBar.classList.remove('hidden');
+elements.progressBar.style.display = 'block';
+elements.progressBar.style.width = '0%';
+updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
+
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
       
       // Đảm bảo progress bar hiển thị
@@ -625,7 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.progressBar.style.width = '0%';
         elements.progressBar.classList.remove('hidden');
         elements.progressBar.style.display = 'block';
-        elements.progressSteps.innerHTML = '';
         elements.progressSteps.classList.remove('hidden');
         elements.progressSteps.style.display = 'block';
         

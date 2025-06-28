@@ -153,12 +153,12 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const clearProgressSteps = () => {
-    if (elements.progressSteps) {
-      elements.progressSteps.innerHTML = '';
-      state.lastProgressStep = null;
-      state.progressHistory = [];
-    }
-  };
+  if (elements.progressSteps) {
+    elements.progressSteps.innerHTML = '';
+    state.lastProgressStep = null;
+    state.progressHistory = [];
+  }
+};
 
   const setLoading = (loading) => {
     console.log(`Set loading: ${loading}`);
