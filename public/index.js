@@ -597,68 +597,74 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   if (elements.downloadAnotherBtn) {
-    elements.downloadAnotherBtn.addEventListener('click', () => {
-      console.log('Download another button clicked');
+  elements.downloadAnotherBtn.addEventListener('click', () => {
+    console.log('Download another button clicked');
+    
+    // 1. Đóng kết nối SSE cũ nếu tồn tại
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+
+    // 2. Reset toàn bộ trạng thái tải
+    state.requestId = null;
+    state.lastProgressStep = null;
+    state.progressHistory = [];
+    isLoading = false;
+
+    // 3. Reset giao diện progress
+    elements.progressBar.style.width = '0%';
+    elements.progressBar.classList.remove('hidden');
+    elements.progressBar.style.display = 'block';
+    
+    elements.progressSteps.innerHTML = '';
+    elements.progressSteps.classList.remove('hidden');
+    elements.progressSteps.style.display = 'block';
+
+    // 4. Hiệu ứng chuyển trang
+    elements.result.classList.add('fade-out');
+    setTimeout(() => {
+      elements.result.classList.add('hidden');
+      elements.result.style.display = 'none';
+      elements.result.classList.remove('fade-out');
       
-      // Reset toàn bộ trạng thái liên quan đến tải
-      state.requestId = null;
-      state.lastProgressStep = null;
-      state.progressHistory = [];
-      isLoading = false;
-      
-      // Thêm hiệu ứng chuyển step
-      elements.result.classList.add('fade-out');
+      elements.step3.classList.remove('hidden');
+      elements.step3.style.display = 'block';
+      elements.step3.classList.add('fade-in');
+      setTimeout(() => elements.step3.classList.remove('fade-in'), 300);
+
+      // 5. Đảm bảo các phần tử progress hiển thị
       setTimeout(() => {
-        elements.result.classList.add('hidden');
-        elements.result.style.display = 'none';
-        elements.result.classList.remove('fade-out');
-        
-        // Hiện lại step 3 với hiệu ứng
-        elements.step3.classList.remove('hidden');
-        elements.step3.style.display = 'block';
-        elements.step3.classList.add('fade-in');
-        setTimeout(() => {
-          elements.step3.classList.remove('fade-in');
-        }, 300);
-        
-        // Reset progress UI
         elements.progressBar.style.width = '0%';
         elements.progressBar.classList.remove('hidden');
         elements.progressBar.style.display = 'block';
+        
         elements.progressSteps.innerHTML = '';
         elements.progressSteps.classList.remove('hidden');
         elements.progressSteps.style.display = 'block';
-        
-        // Reset các input
-        elements.appIdInput.value = '';
-        elements.appVerInput.value = '';
-        
-        // Reset thông tin ứng dụng
-        ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.textContent = 'Unknown';
-        });
-        
-        // Reset install link
-        const installLink = document.getElementById('installLink');
-        installLink.href = '#';
-        installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
-        installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
-        
-        // Reset compat note
-        document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
-        document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
-        
-        // Đóng kết nối SSE nếu đang mở
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
-        
-        // Focus lại input
-        elements.appIdInput?.focus();
-      }, 300);
-    });
+      }, 50);
+
+      // 6. Reset các input và thông tin
+      elements.appIdInput.value = '';
+      elements.appVerInput.value = '';
+      
+      ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Unknown';
+      });
+      
+      const installLink = document.getElementById('installLink');
+      installLink.href = '#';
+      installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
+      installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
+      
+      document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
+      document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
+      
+      // 7. Focus lại input
+      elements.appIdInput?.focus();
+    }, 300);
+  });
   } else {
     console.error('downloadAnotherBtn not found in DOM');
   }
