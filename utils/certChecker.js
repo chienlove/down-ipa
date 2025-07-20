@@ -1,11 +1,14 @@
 // utils/certChecker.js
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
+import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
-function checkP12Certificate(certPath) {
+function checkP12Certificate(certPath, password = '') {
   return new Promise((resolve, reject) => {
-    exec(`openssl pkcs12 -info -in "${certPath}" -passin pass:`, (err, stdout, stderr) => {
+    const pass = password ? `-passin pass:${password}` : '-passin pass:';
+    const command = `openssl pkcs12 -info -in "${certPath}" ${pass}`;
+
+    exec(command, (err, stdout, stderr) => {
       if (err || stderr.includes('MAC verify failure')) {
         return reject(new Error('Invalid password or corrupted file'));
       }
@@ -25,10 +28,9 @@ function checkP12Certificate(certPath) {
         valid,
         expiresAt: expiresAt.toISOString(),
         issuer: issuerMatch ? issuerMatch[1].trim() : null,
-        message: valid ? 'Certificate is valid' : 'Certificate has expired'
       });
     });
   });
 }
 
-module.exports = { checkP12Certificate };
+export { checkP12Certificate };
