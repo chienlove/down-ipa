@@ -1,37 +1,52 @@
 // utils/certChecker.js
-import { exec } from 'child_process';
-import fs from 'fs';
-import path from 'path';
+import forge from 'node-forge';
+import fs from 'fs/promises';
 
-function checkP12Certificate(certPath, password = '') {
-  return new Promise((resolve, reject) => {
-    const pass = password ? `-passin pass:${password}` : '-passin pass:';
-    const command = `openssl pkcs12 -info -in "${certPath}" ${pass}`;
+export const checkP12Certificate = async (filePath, password = '') => {
+  try {
+    // 1. Đọc file P12
+    const p12Data = await fs.readFile(filePath, { encoding: 'binary' });
+    
+    // 2. Chuyển đổi dữ liệu sang định dạng ASN1
+    const p12Asn1 = forge.asn1.fromDer(p12Data);
+    
+    // 3. Giải mã file P12
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password);
+    
+    // 4. Lấy thông tin certificate
+    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+    if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
+      throw new Error('No certificate found in P12 file');
+    }
+    
+    const cert = certBags[forge.pki.oids.certBag][0].cert;
+    const now = new Date();
+    const valid = now >= cert.validity.notBefore && now <= cert.validity.notAfter;
 
-    exec(command, (err, stdout, stderr) => {
-      if (err || stderr.includes('MAC verify failure')) {
-        return reject(new Error('Invalid password or corrupted file'));
-      }
+    return {
+      valid,
+      expiresAt: cert.validity.notAfter.toISOString(),
+      subject: cert.subject.attributes.map(attr => ({
+        name: attr.name,
+        value: attr.value
+      })),
+      issuer: cert.issuer.attributes.map(attr => ({
+        name: attr.name,
+        value: attr.value
+      }))
+    };
 
-      const notAfterMatch = stdout.match(/Not After *: ([\w\s:]+)/);
-      const issuerMatch = stdout.match(/Issuer.*?CN=([^,]+)/);
-
-      if (!notAfterMatch) {
-        return reject(new Error('Could not parse certificate expiry date'));
-      }
-
-      const expiresAt = new Date(notAfterMatch[1].trim());
-      const now = new Date();
-      const valid = expiresAt > now;
-
-      resolve({
-        valid,
-        expiresAt: expiresAt.toISOString(),
-        issuer: issuerMatch ? issuerMatch[1].trim() : null,
-        message: valid ? 'Certificate is valid' : 'Certificate has expired'
-      });
-    });
-  });
-}
-
-export { checkP12Certificate };
+  } catch (err) {
+    console.error('Certificate check error:', err);
+    
+    // Xác định loại lỗi cụ thể
+    let errorMessage = 'Invalid certificate';
+    if (err.message.includes('Invalid password')) {
+      errorMessage = 'Wrong password';
+    } else if (err.message.includes('Invalid PKCS#12')) {
+      errorMessage = 'Invalid P12 file format';
+    }
+    
+    throw new Error(errorMessage);
+  }
+};

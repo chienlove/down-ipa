@@ -16,55 +16,72 @@ const supabase = createClient(
 );
 
 router.get('/check', async (req, res) => {
+  let tempPath;
   try {
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
-    // 1. Truy vấn database - CHỈ LẤY CÁC CỘT CÓ TRONG BẢNG
+    // 1. Truy vấn database
     const { data: cert, error: dbError } = await supabase
       .from('certificates')
-      .select('id, name, p12_url, provision_url, password, created_at')
+      .select('id, name, p12_url, password')
       .eq('id', id)
       .single();
 
     if (dbError || !cert) {
-      throw new Error(dbError?.message || 'Certificate not found');
+      console.error('Database error:', dbError);
+      return res.status(404).json({ error: 'Certificate not found' });
     }
 
     // 2. Tải file từ storage
-    const filePath = new URL(cert.p12_url).pathname.split('/public/')[1];
+    const p12Url = new URL(cert.p12_url);
+    const filePath = p12Url.pathname.split('/public/')[1];
+    console.log('Downloading file from path:', filePath);
+
     const { data: file, error: downloadError } = await supabase
       .storage
       .from('certificates')
       .download(filePath);
 
-    if (downloadError) throw downloadError;
+    if (downloadError) {
+      console.error('Download error:', downloadError);
+      throw new Error('Failed to download certificate file');
+    }
 
-    // 3. Kiểm tra chứng chỉ
-    const tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
+    // 3. Lưu file tạm
+    tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
-    const certInfo = await checkP12Certificate(tempPath, cert.password);
-    await fs.unlink(tempPath);
 
-    // 4. Trả kết quả (KHÔNG bao gồm provision_expires_at)
+    // 4. Kiểm tra chứng chỉ
+    const certInfo = await checkP12Certificate(tempPath, cert.password);
+    
+    // 5. Trả kết quả
     res.json({
+      success: true,
       valid: certInfo.valid,
       expires_at: certInfo.expiresAt,
-      certificate_info: {
-        id: cert.id,
-        name: cert.name,
-        created_at: cert.created_at,
-        provision_url: cert.provision_url
-      },
-      message: certInfo.valid ? 'Certificate is valid' : 'Certificate has expired'
+      certificate_name: cert.name,
+      details: {
+        subject: certInfo.subject,
+        issuer: certInfo.issuer
+      }
     });
 
   } catch (err) {
-    console.error(`[CERT ERROR] ${err.message}`);
+    console.error('Full error:', err);
     res.status(500).json({ 
       error: 'Certificate check failed',
-      details: err.message 
+      details: err.message || 'Unknown error' 
     });
+  } finally {
+    // 6. Dọn dẹp file tạm nếu tồn tại
+    if (tempPath) {
+      try {
+        await fs.unlink(tempPath);
+      } catch (cleanupErr) {
+        console.error('Cleanup error:', cleanupErr);
+      }
+    }
   }
 });
 
