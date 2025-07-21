@@ -22,11 +22,6 @@ const supabase = createClient(
 // Import hàm kiểm tra
 const { checkP12Certificate } = await import('./utils/certChecker.js');
 
-// ✅ Route trang chủ
-app.get('/', (req, res) => {
-  res.send('Welcome to Certificate Checker API 🚀<br>Use /check-cert?id=123 to check certificate status.');
-});
-
 // Route kiểm tra chứng chỉ theo ID hoặc NAME
 app.get('/check-cert', async (req, res) => {
   const { id, name } = req.query;
