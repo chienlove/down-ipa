@@ -1,29 +1,22 @@
-// app.js
-import express from 'express';
+// routes/certApi.js
+import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { checkP12Certificate } from '../utils/certChecker.js';
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const router = Router();
 
-// Đường dẫn __dirname trong ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Khởi tạo Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Import hàm kiểm tra
-const { checkP12Certificate } = await import('./utils/certChecker.js');
-
-// Route kiểm tra chứng chỉ theo ID hoặc NAME
-app.get('/check-cert', async (req, res) => {
+router.get('/check-cert', async (req, res) => {
   const { id, name } = req.query;
 
   if (!id && !name) {
@@ -31,7 +24,6 @@ app.get('/check-cert', async (req, res) => {
   }
 
   try {
-    // Lấy thông tin chứng chỉ từ bảng certificates
     let { data: certData, error: certError } = id
       ? await supabase.from('certificates').select('*').eq('id', id).single()
       : await supabase.from('certificates').select('*').eq('name', name).single();
@@ -42,7 +34,6 @@ app.get('/check-cert', async (req, res) => {
 
     const certPath = path.join(__dirname, 'temp.p12');
 
-    // Tải file .p12 từ Supabase Storage
     const p12Path = certData.p12_url.split('/').slice(2).join('/');
     const { data, error } = await supabase.storage.from(p12Path).download();
 
@@ -53,10 +44,8 @@ app.get('/check-cert', async (req, res) => {
     const buffer = await data.arrayBuffer();
     fs.writeFileSync(certPath, Buffer.from(buffer));
 
-    // Kiểm tra .p12
     const certInfo = await checkP12Certificate(certPath, certData.password);
 
-    // Xóa file tạm
     fs.unlinkSync(certPath);
 
     return res.json({
@@ -71,6 +60,4 @@ app.get('/check-cert', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Certificate checker API running on port ${PORT}`);
-});
+export default router;

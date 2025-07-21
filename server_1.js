@@ -15,7 +15,6 @@ import cors from 'cors';
 import os from 'os';
 import plist from 'plist';
 import AdmZip from 'adm-zip';
-import certApi from './routes/certApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -102,7 +101,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
-app.use('/api', certApi);
 
 // Rate-limiting for /download endpoint
 const limiter = rateLimit({
