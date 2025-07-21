@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 // Khởi tạo Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // Import hàm kiểm tra
