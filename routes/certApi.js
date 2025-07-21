@@ -24,49 +24,85 @@ router.get('/check-cert', async (req, res) => {
   }
 
   try {
-    let { data: certData, error: certError } = id
-      ? await supabase.from('certificates').select('*').eq('id', id).single()
-      : await supabase.from('certificates').select('*').eq('name', name).single();
+    console.log(`Fetching certificate with ${id ? 'id' : 'name'}:`, id || name);
+    
+    let query = supabase.from('certificates').select('*');
+    query = id ? query.eq('id', id) : query.eq('name', name);
+    const { data: certData, error: certError } = await query.single();
 
-    if (certError || !certData) {
+    if (certError) {
+      console.error('Database error:', certError);
       return res.status(404).json({ error: 'Certificate not found in database' });
     }
 
-    const certPath = path.join(__dirname, 'temp.p12');
-
-    // Extract the file path from the full URL
-    const p12Url = new URL(certData.p12_url);
-    const filePath = p12Url.pathname.split('/public/')[1];
-    
-    // Download the file from the correct bucket
-    const { data: fileData, error: downloadError } = await supabase
-      .storage
-      .from('certificates')
-      .download(filePath);
-
-    if (downloadError || !fileData) {
-      return res.status(500).json({ error: 'Failed to download certificate' });
+    if (!certData) {
+      console.error('Certificate not found');
+      return res.status(404).json({ error: 'Certificate not found' });
     }
 
-    // Save the file temporarily
-    const buffer = await fileData.arrayBuffer();
-    fs.writeFileSync(certPath, Buffer.from(buffer));
+    console.log('Found certificate:', certData.name);
+    console.log('P12 URL:', certData.p12_url);
 
-    // Check the certificate
-    const certInfo = await checkP12Certificate(certPath, certData.password);
+    const certPath = path.join(__dirname, 'temp.p12');
 
-    // Clean up
-    fs.unlinkSync(certPath);
+    // Phân tích URL và lấy đường dẫn file
+    try {
+      const p12Url = new URL(certData.p12_url);
+      const filePath = p12Url.pathname.split('/public/')[1];
+      console.log('Extracted file path:', filePath);
 
-    return res.json({
-      certificate: certInfo,
-      provision_expires_at: certData.provision_expires_at || null,
-      message: certInfo.valid ? 'Certificate is valid' : 'Certificate has expired',
-    });
+      // Tải file từ storage
+      console.log('Attempting to download from bucket: certificates');
+      const { data: fileData, error: downloadError } = await supabase
+        .storage
+        .from('certificates')
+        .download(filePath);
+
+      if (downloadError) {
+        console.error('Download error:', downloadError);
+        return res.status(500).json({ 
+          error: 'Failed to download certificate',
+          details: downloadError.message 
+        });
+      }
+
+      if (!fileData) {
+        console.error('No file data received');
+        return res.status(500).json({ error: 'Empty file data' });
+      }
+
+      // Lưu file tạm
+      const buffer = await fileData.arrayBuffer();
+      fs.writeFileSync(certPath, Buffer.from(buffer));
+      console.log('File saved temporarily at:', certPath);
+
+      // Kiểm tra chứng chỉ
+      const certInfo = await checkP12Certificate(certPath, certData.password);
+      console.log('Certificate check result:', certInfo);
+
+      // Dọn dẹp
+      fs.unlinkSync(certPath);
+
+      return res.json({
+        certificate: certInfo,
+        provision_expires_at: certData.provision_expires_at || null,
+        message: certInfo.valid ? 'Certificate is valid' : 'Certificate has expired',
+      });
+
+    } catch (parseError) {
+      console.error('URL parsing error:', parseError);
+      return res.status(500).json({ 
+        error: 'Invalid certificate URL',
+        details: parseError.message 
+      });
+    }
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Unexpected error:', err);
+    return res.status(500).json({ 
+      error: 'Internal server error',
+      details: err.message 
+    });
   }
 });
 
