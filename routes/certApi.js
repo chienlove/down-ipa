@@ -7,7 +7,6 @@ import { fileURLToPath } from 'url';
 import { checkP12Certificate } from '../utils/certChecker.js';
 
 const router = Router();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -20,80 +19,103 @@ router.get('/check-cert', async (req, res) => {
   const { id, name } = req.query;
 
   if (!id && !name) {
-    return res.status(400).json({ error: 'Missing id or name parameter' });
+    return res.status(400).json({ 
+      error: 'Missing parameter',
+      details: 'Please provide either id or name' 
+    });
   }
 
   try {
-    console.log(`Fetching certificate with ${id ? 'id' : 'name'}:`, id || name);
+    // 1. Truy vấn database
+    const query = id 
+      ? supabase.from('certificates').select('*').eq('id', id)
+      : supabase.from('certificates').select('*').eq('name', name);
     
-    let query = supabase.from('certificates').select('*');
-    query = id ? query.eq('id', id) : query.eq('name', name);
-    const { data: certData, error: certError } = await query.single();
+    const { data: certData, error: dbError } = await query.single();
 
-    if (certError) {
-      console.error('Database error:', certError);
-      return res.status(404).json({ error: 'Certificate not found in database' });
+    if (dbError || !certData) {
+      console.error('Database error:', dbError || 'No data found');
+      return res.status(404).json({ 
+        error: 'Certificate not found',
+        details: dbError?.message || 'No matching record' 
+      });
     }
 
-    if (!certData) {
-      console.error('Certificate not found');
-      return res.status(404).json({ error: 'Certificate not found' });
+    // 2. Chuẩn hóa đường dẫn file
+    const urlObj = new URL(certData.p12_url);
+    const fullPath = urlObj.pathname;
+    
+    // Xử lý các vấn đề về path:
+    // - Loại bỏ slash thừa
+    // - Encode các ký tự đặc biệt
+    const normalizedPath = fullPath
+      .replace(/\/{2,}/g, '/') // Thay thế nhiều slash bằng một
+      .split('/')
+      .filter(part => part.trim() !== '')
+      .map(encodeURIComponent)
+      .join('/');
+
+    const bucketName = 'certificates';
+    const filePath = normalizedPath.split(`${bucketName}/`)[1];
+
+    if (!filePath) {
+      console.error('Invalid path structure:', fullPath);
+      return res.status(500).json({
+        error: 'Invalid file path',
+        details: `Cannot extract path from: ${fullPath}`
+      });
     }
 
-    console.log('Found certificate:', certData.name);
-    console.log('P12 URL:', certData.p12_url);
+    console.log(`Downloading from: ${bucketName}/${filePath}`);
 
-    const certPath = path.join(__dirname, 'temp.p12');
+    // 3. Tải file từ storage
+    const { data: fileData, error: downloadError } = await supabase
+      .storage
+      .from(bucketName)
+      .download(filePath);
 
-    // Phân tích URL và lấy đường dẫn file
+    if (downloadError || !fileData) {
+      console.error('Download failed:', {
+        error: downloadError,
+        attemptedPath: `${bucketName}/${filePath}`
+      });
+      return res.status(500).json({ 
+        error: 'Failed to download certificate',
+        details: downloadError?.message || 'File data empty'
+      });
+    }
+
+    // 4. Lưu file tạm và kiểm tra
+    const tempFilePath = path.join(__dirname, `temp_${Date.now()}.p12`);
     try {
-      const p12Url = new URL(certData.p12_url);
-      const filePath = p12Url.pathname.split('/public/')[1];
-      console.log('Extracted file path:', filePath);
+      await fs.promises.writeFile(
+        tempFilePath, 
+        Buffer.from(await fileData.arrayBuffer())
+      );
 
-      // Tải file từ storage
-      console.log('Attempting to download from bucket: certificates');
-      const { data: fileData, error: downloadError } = await supabase
-        .storage
-        .from('certificates')
-        .download(filePath);
-
-      if (downloadError) {
-        console.error('Download error:', downloadError);
-        return res.status(500).json({ 
-          error: 'Failed to download certificate',
-          details: downloadError.message 
-        });
-      }
-
-      if (!fileData) {
-        console.error('No file data received');
-        return res.status(500).json({ error: 'Empty file data' });
-      }
-
-      // Lưu file tạm
-      const buffer = await fileData.arrayBuffer();
-      fs.writeFileSync(certPath, Buffer.from(buffer));
-      console.log('File saved temporarily at:', certPath);
-
-      // Kiểm tra chứng chỉ
-      const certInfo = await checkP12Certificate(certPath, certData.password);
-      console.log('Certificate check result:', certInfo);
-
-      // Dọn dẹp
-      fs.unlinkSync(certPath);
+      const certInfo = await checkP12Certificate(tempFilePath, certData.password);
+      
+      // 5. Dọn dẹp và trả kết quả
+      fs.unlinkSync(tempFilePath);
 
       return res.json({
-        certificate: certInfo,
-        provision_expires_at: certData.provision_expires_at || null,
-        message: certInfo.valid ? 'Certificate is valid' : 'Certificate has expired',
+        success: true,
+        valid: certInfo.valid,
+        expires_at: certInfo.expiresAt,
+        provision_expires_at: certData.provision_expires_at,
+        message: certInfo.valid 
+          ? 'Certificate is valid' 
+          : 'Certificate has expired'
       });
 
-    } catch (parseError) {
-      console.error('URL parsing error:', parseError);
-      return res.status(500).json({ 
-        error: 'Invalid certificate URL',
-        details: parseError.message 
+    } catch (fileError) {
+      if (fs.existsSync(tempFilePath)) {
+        fs.unlinkSync(tempFilePath);
+      }
+      console.error('File processing error:', fileError);
+      return res.status(500).json({
+        error: 'Certificate processing failed',
+        details: fileError.message
       });
     }
 
