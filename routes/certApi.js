@@ -1,91 +1,70 @@
-// routes/certApi.js
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { checkP12Certificate } from '../utils/certChecker.js';
 
 const router = Router();
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Tối ưu Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    db: { schema: 'public' },
-    auth: { persistSession: false },
-    global: { 
-      headers: { 'X-Client-Info': 'cert-api' },
-      timeout: 20000 // 20 giây
-    }
-  }
+  { auth: { persistSession: false } }
 );
 
-// Phiên bản non-blocking
-router.get('/check-cert', async (req, res) => {
-  try {
-    // 1. Validate input (nhanh)
-    const { id, name } = req.query;
-    if (!id && !name) {
-      return res.status(400).json({ error: 'Require id or name' });
-    }
+// Middleware kiểm tra API key
+const apiKeyAuth = (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  if (apiKey !== process.env.API_KEY) {
+    return res.status(401).json({ error: 'Invalid API key' });
+  }
+  next();
+};
 
-    // 2. Truy vấn database (tối ưu)
-    const { data: certData, error: dbError } = await supabase
+router.get('/check', apiKeyAuth, async (req, res) => {
+  try {
+    const { id } = req.query;
+    if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
+
+    // 1. Truy vấn database
+    const { data: cert, error: dbError } = await supabase
       .from('certificates')
       .select('p12_url, password, provision_expires_at')
-      .eq(id ? 'id' : 'name', id || name)
-      .single()
-      .timeout(5000); // Timeout riêng cho database
+      .eq('id', id)
+      .single();
 
-    if (dbError || !certData) {
+    if (dbError || !cert) {
       throw new Error(dbError?.message || 'Certificate not found');
     }
 
-    // 3. Tải file stream (không dùng buffer)
-    const fileKey = new URL(certData.p12_url).pathname
-      .split('/public/')[1]
-      .replace(/\/+/g, '/');
-
-    console.time('DownloadFile');
-    const { data: fileStream, error: downloadError } = await supabase
+    // 2. Tải file từ storage
+    const filePath = new URL(cert.p12_url).pathname.split('/public/')[1];
+    const { data: file, error: downloadError } = await supabase
       .storage
       .from('certificates')
-      .download(fileKey);
-    console.timeEnd('DownloadFile');
+      .download(filePath);
 
-    if (downloadError) {
-      throw new Error(`Download failed: ${downloadError.message}`);
-    }
+    if (downloadError) throw downloadError;
 
-    // 4. Xử lý file tạm (nhanh)
-    const tempPath = `/tmp/cert_${Date.now()}.p12`;
-    await fs.writeFile(tempPath, Buffer.from(await fileStream.arrayBuffer()));
+    // 3. Kiểm tra chứng chỉ
+    const tempPath = `/tmp/${Date.now()}.p12`;
+    await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
+    const certInfo = await checkP12Certificate(tempPath, cert.password);
+    await fs.unlink(tempPath);
 
-    // 5. Kiểm tra chứng chỉ (cần tối ưu hàm này)
-    console.time('CheckCertificate');
-    const certInfo = await checkP12Certificate(tempPath, certData.password);
-    console.timeEnd('CheckCertificate');
-
-    // 6. Dọn dẹp (bất đồng bộ)
-    fs.unlink(tempPath).catch(console.error);
-
-    // 7. Trả kết quả
+    // 4. Trả kết quả
     res.json({
       valid: certInfo.valid,
       expires_at: certInfo.expiresAt,
-      provision: certData.provision_expires_at,
-      processing_time: `${console.timers?.CheckCertificate}ms` // Log thời gian
+      provision_expires_at: cert.provision_expires_at,
+      details: certInfo.details || null
     });
 
   } catch (err) {
-    console.error(`[ERROR] ${err.message}`);
+    console.error(`[CERT ERROR] ${err.message}`);
     res.status(500).json({ 
-      error: 'Process failed',
-      details: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      error: 'Certificate check failed',
+      details: err.message 
     });
   }
 });
+
+export default router;
