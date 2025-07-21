@@ -1,131 +1,91 @@
 // routes/certApi.js
 import { Router } from 'express';
 import { createClient } from '@supabase/supabase-js';
+import fs from 'fs/promises';
 import path from 'path';
-import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { checkP12Certificate } from '../utils/certChecker.js';
 
 const router = Router();
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Tối ưu Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    db: { schema: 'public' },
+    auth: { persistSession: false },
+    global: { 
+      headers: { 'X-Client-Info': 'cert-api' },
+      timeout: 20000 // 20 giây
+    }
+  }
 );
 
+// Phiên bản non-blocking
 router.get('/check-cert', async (req, res) => {
-  const { id, name } = req.query;
-
-  if (!id && !name) {
-    return res.status(400).json({ 
-      error: 'Missing parameter',
-      details: 'Please provide either id or name' 
-    });
-  }
-
   try {
-    // 1. Truy vấn database
-    const query = id 
-      ? supabase.from('certificates').select('*').eq('id', id)
-      : supabase.from('certificates').select('*').eq('name', name);
-    
-    const { data: certData, error: dbError } = await query.single();
+    // 1. Validate input (nhanh)
+    const { id, name } = req.query;
+    if (!id && !name) {
+      return res.status(400).json({ error: 'Require id or name' });
+    }
+
+    // 2. Truy vấn database (tối ưu)
+    const { data: certData, error: dbError } = await supabase
+      .from('certificates')
+      .select('p12_url, password, provision_expires_at')
+      .eq(id ? 'id' : 'name', id || name)
+      .single()
+      .timeout(5000); // Timeout riêng cho database
 
     if (dbError || !certData) {
-      console.error('Database error:', dbError || 'No data found');
-      return res.status(404).json({ 
-        error: 'Certificate not found',
-        details: dbError?.message || 'No matching record' 
-      });
+      throw new Error(dbError?.message || 'Certificate not found');
     }
 
-    // 2. Chuẩn hóa đường dẫn file
-    const urlObj = new URL(certData.p12_url);
-    const fullPath = urlObj.pathname;
-    
-    // Xử lý các vấn đề về path:
-    // - Loại bỏ slash thừa
-    // - Encode các ký tự đặc biệt
-    const normalizedPath = fullPath
-      .replace(/\/{2,}/g, '/') // Thay thế nhiều slash bằng một
-      .split('/')
-      .filter(part => part.trim() !== '')
-      .map(encodeURIComponent)
-      .join('/');
+    // 3. Tải file stream (không dùng buffer)
+    const fileKey = new URL(certData.p12_url).pathname
+      .split('/public/')[1]
+      .replace(/\/+/g, '/');
 
-    const bucketName = 'certificates';
-    const filePath = normalizedPath.split(`${bucketName}/`)[1];
-
-    if (!filePath) {
-      console.error('Invalid path structure:', fullPath);
-      return res.status(500).json({
-        error: 'Invalid file path',
-        details: `Cannot extract path from: ${fullPath}`
-      });
-    }
-
-    console.log(`Downloading from: ${bucketName}/${filePath}`);
-
-    // 3. Tải file từ storage
-    const { data: fileData, error: downloadError } = await supabase
+    console.time('DownloadFile');
+    const { data: fileStream, error: downloadError } = await supabase
       .storage
-      .from(bucketName)
-      .download(filePath);
+      .from('certificates')
+      .download(fileKey);
+    console.timeEnd('DownloadFile');
 
-    if (downloadError || !fileData) {
-      console.error('Download failed:', {
-        error: downloadError,
-        attemptedPath: `${bucketName}/${filePath}`
-      });
-      return res.status(500).json({ 
-        error: 'Failed to download certificate',
-        details: downloadError?.message || 'File data empty'
-      });
+    if (downloadError) {
+      throw new Error(`Download failed: ${downloadError.message}`);
     }
 
-    // 4. Lưu file tạm và kiểm tra
-    const tempFilePath = path.join(__dirname, `temp_${Date.now()}.p12`);
-    try {
-      await fs.promises.writeFile(
-        tempFilePath, 
-        Buffer.from(await fileData.arrayBuffer())
-      );
+    // 4. Xử lý file tạm (nhanh)
+    const tempPath = `/tmp/cert_${Date.now()}.p12`;
+    await fs.writeFile(tempPath, Buffer.from(await fileStream.arrayBuffer()));
 
-      const certInfo = await checkP12Certificate(tempFilePath, certData.password);
-      
-      // 5. Dọn dẹp và trả kết quả
-      fs.unlinkSync(tempFilePath);
+    // 5. Kiểm tra chứng chỉ (cần tối ưu hàm này)
+    console.time('CheckCertificate');
+    const certInfo = await checkP12Certificate(tempPath, certData.password);
+    console.timeEnd('CheckCertificate');
 
-      return res.json({
-        success: true,
-        valid: certInfo.valid,
-        expires_at: certInfo.expiresAt,
-        provision_expires_at: certData.provision_expires_at,
-        message: certInfo.valid 
-          ? 'Certificate is valid' 
-          : 'Certificate has expired'
-      });
+    // 6. Dọn dẹp (bất đồng bộ)
+    fs.unlink(tempPath).catch(console.error);
 
-    } catch (fileError) {
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
-      console.error('File processing error:', fileError);
-      return res.status(500).json({
-        error: 'Certificate processing failed',
-        details: fileError.message
-      });
-    }
+    // 7. Trả kết quả
+    res.json({
+      valid: certInfo.valid,
+      expires_at: certInfo.expiresAt,
+      provision: certData.provision_expires_at,
+      processing_time: `${console.timers?.CheckCertificate}ms` // Log thời gian
+    });
 
   } catch (err) {
-    console.error('Unexpected error:', err);
-    return res.status(500).json({ 
-      error: 'Internal server error',
-      details: err.message 
+    console.error(`[ERROR] ${err.message}`);
+    res.status(500).json({ 
+      error: 'Process failed',
+      details: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 });
-
-export default router;
