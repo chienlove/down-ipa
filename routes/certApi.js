@@ -3,18 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { checkP12Certificate } from '../utils/certChecker.js';
 
+const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const router = Router();
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  {
-    auth: { persistSession: false },
-    db: { schema: 'public' }
-  }
+  { auth: { persistSession: false } }
 );
 
 router.get('/check', async (req, res) => {
@@ -22,10 +20,10 @@ router.get('/check', async (req, res) => {
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
-    // 1. Truy vấn database
+    // 1. Truy vấn database - CHỈ LẤY CÁC CỘT CÓ TRONG BẢNG
     const { data: cert, error: dbError } = await supabase
       .from('certificates')
-      .select('p12_url, password, provision_expires_at')
+      .select('id, name, p12_url, provision_url, password, created_at')
       .eq('id', id)
       .single();
 
@@ -42,27 +40,27 @@ router.get('/check', async (req, res) => {
 
     if (downloadError) throw downloadError;
 
-    // 3. Lưu file tạm và kiểm tra
+    // 3. Kiểm tra chứng chỉ
     const tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
-    
-    // Giả lập kết quả kiểm tra (thay bằng hàm thực tế của bạn)
-    const certInfo = {
-      valid: true,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      details: { issuer: 'Test Issuer' }
-    };
-
+    const certInfo = await checkP12Certificate(tempPath, cert.password);
     await fs.unlink(tempPath);
-    
+
+    // 4. Trả kết quả (KHÔNG bao gồm provision_expires_at)
     res.json({
       valid: certInfo.valid,
       expires_at: certInfo.expiresAt,
-      provision_expires_at: cert.provision_expires_at
+      certificate_info: {
+        id: cert.id,
+        name: cert.name,
+        created_at: cert.created_at,
+        provision_url: cert.provision_url
+      },
+      message: certInfo.valid ? 'Certificate is valid' : 'Certificate has expired'
     });
 
   } catch (err) {
-    console.error('Certificate check error:', err);
+    console.error(`[CERT ERROR] ${err.message}`);
     res.status(500).json({ 
       error: 'Certificate check failed',
       details: err.message 
