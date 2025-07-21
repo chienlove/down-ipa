@@ -34,18 +34,28 @@ router.get('/check-cert', async (req, res) => {
 
     const certPath = path.join(__dirname, 'temp.p12');
 
-    const p12Path = certData.p12_url.split('/').slice(2).join('/');
-    const { data, error } = await supabase.storage.from(p12Path).download();
+    // Extract the file path from the full URL
+    const p12Url = new URL(certData.p12_url);
+    const filePath = p12Url.pathname.split('/public/')[1];
+    
+    // Download the file from the correct bucket
+    const { data: fileData, error: downloadError } = await supabase
+      .storage
+      .from('certificates')
+      .download(filePath);
 
-    if (error) {
+    if (downloadError || !fileData) {
       return res.status(500).json({ error: 'Failed to download certificate' });
     }
 
-    const buffer = await data.arrayBuffer();
+    // Save the file temporarily
+    const buffer = await fileData.arrayBuffer();
     fs.writeFileSync(certPath, Buffer.from(buffer));
 
+    // Check the certificate
     const certInfo = await checkP12Certificate(certPath, certData.password);
 
+    // Clean up
     fs.unlinkSync(certPath);
 
     return res.json({
