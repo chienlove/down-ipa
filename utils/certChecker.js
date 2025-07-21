@@ -28,6 +28,7 @@ function checkP12Certificate(certPath, password = '') {
         valid,
         expiresAt: expiresAt.toISOString(),
         issuer: issuerMatch ? issuerMatch[1].trim() : null,
+        message: valid ? 'Certificate is valid' : 'Certificate has expired'
       });
     });
   });
