@@ -115,9 +115,21 @@ const checkRevocationStatus = async (cert) => {
         },
         timeout: 10000
       }, (res) => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`OCSP server returned status code: ${res.statusCode}`));
+          return;
+        }
+
         const chunks = [];
         res.on('data', chunk => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('end', () => {
+          const data = Buffer.concat(chunks);
+          if (data.length === 0) {
+            reject(new Error('Empty OCSP response'));
+          } else {
+            resolve(data);
+          }
+        });
       });
 
       req.on('error', reject);
@@ -135,7 +147,8 @@ const checkRevocationStatus = async (cert) => {
     if (ocspResp.status !== 'successful') {
       return {
         isRevoked: false,
-        reason: `Phản hồi OCSP không thành công (mã: ${ocspResp.status})`
+        reason: `Phản hồi OCSP không thành công (mã: ${ocspResp.status})`,
+        errorDetails: ocspResp.error || 'Không có chi tiết lỗi'
       };
     }
 
@@ -151,7 +164,8 @@ const checkRevocationStatus = async (cert) => {
     console.error('OCSP Error:', error.message);
     return {
       isRevoked: false,
-      reason: `Không thể kiểm tra trạng thái thu hồi: ${error.message}`
+      reason: `Không thể kiểm tra trạng thái thu hồi: ${error.message}`,
+      errorDetails: error.stack
     };
   }
 };
@@ -195,7 +209,7 @@ router.get('/check-revocation', async (req, res) => {
     }
 
     const certificate = certBags[forge.pki.oids.certBag][0].cert;
-    const { isRevoked, revocationTime, reason } = await checkRevocationStatus(certificate);
+    const { isRevoked, revocationTime, reason, errorDetails } = await checkRevocationStatus(certificate);
 
     res.json({
       success: true,
@@ -203,6 +217,7 @@ router.get('/check-revocation', async (req, res) => {
       isRevoked,
       revocationTime,
       reason,
+      errorDetails: isRevoked ? undefined : errorDetails,
       subject: certificate.subject.attributes.reduce((acc, attr) => {
         acc[attr.name || attr.shortName] = attr.value;
         return acc;
@@ -214,7 +229,8 @@ router.get('/check-revocation', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Kiểm tra thất bại',
-      details: error.message
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   } finally {
     if (tempPath) {
