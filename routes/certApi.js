@@ -73,7 +73,23 @@ const ensureAppleWWDRCert = async () => {
 const loadAppleIssuer = async () => {
   const pemPath = await ensureAppleWWDRCert();
   const pem = await fs.readFile(pemPath, 'utf8');
-  return forge.pki.certificateFromPem(pem);
+  const cert = forge.pki.certificateFromPem(pem);
+  
+  // Enhanced issuer certificate validation
+  if (!cert.publicKey || !cert.publicKey.subjectPublicKeyInfo) {
+    const certDetails = {
+      serialNumber: cert.serialNumber,
+      issuer: cert.issuer.attributes.map(a => `${a.name || a.shortName}=${a.value}`),
+      publicKey: {
+        algorithm: cert.publicKey?.algorithm,
+        exists: !!cert.publicKey
+      }
+    };
+    console.error('Invalid Apple WWDR Certificate:', certDetails);
+    throw new Error('Apple WWDR certificate has invalid public key structure');
+  }
+
+  return cert;
 };
 
 const validateCertificateStructure = (cert) => {
@@ -99,8 +115,16 @@ const checkRevocationStatus = async (cert) => {
     validateCertificateStructure(cert);
 
     const issuerCert = await loadAppleIssuer();
-    if (!issuerCert.publicKey?.subjectPublicKeyInfo?.subjectPublicKey) {
-      throw new Error('Issuer certificate missing required public key information');
+    
+    // Deep validation of issuer public key
+    const issuerKey = issuerCert.publicKey?.subjectPublicKeyInfo?.subjectPublicKey;
+    if (!issuerKey || typeof issuerKey !== 'string') {
+      console.error('Issuer Public Key Details:', {
+        type: typeof issuerKey,
+        length: issuerKey?.length,
+        fullInfo: issuerCert.publicKey?.subjectPublicKeyInfo
+      });
+      throw new Error('Issuer public key is missing or invalid format');
     }
 
     const ocspRequest = forge.ocsp.createRequest({
@@ -141,7 +165,15 @@ const checkRevocationStatus = async (cert) => {
     };
 
   } catch (error) {
-    console.error('OCSP Processing Error:', error);
+    console.error('OCSP Processing Error:', {
+      message: error.message,
+      stack: error.stack,
+      certificate: cert ? {
+        serial: cert.serialNumber,
+        issuer: cert.issuer.attributes.map(a => `${a.name || a.shortName}=${a.value}`)
+      } : null
+    });
+    
     return {
       isRevoked: false,
       reason: `Revocation check failed: ${error.message}`,
@@ -194,7 +226,11 @@ router.get('/check-revocation', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('API Error:', {
+      message: error.message,
+      stack: error.stack,
+      query: req.query
+    });
     res.status(500).json({
       success: false,
       error: error.message,
