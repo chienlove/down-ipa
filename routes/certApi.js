@@ -9,105 +9,139 @@ const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Khởi tạo Supabase với timeout dài hơn
+// 1. Cấu hình Supabase Client
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { 
     auth: { persistSession: false },
-    db: { schema: 'public' },
-    global: { fetch: fetchWithTimeout }
+    db: { 
+      schema: 'public',
+      fetch: fetchWithTimeout // Sử dụng custom fetch
+    }
   }
 );
 
 // Hàm fetch với timeout
 async function fetchWithTimeout(input, init = {}) {
-  const { timeout = 30000 } = init;
+  const { timeout = 10000 } = init;
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
-  const response = await fetch(input, {
-    ...init,
-    signal: controller.signal  
-  });
-  clearTimeout(id);
-  return response;
+  
+  try {
+    const response = await fetch(input, {
+      ...init,
+      signal: controller.signal  
+    });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
 }
 
-// Hàm extract file key từ URL Supabase Storage
-const getFileKeyFromUrl = (url) => {
+// 2. Hàm xử lý URL
+const normalizeFileKey = (url) => {
   try {
-    // Xử lý URL có thể chứa ký tự đặc biệt như dấu phẩy
-    const decodedUrl = decodeURIComponent(url);
-    const urlObj = new URL(decodedUrl);
+    // Fix các URL bị encode nhiều lần
+    let decodedUrl = decodeURIComponent(url);
+    decodedUrl = decodedUrl.replace(/(%[0-9A-F]{2})+/g, match => 
+      match === '%2C' ? ',' : match // Giữ lại dấu phẩy
+    );
+
+    // Xử lý cả URL dạng full và short
+    const publicPrefix = '/storage/v1/object/public/';
+    const publicIndex = decodedUrl.indexOf(publicPrefix);
     
-    // Pattern cho Supabase Storage URL
-    const pattern = /\/storage\/v1\/object\/public\/([^/]+)\/(.+)/;
-    const match = urlObj.pathname.match(pattern);
-    
-    if (match && match[2]) {
-      return match[2]; // Trả về phần path sau bucket name
+    if (publicIndex > -1) {
+      return decodedUrl.slice(publicIndex + publicPrefix.length).split('/').slice(1).join('/');
     }
-    return urlObj.pathname.split('public/').pop() || urlObj.pathname;
+    return decodedUrl.split('certificates/').pop() || decodedUrl;
   } catch (e) {
-    console.error('Error parsing URL:', url, e);
+    console.error('URL normalization error:', e);
     return url;
   }
 };
 
+// 3. Hàm truy vấn certificate với timeout
+const getCertificateFromDB = async (id) => {
+  try {
+    const { data, error } = await supabase
+      .from('certificates')
+      .select('id, name, p12_url, password')
+      .eq('id', id)
+      .maybeSingle(); // Sử dụng maybeSingle thay vì single
+    
+    if (error) throw error;
+    if (!data) throw new Error('Certificate not found');
+    if (!data.p12_url) throw new Error('Missing P12 URL');
+    
+    return data;
+  } catch (err) {
+    console.error('Database query error:', err);
+    throw new Error(`Database error: ${err.message}`);
+  }
+};
+
+// 4. Hàm tải file từ Storage với retry
+const downloadFileWithRetry = async (fileKey, retries = 3) => {
+  let lastError;
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      const { data, error } = await supabase.storage
+        .from('certificates')
+        .download(fileKey);
+      
+      if (error) throw error;
+      if (data) return data;
+      
+    } catch (err) {
+      lastError = err;
+      if (i < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Download failed after retries');
+};
+
+// 5. API Endpoint
 router.get('/check', async (req, res) => {
   let tempPath;
   try {
     const { id } = req.query;
-    if (!id) return res.status(400).json({ error: 'Thiếu ID chứng chỉ' });
+    if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
-    // 1. Truy vấn database - thêm timeout
-    const { data: cert, error: queryError } = await supabase
-      .from('certificates')
-      .select('id, name, p12_url, password')
-      .eq('id', id)
-      .single()
-      .timeout(5000);
+    // Bước 1: Lấy thông tin từ database
+    const cert = await getCertificateFromDB(id);
+    console.log('Certificate data:', { 
+      id: cert.id, 
+      name: cert.name,
+      url: cert.p12_url 
+    });
 
-    if (queryError) throw new Error(`Database error: ${queryError.message}`);
-    if (!cert) throw new Error('Không tìm thấy chứng chỉ');
-    if (!cert.p12_url) throw new Error('Chứng chỉ thiếu URL file P12');
+    // Bước 2: Chuẩn hóa file key
+    const fileKey = normalizeFileKey(cert.p12_url);
+    console.log('Normalized file key:', fileKey);
 
-    console.log('Original p12_url:', cert.p12_url);
-
-    // 2. Tải file từ storage với xử lý ký tự đặc biệt
-    const fileKey = getFileKeyFromUrl(cert.p12_url);
-    console.log('Extracted file key:', fileKey);
-
-    // Tải file với 3 lần thử
-    let file;
-    let downloadError;
-    for (let i = 0; i < 3; i++) {
-      try {
-        const result = await supabase.storage
-          .from('certificates')
-          .download(encodeURIComponent(fileKey)); // Sử dụng encodeURIComponent thay vì encodeURI
-        
-        file = result.data;
-        downloadError = result.error;
-        if (file) break;
-      } catch (e) {
-        downloadError = e;
-        if (i === 2) throw e;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-
-    if (downloadError || !file) {
-      throw new Error(`Tải file thất bại sau 3 lần thử: ${downloadError?.message || 'Unknown error'}`);
-    }
-
-    // 3. Lưu file tạm với stream để xử lý file lớn
-    tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
-    await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
-
-    // 4. Kiểm tra chứng chỉ
-    const certInfo = await checkP12Certificate(tempPath, cert.password || '');
+    // Bước 3: Tải file với retry
+    const file = await downloadFileWithRetry(fileKey);
     
+    // Bước 4: Lưu file tạm
+    tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
+    await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
+    console.log('File saved to:', tempPath);
+
+    // Bước 5: Kiểm tra chứng chỉ
+    const certInfo = await checkP12Certificate(tempPath, cert.password || '');
+    console.log('Certificate info:', {
+      valid: certInfo.valid,
+      expiresAt: certInfo.expiresAt
+    });
+
     res.json({
       success: true,
       valid: certInfo.valid,
@@ -118,45 +152,50 @@ router.get('/check', async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Full error:', {
+    console.error('API Error:', {
       message: err.message,
       stack: err.stack,
-      time: new Date().toISOString()
+      timestamp: new Date().toISOString()
     });
-    
-    res.status(500).json({ 
-      error: 'Kiểm tra chứng chỉ thất bại',
-      details: err.message.includes('Invalid password') ? 'Sai mật khẩu' : 
-               err.message.includes('Invalid PKCS#12') ? 'Định dạng file P12 không hợp lệ' :
-               err.message
+
+    const errorMap = {
+      'Invalid password': 'Wrong password',
+      'Invalid PKCS#12': 'Invalid P12 format',
+      'Certificate not found': 'Certificate not found',
+      'Missing P12 URL': 'Missing P12 URL'
+    };
+
+    res.status(500).json({
+      error: 'Certificate check failed',
+      details: errorMap[err.message] || err.message
     });
   } finally {
     if (tempPath) {
-      try { 
-        await fs.unlink(tempPath).catch(e => console.error('Lỗi khi xóa file tạm:', e));
+      try {
+        await fs.unlink(tempPath).catch(console.error);
       } catch (e) {
-        console.error('Lỗi xóa file tạm:', e);
+        console.error('Temp file cleanup error:', e);
       }
     }
   }
 });
 
-// Hàm kiểm tra P12 với xử lý lỗi chi tiết
+// 6. Hàm kiểm tra P12
 const checkP12Certificate = async (filePath, password = '') => {
   try {
-    // Đọc file với stream để xử lý file lớn
     const p12Data = await fs.readFile(filePath);
-    
-    // Chuyển đổi dữ liệu
     const p12Asn1 = forge.asn1.fromDer(p12Data.toString('binary'));
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password, false, ['certBag']);
     
-    // Lấy thông tin certificate
+    // Thêm option để bỏ qua các bag không cần thiết
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, password, false, [
+      forge.pki.oids.certBag
+    ]);
+
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
-      throw new Error('Không tìm thấy chứng chỉ trong file P12');
+    if (!certBags[forge.pki.oids.certBag]?.length) {
+      throw new Error('No certificates found in P12');
     }
-    
+
     const cert = certBags[forge.pki.oids.certBag][0].cert;
     const now = new Date();
     const valid = now >= cert.validity.notBefore && now <= cert.validity.notAfter;
@@ -165,29 +204,29 @@ const checkP12Certificate = async (filePath, password = '') => {
       valid,
       expiresAt: cert.validity.notAfter.toISOString(),
       subject: cert.subject.attributes.map(attr => ({
-        shortName: attr.shortName,
         name: attr.name,
-        value: attr.value
+        value: attr.value,
+        type: attr.type
       })),
       issuer: cert.issuer.attributes.map(attr => ({
-        shortName: attr.shortName,
         name: attr.name,
-        value: attr.value
+        value: attr.value,
+        type: attr.type
       }))
     };
+
   } catch (err) {
-    console.error('Certificate check error:', err);
+    console.error('P12 Validation Error:', err);
     
-    // Phân loại lỗi chi tiết
     if (err.message.includes('Invalid password')) {
-      throw new Error('Sai mật khẩu chứng chỉ');
+      throw new Error('Invalid password');
     } else if (err.message.includes('Invalid PKCS#12')) {
-      throw new Error('Định dạng file P12 không hợp lệ');
+      throw new Error('Invalid PKCS#12');
     } else if (err.message.includes('ASN.1')) {
-      throw new Error('File không phải định dạng P12 hợp lệ');
+      throw new Error('Invalid file format');
     }
     
-    throw new Error(`Lỗi kiểm tra chứng chỉ: ${err.message}`);
+    throw new Error(`Certificate validation failed: ${err.message}`);
   }
 };
 
