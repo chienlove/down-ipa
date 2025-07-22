@@ -4,92 +4,77 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import forge from 'node-forge';
+import https from 'https';
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cấu hình Supabase với timeout
+// Cấu hình Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { 
-    auth: { persistSession: false },
-    db: { schema: 'public' }
-  }
+  { auth: { persistSession: false } }
 );
 
-// Hàm xử lý URL file (đã fix lỗi encode)
-const extractFileKey = (url) => {
+// Hàm kiểm tra trạng thái thu hồi qua OCSP
+const checkRevocationStatus = async (cert) => {
   try {
-    // Xử lý trường hợp URL đã encode nhiều lần
-    let decodedUrl = decodeURIComponent(url);
-    
-    // Pattern cho URL Supabase Storage
-    const pattern = /\/storage\/v1\/object\/public\/certificates\/(.+)/;
-    const match = decodedUrl.match(pattern);
-    
-    if (match && match[1]) {
-      return match[1]; // Trả về phần sau 'certificates/'
+    // Lấy URL OCSP từ chứng chỉ
+    const ocspUrl = cert.authorityInfoAccess.find(access => 
+      access.accessMethod === '1.3.6.1.5.5.7.48.1' // id-ad-ocsp
+    ).accessLocation;
+
+    if (!ocspUrl) {
+      return { isRevoked: false, ocspSupported: false };
     }
-    
-    // Fallback cho các định dạng URL khác
-    return decodedUrl.split('certificates/').pop() || decodedUrl;
-  } catch (e) {
-    console.error('URL parsing error:', e);
-    return url;
+
+    // Tạo OCSP Request
+    const ocspRequest = forge.ocsp.createRequest({
+      certificate: cert,
+      issuer: cert // Giả định issuer cert đã có trong chain
+    });
+
+    // Gửi request đến máy chủ OCSP của Apple
+    const response = await new Promise((resolve, reject) => {
+      const req = https.request(ocspUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/ocsp-request',
+          'Content-Length': ocspRequest.length
+        },
+        timeout: 5000
+      }, (res) => {
+        let data = [];
+        res.on('data', chunk => data.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(data)));
+      });
+
+      req.on('error', reject);
+      req.on('timeout', () => req.destroy(new Error('OCSP timeout')));
+      req.write(ocspRequest.toDer());
+      req.end();
+    });
+
+    const ocspResponse = forge.ocsp.decodeResponse(response);
+    return {
+      isRevoked: ocspResponse.isRevoked,
+      revocationTime: ocspResponse.revokedInfo?.revocationTime,
+      ocspSupported: true
+    };
+
+  } catch (error) {
+    console.error('OCSP check error:', error.message);
+    return { isRevoked: false, ocspSupported: false };
   }
 };
 
-// Hàm tải file với retry và error handling
-const downloadFile = async (fileKey) => {
-  let lastError;
-  
-  // Thử tải tối đa 3 lần
-  for (let i = 0; i < 3; i++) {
-    try {
-      const { data, error } = await supabase.storage
-        .from('certificates')
-        .download(encodeURI(fileKey)); // Encode URI để xử lý ký tự đặc biệt
-
-      if (error) {
-        console.error(`Lỗi tải file (lần ${i + 1}):`, error.message);
-        lastError = error;
-        continue;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (err) {
-      lastError = err;
-      console.error(`Lỗi try-catch (lần ${i + 1}):`, err.message);
-    }
-
-    // Nếu không thành công, chờ 1s trước khi thử lại
-    if (i < 2) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-
-  // Nếu sau 3 lần vẫn lỗi
-  throw lastError || new Error('Không thể tải file sau 3 lần thử');
-};
-
-// API Endpoint với xử lý lỗi chi tiết
+// API Endpoint
 router.get('/check', async (req, res) => {
   let tempPath;
   try {
     const { id } = req.query;
-    if (!id) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Thiếu tham số',
-        details: 'Vui lòng cung cấp ID chứng chỉ'
-      });
-    }
-
-    console.log(`Bắt đầu kiểm tra chứng chỉ ID: ${id}`);
+    if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
     // 1. Lấy thông tin từ database
     const { data: cert, error: dbError } = await supabase
@@ -98,55 +83,48 @@ router.get('/check', async (req, res) => {
       .eq('id', id)
       .single();
 
-    if (dbError) {
-      console.error('Lỗi database:', dbError);
-      throw new Error(`Lỗi truy vấn database: ${dbError.message}`);
-    }
-    if (!cert) {
-      throw new Error(`Không tìm thấy chứng chỉ với ID: ${id}`);
-    }
-    if (!cert.p12_url) {
-      throw new Error('Chứng chỉ không có URL file P12');
-    }
+    if (dbError) throw dbError;
+    if (!cert) throw new Error('Certificate not found');
 
-    console.log('Thông tin chứng chỉ:', {
-      id: cert.id,
-      name: cert.name,
-      url: cert.p12_url
-    });
+    // 2. Tải file từ storage
+    const fileKey = cert.p12_url.split('public/')[1];
+    const { data: file, error: downloadError } = await supabase.storage
+      .from('certificates')
+      .download(fileKey);
 
-    // 2. Trích xuất file key từ URL
-    const fileKey = extractFileKey(cert.p12_url);
-    console.log('File key đã trích xuất:', fileKey);
+    if (downloadError) throw downloadError;
 
-    // 3. Tải file từ storage
-    const file = await downloadFile(fileKey);
-    console.log('Tải file thành công, kích thước:', file.size);
-
-    // 4. Lưu file tạm
-    tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
+    // 3. Lưu file tạm
+    tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
-    console.log('Đã lưu file tạm tại:', tempPath);
 
-    // 5. Kiểm tra chứng chỉ
+    // 4. Đọc và kiểm tra chứng chỉ
     const p12Data = await fs.readFile(tempPath);
     const p12Asn1 = forge.asn1.fromDer(p12Data.toString('binary'));
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, cert.password || '');
 
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
-      throw new Error('Không tìm thấy chứng chỉ trong file P12');
+    if (!certBags[forge.pki.oids.certBag]?.length) {
+      throw new Error('No certificate found in P12');
     }
 
     const certificate = certBags[forge.pki.oids.certBag][0].cert;
     const now = new Date();
-    const isValid = now >= certificate.validity.notBefore && now <= certificate.validity.notAfter;
+
+    // Kiểm tra thời hạn
+    const isExpired = now < certificate.validity.notBefore || now > certificate.validity.notAfter;
+
+    // Kiểm tra trạng thái thu hồi
+    const { isRevoked, revocationTime } = await checkRevocationStatus(certificate);
 
     res.json({
       success: true,
-      valid: isValid,
-      expiresAt: certificate.validity.notAfter.toISOString(),
       name: cert.name,
+      valid: !isExpired && !isRevoked,
+      isExpired,
+      isRevoked,
+      revocationTime: revocationTime?.toISOString(),
+      expiresAt: certificate.validity.notAfter.toISOString(),
       subject: certificate.subject.attributes.map(attr => ({
         name: attr.name,
         value: attr.value
@@ -158,35 +136,17 @@ router.get('/check', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Lỗi trong quá trình xử lý:', {
-      message: error.message,
-      stack: error.stack,
-      time: new Date().toISOString()
-    });
-
-    // Phân loại lỗi để trả về thông báo rõ ràng
-    let errorDetails = error.message;
-    if (error.message.includes('download')) {
-      errorDetails = 'Không thể tải file từ storage. Kiểm tra lại: ' + 
-                   '1. URL file có đúng không? ' + 
-                   '2. Service Role Key có quyền đọc storage? ' +
-                   '3. File có tồn tại trong bucket?';
-    }
-
+    console.error('API Error:', error);
     res.status(500).json({
       success: false,
-      error: 'Kiểm tra chứng chỉ thất bại',
-      details: errorDetails
+      error: 'Certificate check failed',
+      details: error.message.includes('Invalid password') ? 'Wrong password' : 
+               error.message.includes('No certificate found') ? 'Invalid P12 format' :
+               error.message
     });
   } finally {
-    // Dọn dẹp file tạm nếu có
     if (tempPath) {
-      try {
-        await fs.unlink(tempPath);
-        console.log('Đã xóa file tạm:', tempPath);
-      } catch (cleanupError) {
-        console.error('Lỗi khi xóa file tạm:', cleanupError.message);
-      }
+      try { await fs.unlink(tempPath); } catch (e) { console.error('Cleanup error:', e); }
     }
   }
 });
