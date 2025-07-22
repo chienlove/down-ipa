@@ -27,7 +27,7 @@ const supabase = createClient(
 
 const extractFileKey = (url) => {
   try {
-    let decodedUrl = decodeURIComponent(url);
+    const decodedUrl = decodeURIComponent(url);
     const pattern = /\/storage\/v1\/object\/public\/certificates\/(.+)/;
     const match = decodedUrl.match(pattern);
     return match?.[1] || decodedUrl.split('certificates/').pop() || decodedUrl;
@@ -38,28 +38,25 @@ const extractFileKey = (url) => {
 };
 
 const downloadFile = async (fileKey) => {
-  let lastError;
   for (let i = 0; i < 3; i++) {
     try {
       const { data, error } = await supabase.storage
         .from('certificates')
-        .download(encodeURI(fileKey));
+        .download(encodeURIComponent(fileKey));
       if (error) throw error;
       return data;
     } catch (err) {
-      lastError = err;
-      if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000));
+      if (i === 2) throw err;
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
-  throw lastError || new Error('Failed after 3 attempts');
 };
 
 const ensureAppleWWDRCert = async () => {
-  const cerPath = '/tmp/AppleWWDRCAG3.cer';
   const pemPath = '/tmp/AppleWWDRCAG3.pem';
-
   if (existsSync(pemPath)) return pemPath;
 
+  const cerPath = '/tmp/AppleWWDRCAG3.cer';
   await new Promise((resolve, reject) => {
     const file = createWriteStream(cerPath);
     https.get('https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer', res => {
@@ -79,20 +76,31 @@ const loadAppleIssuer = async () => {
   return forge.pki.certificateFromPem(pem);
 };
 
-const validateCertificate = (cert) => {
-  if (!cert) throw new Error('Certificate is required');
-  if (!cert.serialNumber) throw new Error('Missing serialNumber');
-  if (!cert.issuer || !cert.issuer.attributes) throw new Error('Invalid issuer');
-  if (!cert.publicKey) throw new Error('Missing publicKey');
+const validateCertificateStructure = (cert) => {
+  if (!cert || typeof cert !== 'object') {
+    throw new Error('Invalid certificate: Not an object');
+  }
+
+  if (!cert.serialNumber || typeof cert.serialNumber !== 'string') {
+    throw new Error('Invalid certificate: Missing or invalid serialNumber');
+  }
+
+  if (!cert.issuer || !Array.isArray(cert.issuer.attributes)) {
+    throw new Error('Invalid certificate: Missing or invalid issuer');
+  }
+
+  if (!cert.publicKey || typeof cert.publicKey !== 'object') {
+    throw new Error('Invalid certificate: Missing publicKey');
+  }
 };
 
 const checkRevocationStatus = async (cert) => {
   try {
-    validateCertificate(cert);
+    validateCertificateStructure(cert);
+
     const issuerCert = await loadAppleIssuer();
-    
-    if (!issuerCert.publicKey) {
-      throw new Error('Issuer certificate missing public key');
+    if (!issuerCert.publicKey?.subjectPublicKeyInfo?.subjectPublicKey) {
+      throw new Error('Issuer certificate missing required public key information');
     }
 
     const ocspRequest = forge.ocsp.createRequest({
@@ -110,7 +118,7 @@ const checkRevocationStatus = async (cert) => {
         timeout: 10000
       }, (res) => {
         if (res.statusCode !== 200) {
-          return reject(new Error(`OCSP status ${res.statusCode}`));
+          return reject(new Error(`OCSP server error: HTTP ${res.statusCode}`));
         }
         const chunks = [];
         res.on('data', chunk => chunks.push(chunk));
@@ -122,22 +130,23 @@ const checkRevocationStatus = async (cert) => {
     });
 
     const ocspResp = forge.ocsp.decodeResponse(response);
-    
+
     return {
       isRevoked: ocspResp.isRevoked || false,
       revocationTime: ocspResp.revokedInfo?.revocationTime || null,
       reason: ocspResp.isRevoked 
         ? `Revoked at ${ocspResp.revokedInfo.revocationTime.toISOString()}`
         : 'Valid certificate',
-      ocspStatus: ocspResp.status
+      ocspStatus: ocspResp.status || 'unknown'
     };
 
   } catch (error) {
-    console.error('OCSP Error:', error);
+    console.error('OCSP Processing Error:', error);
     return {
       isRevoked: false,
       reason: `Revocation check failed: ${error.message}`,
-      ocspStatus: 'error'
+      ocspStatus: 'error',
+      errorDetails: process.env.NODE_ENV === 'development' ? error.stack : undefined
     };
   }
 };
@@ -148,14 +157,14 @@ router.get('/check-revocation', async (req, res) => {
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
-    const { data: certData, error } = await supabase
+    const { data: certData, error: dbError } = await supabase
       .from('certificates')
       .select('id, name, p12_url, password')
       .eq('id', id)
       .single();
 
-    if (error) throw error;
-    if (!certData?.p12_url) throw new Error('Missing P12 file');
+    if (dbError) throw new Error(`Database error: ${dbError.message}`);
+    if (!certData?.p12_url) throw new Error('Missing P12 file URL');
 
     const fileKey = extractFileKey(certData.p12_url);
     const file = await downloadFile(fileKey);
@@ -163,7 +172,7 @@ router.get('/check-revocation', async (req, res) => {
     tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
 
-    const p12Asn1 = forge.asn1.fromDer((await fs.readFile(tempPath)).toString('binary'));
+    const p12Asn1 = forge.asn1.fromDer((await fs.readFile(tempPath, 'binary')));
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certData.password || '');
 
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
@@ -177,7 +186,9 @@ router.get('/check-revocation', async (req, res) => {
       name: certData.name,
       ...result,
       subject: certificate.subject.attributes.reduce((acc, attr) => {
-        acc[attr.name || attr.shortName] = attr.value;
+        if (attr.name || attr.shortName) {
+          acc[attr.name || attr.shortName] = attr.value;
+        }
         return acc;
       }, {})
     });
@@ -186,7 +197,8 @@ router.get('/check-revocation', async (req, res) => {
     console.error('API Error:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   } finally {
     if (tempPath) {
