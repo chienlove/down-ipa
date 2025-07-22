@@ -14,22 +14,65 @@ const __dirname = path.dirname(__filename);
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
+  { 
+    auth: { persistSession: false },
+    db: { schema: 'public' }
+  }
 );
 
-// 1. Hàm kiểm tra trạng thái thu hồi qua OCSP
+// Hàm xử lý URL file (fix lỗi encode)
+const extractFileKey = (url) => {
+  try {
+    let decodedUrl = decodeURIComponent(url);
+    const pattern = /\/storage\/v1\/object\/public\/certificates\/(.+)/;
+    const match = decodedUrl.match(pattern);
+    if (match && match[1]) return match[1];
+    return decodedUrl.split('certificates/').pop() || decodedUrl;
+  } catch (e) {
+    console.error('URL parsing error:', e);
+    return url;
+  }
+};
+
+// Hàm tải file với retry
+const downloadFile = async (fileKey) => {
+  let lastError;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const { data, error } = await supabase.storage
+        .from('certificates')
+        .download(encodeURI(fileKey));
+
+      if (error) {
+        console.error(`Lỗi tải file (lần ${i + 1}):`, error.message);
+        lastError = error;
+        continue;
+      }
+
+      if (data) return data;
+    } catch (err) {
+      lastError = err;
+      console.error(`Lỗi try-catch (lần ${i + 1}):`, err.message);
+    }
+
+    if (i < 2) await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  throw lastError || new Error('Không thể tải file sau 3 lần thử');
+};
+
+// Hàm kiểm tra trạng thái thu hồi qua OCSP
 const checkRevocationStatus = async (cert) => {
   try {
-    // Lấy OCSP URL từ extension của chứng chỉ
     const ocspExtension = cert.getExtension('authorityInfoAccess');
     if (!ocspExtension) {
       return { isRevoked: false, reason: 'Chứng chỉ không hỗ trợ OCSP' };
     }
 
     const ocspAccess = ocspExtension.accessDescriptions.find(
-      ad => ad.accessMethod === '1.3.6.1.5.5.7.48.1' // id-ad-ocsp
+      ad => ad.accessMethod === '1.3.6.1.5.5.7.48.1'
     );
-    
+
     if (!ocspAccess) {
       return { isRevoked: false, reason: 'Không tìm thấy OCSP URL' };
     }
@@ -37,13 +80,11 @@ const checkRevocationStatus = async (cert) => {
     const ocspUrl = ocspAccess.accessLocation.value;
     console.log(`OCSP URL: ${ocspUrl}`);
 
-    // Tạo OCSP Request
     const ocspRequest = forge.ocsp.createRequest({
       certificate: cert,
-      issuer: cert // Giả định issuer cert đã có trong chain
+      issuer: cert
     });
 
-    // Gửi request đến máy chủ OCSP của Apple
     const response = await new Promise((resolve, reject) => {
       const req = https.request(ocspUrl, {
         method: 'POST',
@@ -73,8 +114,8 @@ const checkRevocationStatus = async (cert) => {
       isRevoked: ocspResponse.isRevoked,
       revocationTime: ocspResponse.revokedInfo?.revocationTime,
       reason: ocspResponse.isRevoked ? 
-             `Chứng chỉ đã bị thu hồi lúc ${ocspResponse.revokedInfo.revocationTime.toISOString()}` : 
-             'Chứng chỉ chưa bị thu hồi'
+        `Chứng chỉ đã bị thu hồi lúc ${ocspResponse.revokedInfo.revocationTime.toISOString()}` : 
+        'Chứng chỉ chưa bị thu hồi'
     };
 
   } catch (error) {
@@ -86,7 +127,7 @@ const checkRevocationStatus = async (cert) => {
   }
 };
 
-// 2. API Endpoint chính
+// API kiểm tra thu hồi
 router.get('/check-revocation', async (req, res) => {
   let tempPath;
   try {
@@ -99,7 +140,6 @@ router.get('/check-revocation', async (req, res) => {
       });
     }
 
-    // A. Lấy thông tin chứng chỉ từ database
     const { data: certData, error: dbError } = await supabase
       .from('certificates')
       .select('id, name, p12_url, password')
@@ -110,19 +150,12 @@ router.get('/check-revocation', async (req, res) => {
     if (!certData) throw new Error(`Không tìm thấy chứng chỉ với ID: ${id}`);
     if (!certData.p12_url) throw new Error('Thiếu URL file P12');
 
-    // B. Tải file P12 từ storage
-    const fileKey = certData.p12_url.split('public/')[1] || certData.p12_url;
-    const { data: file, error: downloadError } = await supabase.storage
-      .from('certificates')
-      .download(fileKey);
+    const fileKey = extractFileKey(certData.p12_url);
+    const file = await downloadFile(fileKey);
 
-    if (downloadError) throw new Error(`Tải file thất bại: ${downloadError.message}`);
-
-    // C. Lưu file tạm
-    tempPath = path.join(__dirname, `temp_${id}.p12`);
+    tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
 
-    // D. Đọc chứng chỉ từ file P12
     const p12Data = await fs.readFile(tempPath);
     const p12Asn1 = forge.asn1.fromDer(p12Data.toString('binary'));
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certData.password || '');
@@ -133,8 +166,6 @@ router.get('/check-revocation', async (req, res) => {
     }
 
     const certificate = certBags[forge.pki.oids.certBag][0].cert;
-
-    // E. Kiểm tra trạng thái thu hồi
     const { isRevoked, revocationTime, reason } = await checkRevocationStatus(certificate);
 
     res.json({
