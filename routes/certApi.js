@@ -9,45 +9,54 @@ const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 1. Cấu hình Supabase đơn giản
+// Cấu hình Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { auth: { persistSession: false } }
 );
 
-// 2. Hàm tải file đáng tin cậy
+// Hàm tải file với xử lý lỗi chi tiết
 const downloadCertificateFile = async (p12Url) => {
   try {
-    // Lấy phần sau 'public/' trong URL
+    // Trích xuất file key từ URL
     const fileKey = p12Url.split('public/')[1] || p12Url;
+    console.log(`Đang tải file với key: ${fileKey}`);
+
     const { data, error } = await supabase.storage
       .from('certificates')
       .download(fileKey);
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error('Lỗi từ Supabase:', error.message);
+      throw new Error(`Không thể tải file từ storage`);
+    }
+
+    if (!data) {
+      throw new Error('Không nhận được dữ liệu file');
+    }
+
+    return { fileData: data, fileKey };
   } catch (error) {
-    console.error('Download failed:', error.message);
-    throw new Error(`Không thể tải file: ${fileKey}`);
+    console.error('Lỗi trong quá trình tải file:', error.message);
+    throw new Error(`Tải file thất bại: ${error.message}`);
   }
 };
 
-// 3. Hàm kiểm tra trạng thái thu hồi (đơn giản hóa)
-const checkCertificateRevocation = (cert) => {
-  // Triển khai OCSP check ở đây (đã bỏ qua để tập trung vào flow chính)
-  // Trong thực tế cần tích hợp Apple OCSP server
-  return { isRevoked: false, reason: 'Chưa triển khai OCSP' };
-};
-
-// 4. API Endpoint chính
+// API Endpoint
 router.get('/check', async (req, res) => {
   let tempPath;
   try {
     const { id } = req.query;
-    if (!id) return res.status(400).json({ error: 'Yêu cầu ID chứng chỉ' });
+    if (!id) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Thiếu tham số',
+        details: 'Vui lòng cung cấp ID chứng chỉ'
+      });
+    }
 
-    // A. Truy vấn database
+    // 1. Truy vấn database
     const { data: certData, error: dbError } = await supabase
       .from('certificates')
       .select('*')
@@ -55,14 +64,18 @@ router.get('/check', async (req, res) => {
       .single();
 
     if (dbError) throw new Error(`Lỗi database: ${dbError.message}`);
-    if (!certData) throw new Error('Không tìm thấy chứng chỉ');
+    if (!certData) throw new Error(`Không tìm thấy chứng chỉ với ID: ${id}`);
+    if (!certData.p12_url) throw new Error('Chứng chỉ thiếu URL file P12');
 
-    // B. Tải file P12
-    const file = await downloadCertificateFile(certData.p12_url);
-    tempPath = path.join(__dirname, `temp_${id}.p12`);
-    await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
+    // 2. Tải file từ storage
+    const { fileData, fileKey } = await downloadCertificateFile(certData.p12_url);
+    console.log(`Tải thành công file: ${fileKey}`);
 
-    // C. Đọc chứng chỉ
+    // 3. Lưu file tạm
+    tempPath = path.join(__dirname, `cert_${Date.now()}.p12`);
+    await fs.writeFile(tempPath, Buffer.from(await fileData.arrayBuffer()));
+
+    // 4. Đọc và kiểm tra chứng chỉ
     const p12Data = await fs.readFile(tempPath);
     const p12Asn1 = forge.asn1.fromDer(p12Data.toString('binary'));
     const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certData.password || '');
@@ -74,24 +87,13 @@ router.get('/check', async (req, res) => {
 
     const certificate = certBags[forge.pki.oids.certBag][0].cert;
     const now = new Date();
+    const isValid = now >= certificate.validity.notBefore && now <= certificate.validity.notAfter;
 
-    // D. Kiểm tra cơ bản
-    const validityCheck = {
-      isExpired: now > certificate.validity.notAfter,
-      isValid: now >= certificate.validity.notBefore && now <= certificate.validity.notAfter
-    };
-
-    // E. Kiểm tra thu hồi (placeholder - cần triển khai thực tế)
-    const revocationCheck = checkCertificateRevocation(certificate);
-
-    // F. Kết quả
     res.json({
       success: true,
       name: certData.name,
-      valid: validityCheck.isValid && !revocationCheck.isRevoked,
-      isExpired: validityCheck.isExpired,
-      isRevoked: revocationCheck.isRevoked,
-      revocationReason: revocationCheck.reason,
+      valid: isValid,
+      isExpired: now > certificate.validity.notAfter,
       expiresAt: certificate.validity.notAfter.toISOString(),
       subject: certificate.subject.attributes.reduce((acc, attr) => {
         acc[attr.name || attr.shortName] = attr.value;
@@ -100,7 +102,12 @@ router.get('/check', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Lỗi trong quá trình xử lý:', {
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
     res.status(500).json({
       success: false,
       error: 'Kiểm tra thất bại',
@@ -108,7 +115,8 @@ router.get('/check', async (req, res) => {
     });
   } finally {
     if (tempPath) {
-      try { await fs.unlink(tempPath); } catch (e) { /* Bỏ qua lỗi xóa file */ }
+      try { await fs.unlink(tempPath); } 
+      catch (e) { console.error('Lỗi khi xóa file tạm:', e.message); }
     }
   }
 });
