@@ -2,13 +2,12 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "build": "echo 'No build needed'",
-    "heroku-postbuild": "npm install && npm install node-forge"
+    "build": "echo 'No build needed'"
   },
   "dependencies": {
     "body-parser": "^1.20.2",
     "bull": "^4.12.6",
-    "node-forge": "^1.3.1",
+    "node-forge": "github:digitalbazaar/forge",
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
     "fetch-cookie": "^3.0.1",
