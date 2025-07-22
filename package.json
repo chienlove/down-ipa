@@ -7,7 +7,6 @@
   "dependencies": {
     "body-parser": "^1.20.2",
     "bull": "^4.12.6",
-    "node-forge": "github:digitalbazaar/forge",
     "express": "^4.19.2",
     "fs-extra": "^11.2.0",
     "fetch-cookie": "^3.0.1",
