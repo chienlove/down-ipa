@@ -24,7 +24,7 @@ const supabase = createClient(
   }
 );
 
-// Hàm xử lý URL file (Supabase Storage)
+// Xử lý Supabase Storage URL
 const extractFileKey = (url) => {
   try {
     let decodedUrl = decodeURIComponent(url);
@@ -38,7 +38,7 @@ const extractFileKey = (url) => {
   }
 };
 
-// Hàm tải file từ Supabase Storage (3 lần thử)
+// Tải file từ Supabase với retry
 const downloadFile = async (fileKey) => {
   let lastError;
   for (let i = 0; i < 3; i++) {
@@ -61,15 +61,14 @@ const downloadFile = async (fileKey) => {
   throw lastError || new Error('Không thể tải file sau 3 lần thử');
 };
 
-// Tải AppleWWDR cert nếu chưa có, chuyển sang PEM
+// Tải và chuyển chứng chỉ issuer về dạng PEM (tương thích Heroku - dùng /tmp)
 const ensureAppleWWDRCert = async () => {
-  const projectRoot = path.resolve(__dirname, '..'); // lên khỏi /routes
-  const pemPath = path.join(projectRoot, 'AppleWWDRCAG3.pem');
-  const cerPath = path.join(projectRoot, 'AppleWWDRCAG3.cer');
+  const cerPath = '/tmp/AppleWWDRCAG3.cer';
+  const pemPath = '/tmp/AppleWWDRCAG3.pem';
 
   if (existsSync(pemPath)) return pemPath;
 
-  console.log('🔽 Đang tải AppleWWDRCAG3.cer từ Apple...');
+  console.log('🔽 Tải AppleWWDRCAG3.cer từ Apple...');
   await new Promise((resolve, reject) => {
     const file = createWriteStream(cerPath);
     https.get('https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer', res => {
@@ -78,31 +77,27 @@ const ensureAppleWWDRCert = async () => {
         return;
       }
       res.pipe(file);
-      file.on('finish', () => {
-        file.close(resolve);
-      });
+      file.on('finish', () => file.close(resolve));
     }).on('error', reject);
   });
 
-  console.log('🔄 Chuyển CER → PEM bằng OpenSSL...');
+  console.log('🔄 Chuyển CER → PEM...');
   await exec(`openssl x509 -inform der -in "${cerPath}" -out "${pemPath}"`);
-
   return pemPath;
 };
 
-// Đọc và trả về forge issuer cert
+// Đọc PEM thành issuer cert
 const loadAppleIssuer = async () => {
   const pemPath = await ensureAppleWWDRCert();
   const pem = await fs.readFile(pemPath, 'utf8');
   return forge.pki.certificateFromPem(pem);
 };
 
-// Gửi OCSP request từ cert và issuer
+// Kiểm tra trạng thái thu hồi bằng OCSP
 const checkRevocationStatus = async (cert) => {
   try {
     const issuerCert = await loadAppleIssuer();
     const ocspUrl = 'http://ocsp.apple.com/ocsp04-wwdrca';
-    console.log(`⏳ Gửi OCSP đến: ${ocspUrl}`);
 
     const ocspRequest = forge.ocsp.createRequest({
       certificate: cert,
