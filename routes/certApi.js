@@ -9,141 +9,106 @@ const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cấu hình Supabase với retry
+// 1. Cấu hình Supabase đơn giản
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { 
-    auth: { persistSession: false },
-    db: { schema: 'public' },
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, timeout: 10000 })
-    }
-  }
+  { auth: { persistSession: false } }
 );
 
-// Hàm tải file mạnh mẽ với retry
-const downloadFile = async (fileKey) => {
-  let lastError;
-  const maxRetries = 3;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      // Sửa lỗi encode URI cho các ký tự đặc biệt
-      const encodedKey = encodeURIComponent(fileKey).replace(/%2F/g, '/');
-      
-      const { data, error } = await supabase.storage
-        .from('certificates')
-        .download(encodedKey);
+// 2. Hàm tải file đáng tin cậy
+const downloadCertificateFile = async (p12Url) => {
+  try {
+    // Lấy phần sau 'public/' trong URL
+    const fileKey = p12Url.split('public/')[1] || p12Url;
+    const { data, error } = await supabase.storage
+      .from('certificates')
+      .download(fileKey);
 
-      if (error) {
-        lastError = new Error(`Supabase error: ${error.message}`);
-        continue;
-      }
-
-      if (data) {
-        return data;
-      }
-    } catch (err) {
-      lastError = err;
-    }
-
-    // Nếu không phải lần thử cuối thì chờ 1s
-    if (i < maxRetries - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Download failed:', error.message);
+    throw new Error(`Không thể tải file: ${fileKey}`);
   }
-
-  throw lastError || new Error(`Failed to download after ${maxRetries} attempts`);
 };
 
-// API Endpoint
+// 3. Hàm kiểm tra trạng thái thu hồi (đơn giản hóa)
+const checkCertificateRevocation = (cert) => {
+  // Triển khai OCSP check ở đây (đã bỏ qua để tập trung vào flow chính)
+  // Trong thực tế cần tích hợp Apple OCSP server
+  return { isRevoked: false, reason: 'Chưa triển khai OCSP' };
+};
+
+// 4. API Endpoint chính
 router.get('/check', async (req, res) => {
   let tempPath;
   try {
     const { id } = req.query;
-    if (!id) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'Thiếu tham số',
-        details: 'Vui lòng cung cấp ID chứng chỉ'
-      });
-    }
+    if (!id) return res.status(400).json({ error: 'Yêu cầu ID chứng chỉ' });
 
-    // 1. Lấy thông tin từ database
-    const { data: cert, error: dbError } = await supabase
+    // A. Truy vấn database
+    const { data: certData, error: dbError } = await supabase
       .from('certificates')
-      .select('id, name, p12_url, password')
+      .select('*')
       .eq('id', id)
       .single();
 
-    if (dbError) throw new Error(`Database error: ${dbError.message}`);
-    if (!cert) throw new Error('Không tìm thấy chứng chỉ');
-    if (!cert.p12_url) throw new Error('Thiếu URL file P12');
+    if (dbError) throw new Error(`Lỗi database: ${dbError.message}`);
+    if (!certData) throw new Error('Không tìm thấy chứng chỉ');
 
-    // 2. Trích xuất file key (xử lý cả URL encoded và không encoded)
-    let fileKey = cert.p12_url;
-    try {
-      const urlObj = new URL(cert.p12_url);
-      fileKey = urlObj.pathname.split('public/')[1] || urlObj.pathname.slice(1);
-    } catch {
-      fileKey = cert.p12_url.split('public/')[1] || cert.p12_url;
-    }
-
-    console.log('Attempting to download:', fileKey);
-
-    // 3. Tải file với retry
-    const file = await downloadFile(fileKey);
-    
-    // 4. Lưu file tạm
-    tempPath = path.join(__dirname, `temp_${Date.now()}.p12`);
+    // B. Tải file P12
+    const file = await downloadCertificateFile(certData.p12_url);
+    tempPath = path.join(__dirname, `temp_${id}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
 
-    // 5. Kiểm tra chứng chỉ (giữ nguyên phần này từ code trước)
+    // C. Đọc chứng chỉ
     const p12Data = await fs.readFile(tempPath);
     const p12Asn1 = forge.asn1.fromDer(p12Data.toString('binary'));
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, cert.password || '');
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certData.password || '');
 
     const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    if (!certBags[forge.pki.oids.certBag] || certBags[forge.pki.oids.certBag].length === 0) {
-      throw new Error('Không tìm thấy chứng chỉ trong file P12');
+    if (!certBags[forge.pki.oids.certBag]?.length) {
+      throw new Error('File P12 không chứa chứng chỉ hợp lệ');
     }
 
     const certificate = certBags[forge.pki.oids.certBag][0].cert;
     const now = new Date();
-    const isValid = now >= certificate.validity.notBefore && now <= certificate.validity.notAfter;
 
+    // D. Kiểm tra cơ bản
+    const validityCheck = {
+      isExpired: now > certificate.validity.notAfter,
+      isValid: now >= certificate.validity.notBefore && now <= certificate.validity.notAfter
+    };
+
+    // E. Kiểm tra thu hồi (placeholder - cần triển khai thực tế)
+    const revocationCheck = checkCertificateRevocation(certificate);
+
+    // F. Kết quả
     res.json({
       success: true,
-      valid: isValid,
+      name: certData.name,
+      valid: validityCheck.isValid && !revocationCheck.isRevoked,
+      isExpired: validityCheck.isExpired,
+      isRevoked: revocationCheck.isRevoked,
+      revocationReason: revocationCheck.reason,
       expiresAt: certificate.validity.notAfter.toISOString(),
-      name: cert.name,
-      subject: certificate.subject.attributes.map(attr => ({
-        name: attr.name,
-        value: attr.value
-      })),
-      issuer: certificate.issuer.attributes.map(attr => ({
-        name: attr.name,
-        value: attr.value
-      }))
+      subject: certificate.subject.attributes.reduce((acc, attr) => {
+        acc[attr.name || attr.shortName] = attr.value;
+        return acc;
+      }, {})
     });
 
   } catch (error) {
-    console.error('Full error details:', {
-      message: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    });
-
+    console.error('Error:', error.message);
     res.status(500).json({
       success: false,
-      error: 'Kiểm tra chứng chỉ thất bại',
-      details: error.message || 'Lỗi không xác định'
+      error: 'Kiểm tra thất bại',
+      details: error.message
     });
   } finally {
     if (tempPath) {
-      try { await fs.unlink(tempPath); } 
-      catch (e) { console.error('Không thể xóa file tạm:', e.message); }
+      try { await fs.unlink(tempPath); } catch (e) { /* Bỏ qua lỗi xóa file */ }
     }
   }
 });
