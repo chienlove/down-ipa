@@ -65,8 +65,11 @@ const downloadFile = async (fileKey) => {
 const checkRevocationStatus = async (cert) => {
   try {
     const ocspExtension = cert.getExtension('authorityInfoAccess');
-    if (!ocspExtension) {
-      return { isRevoked: false, reason: 'Chứng chỉ không hỗ trợ OCSP' };
+    if (!ocspExtension || !Array.isArray(ocspExtension.accessDescriptions)) {
+      return {
+        isRevoked: false,
+        reason: 'Chứng chỉ không hỗ trợ OCSP (thiếu accessDescriptions)'
+      };
     }
 
     const ocspAccess = ocspExtension.accessDescriptions.find(
@@ -74,15 +77,19 @@ const checkRevocationStatus = async (cert) => {
     );
 
     if (!ocspAccess) {
-      return { isRevoked: false, reason: 'Không tìm thấy OCSP URL' };
+      return { isRevoked: false, reason: 'Không tìm thấy OCSP URL trong accessDescriptions' };
     }
 
-    const ocspUrl = ocspAccess.accessLocation.value;
+    const ocspUrl = ocspAccess.accessLocation?.value;
+    if (!ocspUrl) {
+      return { isRevoked: false, reason: 'Không tìm thấy OCSP URL (thiếu accessLocation)' };
+    }
+
     console.log(`OCSP URL: ${ocspUrl}`);
 
     const ocspRequest = forge.ocsp.createRequest({
       certificate: cert,
-      issuer: cert
+      issuer: cert // Nếu bạn có chứng chỉ issuer thật, nên thay vào đây
     });
 
     const response = await new Promise((resolve, reject) => {
@@ -110,18 +117,19 @@ const checkRevocationStatus = async (cert) => {
     });
 
     const ocspResponse = forge.ocsp.decodeResponse(response);
+
     return {
       isRevoked: ocspResponse.isRevoked,
       revocationTime: ocspResponse.revokedInfo?.revocationTime,
-      reason: ocspResponse.isRevoked ? 
-        `Chứng chỉ đã bị thu hồi lúc ${ocspResponse.revokedInfo.revocationTime.toISOString()}` : 
+      reason: ocspResponse.isRevoked ?
+        `Chứng chỉ đã bị thu hồi lúc ${ocspResponse.revokedInfo.revocationTime.toISOString()}` :
         'Chứng chỉ chưa bị thu hồi'
     };
 
   } catch (error) {
     console.error('OCSP Error:', error.message);
-    return { 
-      isRevoked: false, 
+    return {
+      isRevoked: false,
       reason: `Không thể kiểm tra trạng thái thu hồi: ${error.message}`
     };
   }
