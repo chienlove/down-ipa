@@ -29,9 +29,9 @@
     "@aws-sdk/lib-storage": "^3.637.0",
     "express-rate-limit": "^7.4.0",
     "@supabase/supabase-js": "^2.39.5"
-  }
+  },
     "engines": {
     "node": "18.x",
-    "npm": "11.x"
+    "npm": "8.x"
   }
 }
