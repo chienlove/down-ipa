@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import forge from '../lib/forge.ocsp.min.js';
-console.log(typeof forge.ocsp.createRequest);
+console.log('[OCSP]', typeof forge?.ocsp?.createRequest);
 import https from 'https';
 import { createWriteStream, existsSync } from 'fs';
 import { exec as execCallback } from 'child_process';
