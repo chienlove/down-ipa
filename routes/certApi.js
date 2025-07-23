@@ -101,37 +101,43 @@ const checkOCSPWithOpenSSL = async (certPem, issuerPem) => {
 router.get('/check-revocation', async (req, res) => {
   let tempPath, certPemPath;
   try {
+    let certData;
     const { id } = req.query;
-    if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
 
-    const { data: certData, error: dbError } = await supabase
-      .from('certificates')
-      .select('id, name, p12_url, password')
-      .eq('id', id)
-      .single();
-
-    if (dbError) throw new Error(`Database error: ${dbError.message}`);
-    if (!certData?.p12_url) throw new Error('Missing P12 file URL');
+    if (id) {
+      const { data, error } = await supabase
+        .from('certificates')
+        .select('id, name, p12_url, password')
+        .eq('id', id)
+        .single();
+      if (error || !data) throw new Error('Certificate not found with given ID');
+      certData = data;
+    } else {
+      const { data, error } = await supabase
+        .from('certificates')
+        .select('id, name, p12_url, password')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (error || !data) throw new Error('No certificate found');
+      certData = data;
+    }
 
     const fileKey = extractFileKey(certData.p12_url);
     const file = await downloadFile(fileKey);
 
-    tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
+    tempPath = path.join(__dirname, `temp_${Date.now()}_${certData.id}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
 
-    // Extract cert PEM
     certPemPath = await extractCertificateInfo(tempPath, certData.password || '');
 
-    // Load Apple WWDR PEM
     const issuerPem = await ensureAppleWWDRCert();
-
-    // OCSP Check
     const result = await checkOCSPWithOpenSSL(certPemPath, issuerPem);
 
-    // Extract subject info
     const cert = forge.pki.certificateFromPem(await fs.readFile(certPemPath, 'utf8'));
     const subject = cert.subject.attributes.reduce((acc, attr) => {
-      acc[attr.name || attr.shortName] = attr.value;
+      const key = attr.name || attr.shortName;
+      if (key) acc[key] = attr.value;
       return acc;
     }, {});
 
