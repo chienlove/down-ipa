@@ -4,8 +4,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import forge from 'node-forge';
-import patchOCSP from '../lib/forge.ocsp.min.js';
-patchOCSP(forge);
 import https from 'https';
 import { createWriteStream, existsSync } from 'fs';
 import { exec as execCallback } from 'child_process';
@@ -70,121 +68,38 @@ const ensureAppleWWDRCert = async () => {
   return pemPath;
 };
 
-const loadAppleIssuer = async () => {
-  const pemPath = await ensureAppleWWDRCert();
-  const pem = await fs.readFile(pemPath, 'utf8');
-  const cert = forge.pki.certificateFromPem(pem);
-  
-  // Enhanced issuer certificate validation
-  if (!cert.publicKey || !cert.publicKey.subjectPublicKeyInfo) {
-    const certDetails = {
-      serialNumber: cert.serialNumber,
-      issuer: cert.issuer.attributes.map(a => `${a.name || a.shortName}=${a.value}`),
-      publicKey: {
-        algorithm: cert.publicKey?.algorithm,
-        exists: !!cert.publicKey
-      }
-    };
-    console.error('Invalid Apple WWDR Certificate:', certDetails);
-    throw new Error('Apple WWDR certificate has invalid public key structure');
-  }
-
-  return cert;
+const extractCertificateInfo = async (p12Path, password) => {
+  const certPem = `/tmp/cert_${Date.now()}.pem`;
+  await exec(`openssl pkcs12 -in "${p12Path}" -clcerts -nokeys -passin pass:${password} -out "${certPem}"`);
+  return certPem;
 };
 
-const validateCertificateStructure = (cert) => {
-  if (!cert || typeof cert !== 'object') {
-    throw new Error('Invalid certificate: Not an object');
-  }
-
-  if (!cert.serialNumber || typeof cert.serialNumber !== 'string') {
-    throw new Error('Invalid certificate: Missing or invalid serialNumber');
-  }
-
-  if (!cert.issuer || !Array.isArray(cert.issuer.attributes)) {
-    throw new Error('Invalid certificate: Missing or invalid issuer');
-  }
-
-  if (!cert.publicKey || typeof cert.publicKey !== 'object') {
-    throw new Error('Invalid certificate: Missing publicKey');
-  }
-};
-
-const checkRevocationStatus = async (cert) => {
+const checkOCSPWithOpenSSL = async (certPem, issuerPem) => {
   try {
-    validateCertificateStructure(cert);
+    const cmd = `openssl ocsp -issuer "${issuerPem}" -cert "${certPem}" -url http://ocsp.apple.com/ocsp04-wwdrca -noverify -resp_text`;
+    const { stdout } = await exec(cmd);
 
-    const issuerCert = await loadAppleIssuer();
-    
-    // Deep validation of issuer public key
-    const issuerKey = issuerCert.publicKey?.subjectPublicKeyInfo?.subjectPublicKey;
-    if (!issuerKey || typeof issuerKey !== 'string') {
-      console.error('Issuer Public Key Details:', {
-        type: typeof issuerKey,
-        length: issuerKey?.length,
-        fullInfo: issuerCert.publicKey?.subjectPublicKeyInfo
-      });
-      throw new Error('Issuer public key is missing or invalid format');
-    }
-
-    const ocspRequest = forge.ocsp.createRequest({
-      certificate: cert,
-      issuer: issuerCert
-    });
-
-    const response = await new Promise((resolve, reject) => {
-      const req = https.request('http://ocsp.apple.com/ocsp04-wwdrca', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/ocsp-request',
-          'Content-Length': ocspRequest.length
-        },
-        timeout: 10000
-      }, (res) => {
-        if (res.statusCode !== 200) {
-          return reject(new Error(`OCSP server error: HTTP ${res.statusCode}`));
-        }
-        const chunks = [];
-        res.on('data', chunk => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      });
-      req.on('error', reject);
-      req.write(ocspRequest.toDer());
-      req.end();
-    });
-
-    const ocspResp = forge.ocsp.decodeResponse(response);
+    const isRevoked = stdout.includes('Revocation Time');
+    const matchTime = stdout.match(/Revocation Time: (.+)/);
+    const revocationTime = matchTime ? new Date(matchTime[1]).toISOString() : null;
 
     return {
-      isRevoked: ocspResp.isRevoked || false,
-      revocationTime: ocspResp.revokedInfo?.revocationTime || null,
-      reason: ocspResp.isRevoked 
-        ? `Revoked at ${ocspResp.revokedInfo.revocationTime.toISOString()}`
-        : 'Valid certificate',
-      ocspStatus: ocspResp.status || 'unknown'
+      isRevoked,
+      revocationTime,
+      reason: isRevoked ? `Revoked at ${revocationTime}` : 'Valid certificate',
+      ocspStatus: 'successful'
     };
-
-  } catch (error) {
-    console.error('OCSP Processing Error:', {
-      message: error.message,
-      stack: error.stack,
-      certificate: cert ? {
-        serial: cert.serialNumber,
-        issuer: cert.issuer.attributes.map(a => `${a.name || a.shortName}=${a.value}`)
-      } : null
-    });
-    
+  } catch (err) {
     return {
       isRevoked: false,
-      reason: `Revocation check failed: ${error.message}`,
-      ocspStatus: 'error',
-      errorDetails: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      reason: `OCSP check failed: ${err.message}`,
+      ocspStatus: 'error'
     };
   }
 };
 
 router.get('/check-revocation', async (req, res) => {
-  let tempPath;
+  let tempPath, certPemPath;
   try {
     const { id } = req.query;
     if (!id) return res.status(400).json({ error: 'Missing certificate ID' });
@@ -204,25 +119,27 @@ router.get('/check-revocation', async (req, res) => {
     tempPath = path.join(__dirname, `temp_${Date.now()}_${id}.p12`);
     await fs.writeFile(tempPath, Buffer.from(await file.arrayBuffer()));
 
-    const p12Asn1 = forge.asn1.fromDer((await fs.readFile(tempPath, 'binary')));
-    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, certData.password || '');
+    // Extract cert PEM
+    certPemPath = await extractCertificateInfo(tempPath, certData.password || '');
 
-    const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-    const certificate = certBags[forge.pki.oids.certBag]?.[0]?.cert;
-    if (!certificate) throw new Error('No valid certificate found in P12');
+    // Load Apple WWDR PEM
+    const issuerPem = await ensureAppleWWDRCert();
 
-    const result = await checkRevocationStatus(certificate);
+    // OCSP Check
+    const result = await checkOCSPWithOpenSSL(certPemPath, issuerPem);
+
+    // Extract subject info
+    const cert = forge.pki.certificateFromPem(await fs.readFile(certPemPath, 'utf8'));
+    const subject = cert.subject.attributes.reduce((acc, attr) => {
+      acc[attr.name || attr.shortName] = attr.value;
+      return acc;
+    }, {});
 
     res.json({
       success: true,
       name: certData.name,
       ...result,
-      subject: certificate.subject.attributes.reduce((acc, attr) => {
-        if (attr.name || attr.shortName) {
-          acc[attr.name || attr.shortName] = attr.value;
-        }
-        return acc;
-      }, {})
+      subject
     });
 
   } catch (error) {
@@ -237,10 +154,8 @@ router.get('/check-revocation', async (req, res) => {
       ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   } finally {
-    if (tempPath) {
-      try { await fs.unlink(tempPath); } 
-      catch (e) { console.error('Cleanup error:', e.message); }
-    }
+    try { if (tempPath) await fs.unlink(tempPath); } catch (e) {}
+    try { if (certPemPath) await fs.unlink(certPemPath); } catch (e) {}
   }
 });
 
