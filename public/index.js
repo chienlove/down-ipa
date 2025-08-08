@@ -26,10 +26,11 @@ document.addEventListener('DOMContentLoaded', () => {
     installLink: $('installLink'),
     downloadLink: $('downloadLink'),
     sessionNotice: $('sessionNotice'),
-    toastContainer: $('toast-container')
+    toastContainer: $('toast-container'),
+    // ✅ FIX: thêm container reCAPTCHA
+    recaptchaContainer: $('recaptcha-container')
   };
 
-  // Nếu JS không tìm thấy phần tử quan trọng -> log lỗi để dễ debug (nhất là ở tab ẩn danh)
   ['loginBtn','appleIdInput','passwordInput'].forEach(k => {
     if (!elements[k]) console.error('Missing critical element:', k);
   });
@@ -56,7 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const safeCloseEventSource = () => { if (eventSource) { try { eventSource.close(); } catch {} eventSource = null; } };
 
-  // iOS version detect
   const detectIOSVersion = () => {
     const ua = navigator.userAgent;
     const m = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
@@ -65,7 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const deviceOSVersion = detectIOSVersion();
   state.iosVersion = deviceOSVersion;
 
-  // Toast (dùng container có sẵn trong HTML, KHÔNG tạo trùng)
   const showToast = (message, type = 'success') => {
     if (!elements.toastContainer) return console.warn('toast container not found');
     const toast = document.createElement('div');
@@ -98,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const updateProgressSteps = (message, status = 'pending') => {
-    // CHỈ dùng cho trạng thái kỹ thuật, TUYỆT ĐỐI không đưa sessionNotice vào đây
     if (!elements.progressSteps) return;
     if (state.lastProgressStep === message) return;
     state.lastProgressStep = message;
@@ -184,26 +182,55 @@ document.addEventListener('DOMContentLoaded', () => {
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
-  /* ========== reCAPTCHA explicit render ========== */
+  /* ========== reCAPTCHA explicit render (FIX) ========== */
   let recaptchaWidgetId = null;
   async function initRecaptcha() {
     try {
-      const resp = await fetch('/recaptcha-sitekey');
-      const json = await resp.json();
-      const siteKey = json?.siteKey || '';
-      if (!siteKey) { console.warn('Missing RECAPTCHA_SITE_KEY from server'); return; }
-      const renderIt = () => {
-        if (window.grecaptcha && elements.recaptchaContainer) {
-          recaptchaWidgetId = grecaptcha.render(elements.recaptchaContainer, { sitekey: siteKey });
-          console.log('reCAPTCHA widgetId:', recaptchaWidgetId);
-        } else { setTimeout(renderIt, 200); }
-      };
-      if (window.grecaptcha) renderIt();
-      else {
-        const interval = setInterval(() => { if (window.grecaptcha) { clearInterval(interval); renderIt(); } }, 200);
+      if (!elements.recaptchaContainer) {
+        console.warn('recaptcha container not found');
+        return;
       }
-    } catch (e) { console.error('Failed to init reCAPTCHA:', e); }
+      // Lấy sitekey từ server
+      let siteKey = '';
+      try {
+        const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
+        if (resp.ok) {
+          const json = await resp.json();
+          siteKey = json?.siteKey || '';
+        }
+      } catch (e) {
+        console.warn('Cannot fetch sitekey from server:', e);
+      }
+
+      // Fallback: nếu server không trả, thử đọc data-sitekey từ HTML (nếu bạn set trước)
+      if (!siteKey) {
+        const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
+        if (dataAttr) siteKey = dataAttr;
+      }
+
+      if (!siteKey) {
+        console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey attribute.');
+        return;
+      }
+
+      const renderWhenReady = () => {
+        if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+          try {
+            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, { sitekey: siteKey });
+            console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
+          } catch (err) {
+            console.error('grecaptcha.render error:', err);
+          }
+        } else {
+          setTimeout(renderWhenReady, 200);
+        }
+      };
+      renderWhenReady();
+    } catch (e) {
+      console.error('Failed to init reCAPTCHA:', e);
+    }
   }
+  // Gọi sau DOM ready
   initRecaptcha();
 
   /* ========== SSE listen ========== */
@@ -226,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = JSON.parse(event.data);
         if (!state.progressHistory.includes(data.progress)) state.progressHistory.push(data.progress);
 
-        // CHỈ status kỹ thuật
         let stepMessage = '';
         if (data.progress < 10) stepMessage = 'Khởi động tải';
         else if (data.progress < 20) stepMessage = 'Đang xác thực Apple ID';
@@ -269,7 +295,6 @@ document.addEventListener('DOMContentLoaded', () => {
             transition(elements.step3, elements.result);
             setLoading(false);
 
-            // ẨN thông báo riêng khi xong
             if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
             elements.progressSteps.classList.add('hidden'); elements.progressSteps.style.display = 'none';
@@ -334,7 +359,6 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ APPLE_ID, PASSWORD })
         });
 
-        // Phòng trường hợp JSON parse lỗi (tab ẩn danh đôi khi 204/empty)
         let data = null;
         try { data = await response.json(); } catch { data = {}; }
 
@@ -447,7 +471,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.style.width = '0%';
       if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
 
-      // Hiển thị THÔNG BÁO RIÊNG (không chèn vào progress)
+      // Hiển thị THÔNG BÁO RIÊNG
       if (elements.sessionNotice) elements.sessionNotice.classList.remove('hidden');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
@@ -471,14 +495,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // reCAPTCHA
       const bodyPayload = { APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE: state.CODE, APPID, appVerId, dsid: state.dsid };
       if (typeof grecaptcha !== 'undefined') {
         if (recaptchaWidgetId === null) { showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
         const token = grecaptcha.getResponse(recaptchaWidgetId);
         if (!token) { showError('Vui lòng xác minh reCAPTCHA trước khi tải.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
         bodyPayload.recaptchaToken = token;
-      } else { showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
+      } else {
+        showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.');
+        setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+        return;
+      }
 
       setProgress(3);
 
@@ -508,8 +536,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         } else if (data.success && data.requestId) {
           state.requestId = data.requestId;
-          // KHÔNG đẩy các câu "GIỮ TAB..." vào progress
-          // BẮT ĐẦU lắng nghe tiến trình
           listenProgress(data.requestId);
         } else {
           showError('Tải ứng dụng thất bại.');
@@ -566,7 +592,6 @@ document.addEventListener('DOMContentLoaded', () => {
         compat.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
         compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
 
-        // Ẩn THÔNG BÁO RIÊNG khi reset
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
         safeCloseEventSource();
