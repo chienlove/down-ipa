@@ -117,7 +117,7 @@ app.use('/download', limiter);
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    version: '1.0.2',
+    version: '1.0.3',
     timestamp: new Date().toISOString(),
   });
 });
@@ -176,12 +176,10 @@ async function downloadChunk({ url, start, end, output, signal }) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
-      // Nối signal bên ngoài (nếu có) với controller cục bộ
       if (signal) {
         if (signal.aborted) controller.abort();
         else signal.addEventListener('abort', () => controller.abort(), { once: true });
       }
-
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
       const response = await fetch(url, {
@@ -590,7 +588,42 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-// SSE progress (giữ kết nối bền, có keep-alive; hỗ trợ hủy)
+/* ================= reCAPTCHA integration ================= */
+
+// endpoint trả sitekey để client render explicit
+app.get('/recaptcha-sitekey', (req, res) => {
+  const siteKey = process.env.RECAPTCHA_SITE_KEY || '';
+  res.json({ siteKey });
+});
+
+async function verifyRecaptcha(req, res, next) {
+  try {
+    const token = req.body?.recaptchaToken;
+    if (!token) {
+      return res.status(400).json({ success: false, error: 'RECAPTCHA_REQUIRED', message: 'Thiếu reCAPTCHA token' });
+    }
+    const params = new URLSearchParams();
+    params.append('secret', process.env.RECAPTCHA_SECRET || '');
+    params.append('response', token);
+
+    const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const data = await resp.json();
+    if (!data.success) {
+      return res.status(403).json({ success: false, error: 'RECAPTCHA_FAILED', message: 'Xác minh reCAPTCHA thất bại' });
+    }
+    return next();
+  } catch (err) {
+    console.error('reCAPTCHA verify error:', err);
+    return res.status(500).json({ success: false, error: 'RECAPTCHA_ERROR', message: 'Lỗi xác minh reCAPTCHA' });
+  }
+}
+
+/* ================= SSE progress ================= */
 app.get('/download-progress/:id', (req, res) => {
   const id = req.params.id;
   console.log(`SSE connection opened for progress id: ${id}`);
@@ -617,7 +650,6 @@ app.get('/download-progress/:id', (req, res) => {
       console.log(`Closing SSE for id: ${id}, status: ${progress.status}`);
       clearInterval(interval);
       clearInterval(heartbeat);
-      // Xoá map và kết thúc
       progressMap.delete(id);
       res.end();
     }
@@ -627,7 +659,6 @@ app.get('/download-progress/:id', (req, res) => {
     console.log(`SSE connection closed by client for id: ${id} — marking cancelRequested`);
     clearInterval(interval);
     clearInterval(heartbeat);
-    // Đánh dấu để tiến trình có thể tự hủy (nếu hỗ trợ)
     const p = progressMap.get(id);
     if (p) {
       progressMap.set(id, { ...p, cancelRequested: true });
@@ -693,11 +724,9 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-// ⚠️ XÓA ROUTE TRÙNG /verify (giữ một bản bên dưới). Bản bị xoá là bản khai báo sớm hơn.
-
-// Download (có giới hạn số job đồng thời)
-app.post('/download', async (req, res) => {
-  console.log('Received /download request:', { body: req.body });
+// Download (áp verifyRecaptcha + giới hạn số job)
+app.post('/download', verifyRecaptcha, async (req, res) => {
+  console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
 
@@ -805,9 +834,9 @@ app.post('/download', async (req, res) => {
   }
 });
 
-// (Giữ lại bản /verify đầy đủ, đã có log rõ ràng)
+// Verify 2FA (giữ 1 bản duy nhất)
 app.post('/verify', async (req, res) => {
-  console.log('Received /verify request:', { body: req.body });
+  console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
 
@@ -841,6 +870,54 @@ app.post('/verify', async (req, res) => {
   }
 });
 
+/* ================ Trang trung gian đếm ngược 10s ================= */
+app.get('/go', (req, res) => {
+  const { url, type } = req.query || {};
+  const safeUrl = typeof url === 'string' ? url : '#';
+  const typeText = type === 'install' ? 'Cài trực tiếp' : 'Tải file IPA';
+
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(`
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>Đang chuyển hướng...</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#f9fafb; margin:0; padding:0; }
+  .wrap { max-width:560px; margin:8vh auto; background:#fff; border-radius:12px; padding:24px; box-shadow:0 10px 30px rgba(0,0,0,.06); }
+  h1 { margin:0 0 12px; font-size:20px; }
+  p { margin:6px 0; color:#374151; }
+  .count { font-weight:700; }
+  .btn { display:inline-block; margin-top:14px; background:#2563eb; color:#fff; padding:10px 16px; border-radius:8px; text-decoration:none; }
+  .btn:hover { background:#1e40af; }
+  .muted { color:#6b7280; font-size:13px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Chuẩn bị ${typeText}</h1>
+    <p>Vui lòng chờ <span id="count" class="count">10</span> giây...</p>
+    <p class="muted">Mẹo: Giữ tab mở để tránh gián đoạn. File càng lớn thời gian xử lý càng lâu.</p>
+    <a id="go" href="${safeUrl}" class="btn" rel="noopener">Đi ngay</a>
+  </div>
+<script>
+  (function(){
+    var s=10, el=document.getElementById('count'), go=document.getElementById('go');
+    var iv=setInterval(function(){
+      s--; if (s<=0){ clearInterval(iv); window.location.href = go.href; }
+      if (el) el.textContent = s;
+    }, 1000);
+  })();
+</script>
+</body>
+</html>
+  `);
+});
+
+/* ================= 404 & error handlers ================= */
 app.use((req, res) => {
   console.log(`404 Not Found: ${req.method} ${req.url}`);
   res.status(404).json({ error: 'Not Found' });
