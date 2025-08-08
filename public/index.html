@@ -73,6 +73,10 @@
 
     /* label required star */
     .req::after { content:" *"; color:#ef4444; }
+
+    /* focus border luôn hiện rõ (không biến mất) */
+    .focus-visible-border { border-color:#d1d5db; }
+    .focus-visible-border:focus { border-color:#3b82f6 !important; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
@@ -84,7 +88,7 @@
         🚀 IPADL Pro
       </h1>
 
-      <!-- Thông báo hiển thị khi bắt đầu tải (không nằm trong tiến trình) -->
+      <!-- Thông báo RIÊNG, không thuộc tiến trình -->
       <div id="sessionNotice" class="note note-warn hidden">
         <i class="fa-solid fa-circle-exclamation"></i>
         <div>
@@ -112,7 +116,7 @@
         <div class="space-y-1">
           <label for="APPLE_ID" class="req block text-sm font-medium text-gray-700">Apple ID</label>
           <input id="APPLE_ID" name="APPLE_ID" required type="email"
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+            class="focus-visible-border w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             placeholder="your@appleid.com"
             autocomplete="username">
         </div>
@@ -121,7 +125,7 @@
           <label for="PASSWORD" class="req block text-sm font-medium text-gray-700">Mật khẩu Apple ID</label>
           <div class="relative">
             <input id="PASSWORD" name="PASSWORD" required type="password"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition pr-12"
+              class="focus-visible-border w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition pr-12"
               placeholder="••••••••"
               autocomplete="current-password">
             <button type="button" id="togglePassword" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700">
@@ -167,7 +171,7 @@
         <div class="space-y-1">
           <label for="VERIFICATION_CODE" class="req block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
           <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+            class="focus-visible-border w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             placeholder="123456"
             maxlength="6"
             inputmode="numeric"
@@ -222,7 +226,7 @@
         <div class="space-y-1">
           <label for="APPID" class="req block text-sm font-medium text-gray-700">App ID hoặc URL AppStore</label>
           <input id="APPID" name="APPID" required
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+            class="focus-visible-border w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             placeholder="123456789 hoặc https://apps.apple.com/vn/app/id123456789">
           <p class="text-xs text-gray-500">Nhập ID ứng dụng (số) hoặc URL từ App Store</p>
         </div>
@@ -231,7 +235,7 @@
           <label for="APP_VER_ID" class="block text-sm font-medium text-gray-700">ID Version (tùy chọn)</label>
           <div class="relative">
             <input id="APP_VER_ID" name="APP_VER_ID"
-              class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition pr-24"
+              class="focus-visible-border w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition pr-24"
               placeholder="Nhập nếu muốn tải phiên bản cụ thể">
             <a href="https://appinfo.storeios.net" target="_blank" rel="noopener"
                class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 text-sm font-medium rounded-md bg-gray-100 border border-gray-300 text-gray-700 hover:bg-gray-200">
@@ -248,7 +252,7 @@
           <p class="text-xs text-gray-500">Vui lòng xác minh trước khi tải.</p>
         </div>
 
-        <!-- Nút tải IPA (màu xanh dương, icon download) -->
+        <!-- Nút tải IPA (xanh dương + icon download) -->
         <button id="downloadBtn"
           class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
           <i class="fas fa-download mr-2"></i> Tải IPA
@@ -292,7 +296,7 @@
         </div>
       </div>
       <div class="flex flex-col sm:flex-row gap-4 mb-4">
-        <!-- LƯU Ý: BỎ download attribute để tránh tải go.html -->
+        <!-- KHÔNG dùng download attribute để tránh tải go.html -->
         <a id="downloadLink" href="#" class="px-6 py-3 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition flex items-center justify-center">
           <i class="fas fa-download mr-2"></i> Tải file IPA
         </a>
@@ -316,7 +320,7 @@
 
   <script src="index.js"></script>
 
-  <!-- Script nhỏ cho Back Step 2 -> Step 1 -->
+  <!-- Back Step 2 -> Step 1 -->
   <script>
     (function(){
       const backBtn = document.getElementById('backToStep1');
