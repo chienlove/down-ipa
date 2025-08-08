@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     result: $('result'),
     loginBtn: $('loginBtn'),
     verifyBtn: $('verifyBtn'),
+    backToStep1: $('backToStep1'),
     downloadBtn: $('downloadBtn'),
     downloadAnotherBtn: $('downloadAnotherBtn'),
     errorBox: $('error'),
@@ -27,13 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadLink: $('downloadLink'),
     sessionNotice: $('sessionNotice'),
     toastContainer: $('toast-container'),
-    // ✅ FIX: thêm container reCAPTCHA
     recaptchaContainer: $('recaptcha-container')
   };
-
-  ['loginBtn','appleIdInput','passwordInput'].forEach(k => {
-    if (!elements[k]) console.error('Missing critical element:', k);
-  });
 
   const showError = (msg) => {
     if (elements.errorMessage && elements.errorBox) {
@@ -57,16 +53,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const safeCloseEventSource = () => { if (eventSource) { try { eventSource.close(); } catch {} eventSource = null; } };
 
+  /* ========== Device iOS version detect ========== */
   const detectIOSVersion = () => {
     const ua = navigator.userAgent;
     const m = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
     return m ? `${m[1]}.${m[2]}${m[3] ? `.${m[3]}` : ''}` : 'Unknown';
   };
-  const deviceOSVersion = detectIOSVersion();
-  state.iosVersion = deviceOSVersion;
+  state.iosVersion = detectIOSVersion();
 
+  /* ========== Toast ========== */
   const showToast = (message, type = 'success') => {
-    if (!elements.toastContainer) return console.warn('toast container not found');
+    if (!elements.toastContainer) return;
     const toast = document.createElement('div');
     toast.className = `toast ${type === 'error' ? 'toast-error' : 'toast-success'}`;
     toast.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span><span>${message}</span>`;
@@ -75,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => toast.remove(), 3000);
   };
 
+  /* ========== Transitions & Progress UI ========== */
   const transition = (from, to) => {
     if (!from || !to) return;
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
@@ -128,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  /* ========== Version compare & install button ========== */
   const compareVersions = (a, b) => {
     if (!a || !b) return 0;
     const v1=a.split('.').map(Number), v2=b.split('.').map(Number), L=Math.max(v1.length,v2.length);
@@ -155,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
+      compatNote.innerHTML = `<i class="fas a-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
     }
   };
 
@@ -182,56 +181,62 @@ document.addEventListener('DOMContentLoaded', () => {
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
-  /* ========== reCAPTCHA explicit render (FIX) ========== */
+  /* ========== reCAPTCHA: render khi Step 3 hiển thị ========== */
   let recaptchaWidgetId = null;
-  async function initRecaptcha() {
+  let recaptchaSiteKey = null;
+
+  async function loadSiteKeyOnce() {
+    if (recaptchaSiteKey) return recaptchaSiteKey;
+    // 1) từ server
     try {
-      if (!elements.recaptchaContainer) {
-        console.warn('recaptcha container not found');
-        return;
+      const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
+      if (resp.ok) {
+        const json = await resp.json();
+        recaptchaSiteKey = json?.siteKey || '';
       }
-      // Lấy sitekey từ server
-      let siteKey = '';
-      try {
-        const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
-        if (resp.ok) {
-          const json = await resp.json();
-          siteKey = json?.siteKey || '';
-        }
-      } catch (e) {
-        console.warn('Cannot fetch sitekey from server:', e);
-      }
-
-      // Fallback: nếu server không trả, thử đọc data-sitekey từ HTML (nếu bạn set trước)
-      if (!siteKey) {
-        const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
-        if (dataAttr) siteKey = dataAttr;
-      }
-
-      if (!siteKey) {
-        console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey attribute.');
-        return;
-      }
-
-      const renderWhenReady = () => {
-        if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
-          try {
-            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, { sitekey: siteKey });
-            console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
-          } catch (err) {
-            console.error('grecaptcha.render error:', err);
-          }
-        } else {
-          setTimeout(renderWhenReady, 200);
-        }
-      };
-      renderWhenReady();
     } catch (e) {
-      console.error('Failed to init reCAPTCHA:', e);
+      console.warn('Cannot fetch sitekey from server:', e);
     }
+    // 2) fallback từ HTML
+    if (!recaptchaSiteKey && elements.recaptchaContainer) {
+      const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
+      if (dataAttr) recaptchaSiteKey = dataAttr;
+    }
+    return recaptchaSiteKey;
   }
-  // Gọi sau DOM ready
-  initRecaptcha();
+
+  function renderRecaptchaWhenReady() {
+    if (!elements.recaptchaContainer) return;
+    const tryRender = () => {
+      if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+        try {
+          if (recaptchaWidgetId !== null) {
+            window.grecaptcha.reset(recaptchaWidgetId);
+          } else {
+            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, {
+              sitekey: recaptchaSiteKey
+            });
+          }
+          console.log('reCAPTCHA widget:', recaptchaWidgetId);
+        } catch (err) {
+          console.error('grecaptcha.render error:', err);
+        }
+      } else {
+        setTimeout(tryRender, 200);
+      }
+    };
+    tryRender();
+  }
+
+  async function ensureRecaptchaOnStep3() {
+    await loadSiteKeyOnce();
+    if (!recaptchaSiteKey) {
+      console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey.');
+      return;
+    }
+    // container phải đang hiển thị (step3 visible)
+    renderRecaptchaWhenReady();
+  }
 
   /* ========== SSE listen ========== */
   const listenProgress = (requestId) => {
@@ -333,6 +338,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== EVENT HANDLERS ========== */
 
+  // Back to Step 1
+  if (elements.backToStep1) {
+    elements.backToStep1.addEventListener('click', () => {
+      transition(elements.step2, elements.step1);
+    });
+  }
+
+  // Login
   if (elements.loginBtn) {
     elements.loginBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -379,6 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
           state.dsid = data.dsid || null;
           showToast('Đăng nhập thành công!');
           transition(elements.step1, elements.step3);
+          await ensureRecaptchaOnStep3();  // <-- render reCAPTCHA khi Step 3 hiển thị
           setProgress(3);
           setLoading(false);
         } else {
@@ -391,10 +405,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
-  } else {
-    console.error('loginBtn not found in DOM');
   }
 
+  // Toggle password
   if (elements.togglePassword) {
     elements.togglePassword.addEventListener('click', () => {
       const isPassword = elements.passwordInput.type === 'password';
@@ -403,6 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Verify 2FA
   if (elements.verifyBtn) {
     elements.verifyBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -441,6 +455,7 @@ document.addEventListener('DOMContentLoaded', () => {
           elements.verificationCodeInput.value = '';
           elements.verifyMessage.textContent = '';
           transition(elements.step2, elements.step3);
+          await ensureRecaptchaOnStep3();  // <-- render reCAPTCHA khi Step 3 hiển thị
           setProgress(3);
           setLoading(false);
         } else {
@@ -453,10 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
       }
     });
-  } else {
-    console.error('verifyBtn not found in DOM');
   }
 
+  // Download
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
       if (eventSource) safeCloseEventSource();
@@ -476,7 +490,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
-      state.iosVersion = deviceOSVersion;
 
       if (!APPID) {
         showError('Vui lòng nhập App ID hợp lệ.');
@@ -495,11 +508,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // Đảm bảo reCAPTCHA đã render
+      await ensureRecaptchaOnStep3();
       const bodyPayload = { APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE: state.CODE, APPID, appVerId, dsid: state.dsid };
+
       if (typeof grecaptcha !== 'undefined') {
-        if (recaptchaWidgetId === null) { showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
+        if (recaptchaWidgetId === null) {
+          showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.');
+          setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+          return;
+        }
         const token = grecaptcha.getResponse(recaptchaWidgetId);
-        if (!token) { showError('Vui lòng xác minh reCAPTCHA trước khi tải.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
+        if (!token) {
+          showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
+          setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+          return;
+        }
         bodyPayload.recaptchaToken = token;
       } else {
         showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.');
@@ -516,6 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyPayload)
         });
+
         try { if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
 
         let data = null;
@@ -551,18 +578,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
       }
     });
-  } else {
-    console.error('downloadBtn not found in DOM');
   }
 
+  // Download another
   if (elements.downloadAnotherBtn) {
-    elements.downloadAnotherBtn.addEventListener('click', () => {
+    elements.downloadAnotherBtn.addEventListener('click', async () => {
       state.requestId = null;
       clearProgressSteps();
       isLoading = false;
 
       elements.result.classList.add('fade-out');
-      setTimeout(() => {
+      setTimeout(async () => {
         elements.result.classList.add('hidden'); elements.result.style.display = 'none'; elements.result.classList.remove('fade-out');
 
         elements.step3.classList.remove('hidden'); elements.step3.style.display = 'block'; elements.step3.classList.add('fade-in');
@@ -589,16 +615,17 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.downloadLink.removeAttribute('download');
 
         const compat = $('compatNote');
-        compat.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
-        compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
+        if (compat) {
+          compat.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
+          compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
+        }
 
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
         safeCloseEventSource();
+        await ensureRecaptchaOnStep3(); // render lại recaptcha khi quay lại step3
         elements.appIdInput?.focus();
       }, 300);
     });
-  } else {
-    console.error('downloadAnotherBtn not found in DOM');
   }
 });

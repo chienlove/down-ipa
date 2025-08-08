@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-  <!-- reCAPTCHA explicit render (server đã có /recaptcha-sitekey) -->
+  <!-- reCAPTCHA explicit render -->
   <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
   <style>
     /* ====== Progress steps list ====== */
@@ -80,7 +80,7 @@
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
-  <!-- CHỈ 1 toast-container, không tạo trùng bằng JS -->
+  <!-- CHỈ 1 toast-container -->
   <div id="toast-container" class="toast-container"></div>
 
   <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
@@ -196,7 +196,6 @@
 
       <!-- Step 3 -->
       <div id="step3" class="hidden space-y-4">
-        <!-- Giữ chú thích NGẮN gọn phía trên (khuyến nghị) -->
         <div class="note note-info">
           <i class="fa-solid fa-circle-info"></i>
           <div>
@@ -247,10 +246,10 @@
           <p class="text-xs text-gray-600">Để trống sẽ tải phiên bản mới nhất</p>
         </div>
 
-        <!-- reCAPTCHA container -->
+        <!-- reCAPTCHA container (có fallback sitekey) -->
         <div class="space-y-1">
           <label class="req block text-sm font-medium text-gray-700">Xác minh</label>
-          <div id="recaptcha-container" class="mt-1"></div>
+          <div id="recaptcha-container" class="mt-1" data-sitekey="YOUR_RECAPTCHA_V2_SITE_KEY"></div>
           <p class="text-xs text-gray-500">Vui lòng xác minh trước khi tải.</p>
         </div>
 
@@ -298,7 +297,6 @@
         </div>
       </div>
       <div class="flex flex-col sm:flex-row gap-4 mb-4">
-        <!-- KHÔNG dùng download attribute để tránh tải go.html -->
         <a id="downloadLink" href="#" class="px-6 py-3 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition flex items-center justify-center">
           <i class="fas fa-download mr-2"></i> Tải file IPA
         </a>
@@ -319,34 +317,6 @@
       </p>
     </div>
   </div>
-
   <script src="index.js"></script>
-
-  <!-- Back Step 2 -> Step 1 -->
-  <script>
-    (function(){
-      const backBtn = document.getElementById('backToStep1');
-      if (backBtn) {
-        backBtn.addEventListener('click', function() {
-          const s1 = document.getElementById('step1');
-          const s2 = document.getElementById('step2');
-          if (s1 && s2) {
-            s2.classList.add('hidden'); s2.style.display = 'none';
-            s1.classList.remove('hidden'); s1.style.display = 'block';
-            const err = document.getElementById('error');
-            if (err) err.classList.add('hidden');
-          }
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-      }
-      const pb = document.getElementById('progressBar');
-      const wrap = document.getElementById('progressWrap');
-      const showWrap = () => { if (wrap) { wrap.classList.remove('hidden'); wrap.style.display = 'block'; } };
-      const observer = new MutationObserver(() => {
-        if (pb && (pb.style.display === 'block' || !pb.classList.contains('hidden'))) showWrap();
-      });
-      if (pb) observer.observe(pb, { attributes: true, attributeFilter: ['class', 'style'] });
-    })();
-  </script>
 </body>
 </html>
