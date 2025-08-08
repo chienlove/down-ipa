@@ -53,17 +53,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const safeCloseEventSource = () => { if (eventSource) { try { eventSource.close(); } catch {} eventSource = null; } };
 
-  /* ========== Device iOS version detect ========== */
   const detectIOSVersion = () => {
     const ua = navigator.userAgent;
     const m = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
     return m ? `${m[1]}.${m[2]}${m[3] ? `.${m[3]}` : ''}` : 'Unknown';
   };
-  state.iosVersion = detectIOSVersion();
+  const deviceOSVersion = detectIOSVersion();
+  state.iosVersion = deviceOSVersion;
 
-  /* ========== Toast ========== */
   const showToast = (message, type = 'success') => {
-    if (!elements.toastContainer) return;
+    if (!elements.toastContainer) return console.warn('toast container not found');
     const toast = document.createElement('div');
     toast.className = `toast ${type === 'error' ? 'toast-error' : 'toast-success'}`;
     toast.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span><span>${message}</span>`;
@@ -72,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => toast.remove(), 3000);
   };
 
-  /* ========== Transitions & Progress UI ========== */
   const transition = (from, to) => {
     if (!from || !to) return;
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
@@ -126,7 +124,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  /* ========== Version compare & install button ========== */
   const compareVersions = (a, b) => {
     if (!a || !b) return 0;
     const v1=a.split('.').map(Number), v2=b.split('.').map(Number), L=Math.max(v1.length,v2.length);
@@ -181,13 +178,12 @@ document.addEventListener('DOMContentLoaded', () => {
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
-  /* ========== reCAPTCHA: render khi Step 3 hiển thị ========== */
+  /* ========== reCAPTCHA explicit render (không reset token ngoài ý muốn) ========== */
   let recaptchaWidgetId = null;
   let recaptchaSiteKey = null;
 
   async function loadSiteKeyOnce() {
     if (recaptchaSiteKey) return recaptchaSiteKey;
-    // 1) từ server
     try {
       const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
       if (resp.ok) {
@@ -197,7 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.warn('Cannot fetch sitekey from server:', e);
     }
-    // 2) fallback từ HTML (nếu có)
     if (!recaptchaSiteKey && elements.recaptchaContainer) {
       const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
       if (dataAttr) recaptchaSiteKey = dataAttr;
@@ -210,11 +205,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tryRender = () => {
       if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
         try {
-          // ❗ KHÔNG reset nếu đã render — tránh xoá token người dùng vừa tích
           if (recaptchaWidgetId === null) {
-            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, {
-              sitekey: recaptchaSiteKey
-            });
+            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, { sitekey: recaptchaSiteKey });
             console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
           }
         } catch (err) {
@@ -233,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey.');
       return;
     }
-    renderRecaptchaWhenReady(); // chỉ render nếu chưa có
+    renderRecaptchaWhenReady();
   }
 
   /* ========== SSE listen ========== */
@@ -336,14 +328,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ========== EVENT HANDLERS ========== */
 
-  // Back to Step 1
-  if (elements.backToStep1) {
-    elements.backToStep1.addEventListener('click', () => {
-      transition(elements.step2, elements.step1);
-    });
+  if ($('backToStep1')) {
+    $('backToStep1').addEventListener('click', () => transition(elements.step2, elements.step1));
   }
 
-  // Login
   if (elements.loginBtn) {
     elements.loginBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -390,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
           state.dsid = data.dsid || null;
           showToast('Đăng nhập thành công!');
           transition(elements.step1, elements.step3);
-          await ensureRecaptchaOnStep3();  // render reCAPTCHA khi Step 3 hiển thị
+          await ensureRecaptchaOnStep3();
           setProgress(3);
           setLoading(false);
         } else {
@@ -405,7 +393,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Toggle password
   if (elements.togglePassword) {
     elements.togglePassword.addEventListener('click', () => {
       const isPassword = elements.passwordInput.type === 'password';
@@ -414,7 +401,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Verify 2FA
   if (elements.verifyBtn) {
     elements.verifyBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -453,7 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
           elements.verificationCodeInput.value = '';
           elements.verifyMessage.textContent = '';
           transition(elements.step2, elements.step3);
-          await ensureRecaptchaOnStep3();  // render reCAPTCHA khi Step 3 hiển thị
+          await ensureRecaptchaOnStep3();
           setProgress(3);
           setLoading(false);
         } else {
@@ -468,7 +454,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Download
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
       if (eventSource) safeCloseEventSource();
@@ -483,11 +468,12 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.style.width = '0%';
       if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
 
-      // Hiển thị THÔNG BÁO RIÊNG
+      // ⬇️ HIỆN 2 DÒNG THÔNG BÁO cùng lúc với tiến trình
       if (elements.sessionNotice) elements.sessionNotice.classList.remove('hidden');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
+      state.iosVersion = deviceOSVersion;
 
       if (!APPID) {
         showError('Vui lòng nhập App ID hợp lệ.');
@@ -506,19 +492,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Đảm bảo reCAPTCHA đã render — nhưng KHÔNG reset nếu đã có
-      if (recaptchaWidgetId === null) {
+      // Đảm bảo reCAPTCHA đã render
+      if (typeof grecaptcha === 'undefined' || recaptchaWidgetId === null) {
         await ensureRecaptchaOnStep3();
-        // Render xong thì yêu cầu người dùng tick trước khi gửi
         showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
-        setLoading(false);
-        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-        return;
-      }
-
-      // Lấy token reCAPTCHA
-      if (typeof grecaptcha === 'undefined') {
-        showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.');
         setLoading(false);
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         return;
@@ -551,11 +528,10 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify(bodyPayload)
         });
 
-        // Sau khi gửi xong, reset widget để lần sau người dùng tick lại
+        // reset reCAPTCHA sau khi gửi
         try { if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
 
-        let data = null;
-        try { data = await response.json(); } catch { data = {}; }
+        const data = await response.json().catch(() => ({}));
 
         if (!response.ok || !data.success) {
           showError((data && (data.error || data.message)) || 'Tải ứng dụng thất bại.');
@@ -589,18 +565,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Download another
   if (elements.downloadAnotherBtn) {
-    elements.downloadAnotherBtn.addEventListener('click', async () => {
+    elements.downloadAnotherBtn.addEventListener('click', () => {
       state.requestId = null;
       clearProgressSteps();
       isLoading = false;
 
       elements.result.classList.add('fade-out');
       setTimeout(async () => {
-        elements.result.classList.add('hidden'); elements.result.style.display = 'none'; elements.result.classList.remove('fade-out');
+        elements.result.classList.add('hidden');
+        elements.result.style.display = 'none';
+        elements.result.classList.remove('fade-out');
 
-        elements.step3.classList.remove('hidden'); elements.step3.style.display = 'block'; elements.step3.classList.add('fade-in');
+        elements.step3.classList.remove('hidden');
+        elements.step3.style.display = 'block';
+        elements.step3.classList.add('fade-in');
         setTimeout(() => { elements.step3.classList.remove('fade-in'); }, 300);
 
         elements.progressBar.style.width = '0%';
@@ -629,10 +608,11 @@ document.addEventListener('DOMContentLoaded', () => {
           compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
         }
 
+        // ẨN 2 dòng thông báo khi chưa có tiến trình
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
         safeCloseEventSource();
-        await ensureRecaptchaOnStep3(); // render lại recaptcha khi quay lại step3 (không reset token)
+        await ensureRecaptchaOnStep3();
         elements.appIdInput?.focus();
       }, 300);
     });

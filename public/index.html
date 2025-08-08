@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-  <!-- reCAPTCHA explicit render -->
+  <!-- reCAPTCHA explicit render (server đã có /recaptcha-sitekey) -->
   <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
   <style>
     /* ====== Progress steps list ====== */
@@ -64,7 +64,7 @@
     .progress-track { width: 100%; height: 12px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); }
     #progressBar { height: 12px; background: linear-gradient(90deg, #3b82f6, #2563eb); width: 0%; transition: width .25s ease; }
 
-    /* ====== Callout note (THÔNG BÁO RIÊNG) ====== */
+    /* ====== Callout note (THÔNG BÁO / CHÚ THÍCH) ====== */
     .note { font-size: 14px; line-height: 1.6; border-left-width: 4px; border-radius: 6px; padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start; }
     .note i { margin-top: 2px; }
     .note-info { background: #eff6ff; border-left-color: #3b82f6; color: #1e3a8a; }
@@ -80,7 +80,7 @@
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
-  <!-- CHỈ 1 toast-container -->
+  <!-- CHỈ 1 toast-container, không tạo trùng bằng JS -->
   <div id="toast-container" class="toast-container"></div>
 
   <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
@@ -88,15 +88,6 @@
       <h1 class="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-green-500">
         🚀 IPADL Pro
       </h1>
-
-      <!-- THÔNG BÁO RIÊNG (KHÔNG dính tiến trình) -->
-      <div id="sessionNotice" class="note note-warn hidden">
-        <i class="fa-solid fa-circle-exclamation"></i>
-        <div>
-          <div><strong>Để tránh gián đoạn, vui lòng GIỮ TAB NÀY MỞ</strong> trong suốt quá trình tải/ký/upload.</div>
-          <div><strong>Lưu ý:</strong> File IPA càng lớn thì thời gian xử lý sẽ càng lâu.</div>
-        </div>
-      </div>
 
       <!-- Step 1 -->
       <div id="step1" class="space-y-4 animate__animated animate__fadeIn">
@@ -196,6 +187,7 @@
 
       <!-- Step 3 -->
       <div id="step3" class="hidden space-y-4">
+        <!-- Chú thích LUÔN HIỂN THỊ -->
         <div class="note note-info">
           <i class="fa-solid fa-circle-info"></i>
           <div>
@@ -246,14 +238,14 @@
           <p class="text-xs text-gray-600">Để trống sẽ tải phiên bản mới nhất</p>
         </div>
 
-        <!-- reCAPTCHA container (có fallback sitekey) -->
+        <!-- reCAPTCHA container -->
         <div class="space-y-1">
           <label class="req block text-sm font-medium text-gray-700">Xác minh</label>
-          <div id="recaptcha-container" class="mt-1" data-sitekey="YOUR_RECAPTCHA_V2_SITE_KEY"></div>
+          <div id="recaptcha-container" class="mt-1"></div>
           <p class="text-xs text-gray-500">Vui lòng xác minh trước khi tải.</p>
         </div>
 
-        <!-- Nút tải IPA (xanh dương) -->
+        <!-- Nút tải IPA (xanh dương để đồng bộ) -->
         <button id="downloadBtn" type="button"
           class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
           <i class="fas fa-download mr-2"></i> Tải IPA
@@ -265,7 +257,18 @@
         <span id="errorMessage" class="block sm:inline">Có lỗi xảy ra.</span>
       </div>
 
-      <!-- Progress sections (KHÔNG chứa 2 dòng thông báo) -->
+      <!-- ⬇️ THÔNG BÁO 2 DÒNG: chỉ HIỂN THỊ KHI TIẾN TRÌNH CHẠY -->
+      <div id="sessionNotice" class="hidden mt-4 px-4 py-3 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-300 text-sm">
+        <div class="flex items-start gap-2">
+          <i class="fas fa-info-circle mt-0.5"></i>
+          <div>
+            <div><strong>Để tránh gián đoạn, vui lòng GIỮ TAB NÀY MỞ</strong> trong suốt quá trình tải/ký/upload.</div>
+            <div><strong>Lưu ý:</strong> File IPA càng lớn thì thời gian xử lý sẽ càng lâu.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress sections -->
       <div id="progressSteps" class="mt-4"></div>
       <div class="progress-wrap hidden" id="progressWrap">
         <div class="progress-track rounded-full">
