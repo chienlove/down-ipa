@@ -67,6 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let eventSource = null;
   let deviceOSVersion = null;
 
+  // Helper đóng SSE an toàn, tránh close() khi null / đã đóng
+  function safeCloseEventSource() {
+    if (eventSource) {
+      try { eventSource.close(); } catch (e) {}
+      eventSource = null;
+    }
+  }
+
   // Detect device iOS version
   function detectIOSVersion() {
     const ua = navigator.userAgent;
@@ -135,6 +143,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // đảm bảo có hiển thị
     elements.progressBar.classList.remove('hidden');
     elements.progressBar.style.display = 'block';
+    // đồng bộ progress track nếu có
+    const progressWrap = document.getElementById('progressWrap');
+    if (progressWrap) {
+      progressWrap.classList.remove('hidden');
+      progressWrap.style.display = 'block';
+    }
   };
 
   const updateProgressSteps = (message, status = 'pending') => {
@@ -170,6 +184,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loading) {
       elements.progressBar.classList.remove('hidden');
       elements.progressBar.style.display = 'block';
+      const progressWrap = document.getElementById('progressWrap');
+      if (progressWrap) {
+        progressWrap.classList.remove('hidden');
+        progressWrap.style.display = 'block';
+      }
       document.querySelectorAll('button').forEach(btn => {
         if (btn) {
           btn.classList.add('button-loading');
@@ -269,13 +288,18 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`Start SSE for requestId: ${requestId}`);
     if (eventSource) {
       console.log('Closing existing EventSource');
-      eventSource.close();
+      safeCloseEventSource();
     }
 
     // Reset progress UI
     elements.progressBar.style.width = '0%';
     elements.progressBar.classList.remove('hidden');
     elements.progressBar.style.display = 'block';
+    const progressWrap = document.getElementById('progressWrap');
+    if (progressWrap) {
+      progressWrap.classList.remove('hidden');
+      progressWrap.style.display = 'block';
+    }
     elements.progressSteps.classList.remove('hidden');
     elements.progressSteps.style.display = 'block';
 
@@ -345,13 +369,19 @@ document.addEventListener('DOMContentLoaded', () => {
             transition(elements.step3, elements.result);
             setLoading(false);
 
+            // Ẩn progress sau khi hoàn tất
             elements.progressSteps.classList.add('hidden');
             elements.progressSteps.style.display = 'none';
             elements.progressBar.classList.add('hidden');
             elements.progressBar.style.display = 'none';
+            const progressWrap2 = document.getElementById('progressWrap');
+            if (progressWrap2) {
+              progressWrap2.classList.add('hidden');
+              progressWrap2.style.display = 'none';
+            }
 
-            eventSource.close();
-            eventSource = null;
+            // Đóng SSE an toàn
+            safeCloseEventSource();
           }, 500);
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
@@ -359,28 +389,26 @@ document.addEventListener('DOMContentLoaded', () => {
           showError(friendly);
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
-          eventSource.close();
-          eventSource = null;
+          safeCloseEventSource();
         }
       } catch (error) {
         console.error('SSE parse error:', error, event.data);
         showError('Lỗi xử lý tiến trình.');
         updateProgressSteps('Lỗi xử lý tiến trình', 'error');
         setLoading(false);
-        eventSource?.close();
-        eventSource = null;
+        safeCloseEventSource();
       }
     };
 
     eventSource.onerror = (error) => {
       console.error('SSE connection error:', error);
+      // Nếu đã đạt 100% thì SSE đóng là bình thường, không báo lỗi
       if (!state.progressHistory.includes(100)) {
         showError('Mất kết nối với server.');
         updateProgressSteps('Lỗi kết nối với server', 'error');
       }
       setLoading(false);
-      eventSource?.close();
-      eventSource = null;
+      safeCloseEventSource();
     };
   };
 
@@ -532,11 +560,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
-      // 🚨 Hủy tiến trình cũ nếu có
+      // 🚨 Hủy tiến trình cũ nếu có (đóng an toàn)
       if (eventSource) {
         console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới');
-        eventSource.close();
-        eventSource = null;
+        safeCloseEventSource();
       }
 
       e.preventDefault();
@@ -551,6 +578,11 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.classList.remove('hidden');
       elements.progressBar.style.display = 'block';
       elements.progressBar.style.width = '0%';
+      const progressWrap = document.getElementById('progressWrap');
+      if (progressWrap) {
+        progressWrap.classList.remove('hidden');
+        progressWrap.style.display = 'block';
+      }
       updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
 
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
@@ -663,6 +695,11 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.progressBar.style.display = 'block';
         elements.progressSteps.classList.remove('hidden');
         elements.progressSteps.style.display = 'block';
+        const progressWrap = document.getElementById('progressWrap');
+        if (progressWrap) {
+          progressWrap.classList.remove('hidden');
+          progressWrap.style.display = 'block';
+        }
         
         // Reset các input
         elements.appIdInput.value = '';
@@ -684,11 +721,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
         document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
         
-        // Đóng kết nối SSE nếu đang mở
-        if (eventSource) {
-          eventSource.close();
-          eventSource = null;
-        }
+        // Đóng kết nối SSE nếu đang mở (an toàn)
+        safeCloseEventSource();
         
         // Focus lại input
         elements.appIdInput?.focus();
