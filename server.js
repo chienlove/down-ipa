@@ -66,7 +66,9 @@ async function uploadToR2({ key, filePath, contentType }) {
 
     console.log('Sending multi-part upload to R2...');
     upload.on('httpUploadProgress', (progress) => {
-      console.log(`R2 upload progress: ${Math.round((progress.loaded / progress.total) * 100)}%`);
+      if (progress?.loaded && progress?.total) {
+        console.log(`R2 upload progress: ${Math.round((progress.loaded / progress.total) * 100)}%`);
+      }
     });
     const result = await upload.done();
     console.log('Upload successful:', result);
@@ -104,7 +106,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 app.use('/api', certApi);
 
-// Rate-limiting for /download endpoint
+// Rate-limiting cho /download (theo IP)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -115,7 +117,7 @@ app.use('/download', limiter);
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    version: '1.0.1',
+    version: '1.0.2',
     timestamp: new Date().toISOString(),
   });
 });
@@ -155,19 +157,31 @@ const MAX_CONCURRENT_DOWNLOADS = 2;
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 3000;
 const REQUEST_TIMEOUT = 15000;
+const MAX_FILE_SIZE_MB = 300;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+// Giới hạn số job đồng thời (phù hợp Heroku Hobby)
+let currentJobs = 0;
+const MAX_JOBS = 2; // có thể hạ xuống 1 nếu vẫn quá tải
 
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   return Array.from({ length }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 }
 
-async function downloadChunk({ url, start, end, output }) {
+async function downloadChunk({ url, start, end, output, signal }) {
   const headers = { Range: `bytes=${start}-${end}` };
   const agent = new Agent({ rejectUnauthorized: false });
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const controller = new AbortController();
+      // Nối signal bên ngoài (nếu có) với controller cục bộ
+      if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener('abort', () => controller.abort(), { once: true });
+      }
+
       const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
       const response = await fetch(url, {
@@ -188,6 +202,7 @@ async function downloadChunk({ url, start, end, output }) {
       });
       return;
     } catch (error) {
+      if (signal?.aborted) throw new Error('CANCELLED_BY_CLIENT');
       if (attempt === MAX_RETRIES - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     }
@@ -212,8 +227,9 @@ async function checkMemory(requiredMB) {
   }
 }
 
-async function checkDiskSpace(path, requiredSpace) {
-  const stats = await fsPromises.statfs(path);
+// Lưu ý: statfs có thể không có trên một số runtime Node. Code gốc giữ nguyên.
+async function checkDiskSpace(pathTarget, requiredSpace) {
+  const stats = await fsPromises.statfs(pathTarget);
   const freeDisk = stats.bavail * stats.bsize;
   if (freeDisk < requiredSpace + 100 * 1024 * 1024) {
     throw new Error('Insufficient disk space for upload');
@@ -278,8 +294,22 @@ class IPATool {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
+    // hỗ trợ hủy
+    const globalAbort = new AbortController();
+    const setProgress = (obj) => {
+      const prev = progressMap.get(requestId) || {};
+      progressMap.set(requestId, { ...prev, ...obj });
+    };
+    const isCancelled = () => {
+      const p = progressMap.get(requestId);
+      return p?.cancelRequested === true;
+    };
+    const ensureNotCancelled = () => {
+      if (isCancelled()) throw new Error('CANCELLED_BY_CLIENT');
+    };
+
     try {
-      progressMap.set(requestId, { progress: 0, status: 'processing' });
+      setProgress({ progress: 0, status: 'processing', abortController: globalAbort, cancelRequested: false });
 
       console.log('Authenticating with Apple ID...');
       const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
@@ -294,7 +324,8 @@ class IPATool {
         throw new Error(user.customerMessage || 'Authentication failed');
       }
 
-      progressMap.set(requestId, { progress: 10, status: 'processing' });
+      setProgress({ progress: 10, status: 'processing' });
+      ensureNotCancelled();
 
       console.log('Fetching app info...');
       const app = await Store.download(APPID, appVerId, user);
@@ -330,24 +361,32 @@ class IPATool {
       console.log('Downloading IPA file...');
       const resp = await fetch(songList0.URL, {
         agent: new Agent({ rejectUnauthorized: false }),
+        signal: globalAbort.signal,
       });
 
       if (!resp.ok) throw new Error(`Failed to download IPA: ${resp.statusText}`);
 
-      const fileSize = Number(resp.headers.get('content-length'));
-      const MAX_FILE_SIZE_MB = 300;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+      const fileSize = Number(resp.headers.get('content-length') || '0');
+      if (fileSize > MAX_FILE_SIZE_BYTES) {
+        throw new Error(`FILE_TOO_LARGE: File IPA vượt quá giới hạn ${MAX_FILE_SIZE_MB}MB. Kích thước thực: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+      }
 
-if (fileSize > MAX_FILE_SIZE_BYTES) {
-  throw new Error(`File IPA vượt quá giới hạn ${MAX_FILE_SIZE_MB}MB. Kích thước thực: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
-}
       const numChunks = Math.ceil(fileSize / CHUNK_SIZE);
 
       console.log(`Downloading ${(fileSize / 1024 / 1024).toFixed(2)}MB in ${numChunks} chunks...`);
 
-      await checkMemory(300);
+      try {
+        await checkMemory(300);
+      } catch (e) {
+        if (String(e.message || '').startsWith('Insufficient memory')) {
+          throw new Error(`OUT_OF_MEMORY: ${e.message}`);
+        }
+        throw e;
+      }
+
       await checkDiskSpace(downloadPath, fileSize);
-      progressMap.set(requestId, { progress: 20, status: 'processing' });
+      setProgress({ progress: 20, status: 'processing' });
+      ensureNotCancelled();
 
       const downloadQueue = Array.from({ length: numChunks }, (_, i) => {
         const start = i * CHUNK_SIZE;
@@ -358,16 +397,19 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
           start,
           end,
           output: tempOutput,
+          signal: globalAbort.signal,
         });
       });
 
       for (let i = 0; i < downloadQueue.length; i += MAX_CONCURRENT_DOWNLOADS) {
+        ensureNotCancelled();
         await Promise.all(downloadQueue.slice(i, i + MAX_CONCURRENT_DOWNLOADS).map(fn => fn()));
       }
 
       console.log('Merging chunks...');
       const finalFile = createWriteStream(outputFilePath);
       for (let i = 0; i < numChunks; i++) {
+        ensureNotCancelled();
         const tempOutput = path.join(cacheDir, `part${i}`);
         const tempStream = createReadStream(tempOutput);
         await new Promise(resolve => {
@@ -378,11 +420,13 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
         });
       }
       finalFile.end();
-      progressMap.set(requestId, { progress: 40, status: 'processing' });
+      setProgress({ progress: 40, status: 'processing' });
 
       console.log('Extracting MinimumOSVersion...');
       const minimumOSVersion = await extractMinimumOSVersion(outputFilePath);
       appInfo.minimumOSVersion = minimumOSVersion;
+
+      ensureNotCancelled();
 
       console.log('Signing IPA...');
       const sigClient = new SignatureClient(songList0, APPLE_ID);
@@ -413,7 +457,7 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
 
       await fsPromises.rm(signedDir, { recursive: true, force: true });
       console.log('🧹 Deleted temporary signed directory to free disk.');
-      progressMap.set(requestId, { progress: 60, status: 'processing' });
+      setProgress({ progress: 60, status: 'processing' });
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -421,10 +465,19 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
       let installUrl = null;
       let r2Success = false;
 
-      await checkMemory(300);
-      await checkDiskSpace(downloadPath, fileSize);
-
       try {
+        try {
+          await checkMemory(300);
+        } catch (e) {
+          if (String(e.message || '').startsWith('Insufficient memory')) {
+            throw new Error(`OUT_OF_MEMORY: ${e.message}`);
+          }
+          throw e;
+        }
+
+        await checkDiskSpace(downloadPath, fileSize);
+        ensureNotCancelled();
+
         const ipaKey = `ipas/${outputFileName}`;
         await uploadToR2({
           key: ipaKey,
@@ -476,7 +529,7 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
 
         await fsPromises.unlink(plistPath);
         console.log(`🧹 Deleted local plist file: ${plistPath}`);
-        progressMap.set(requestId, { progress: 80, status: 'processing' });
+        setProgress({ progress: 80, status: 'processing' });
 
         ipaUrl = `${R2_PUBLIC_BASE}/${ipaKey}`;
         installUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(`${R2_PUBLIC_BASE}/${plistKey}`)}`;
@@ -494,13 +547,13 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
 
       } catch (error) {
         console.error('R2 upload failed (using local file):', error);
-        progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
+        setProgress({ progress: 0, status: 'error', error: error.message, code: 'R2_UPLOAD_FAILED' });
         throw error;
       }
 
       await fsPromises.rm(cacheDir, { recursive: true, force: true });
       console.log('Download completed successfully!');
-      progressMap.set(requestId, { 
+      setProgress({ 
         progress: 100, 
         status: 'complete', 
         downloadUrl: ipaUrl, 
@@ -521,7 +574,13 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
       };
     } catch (error) {
       console.error('Download error:', error);
-      progressMap.set(requestId, { progress: 0, status: 'error', error: error.message });
+      const msg = String(error.message || '');
+      let code = undefined;
+      if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
+      else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
+      else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+
+      progressMap.set(requestId, { progress: 0, status: 'error', error: msg, code });
       throw error;
     } finally {
       console.log(`Finished processing requestId: ${requestId}`);
@@ -531,18 +590,25 @@ if (fileSize > MAX_FILE_SIZE_BYTES) {
 
 const ipaTool = new IPATool();
 
+// SSE progress (giữ kết nối bền, có keep-alive; hỗ trợ hủy)
 app.get('/download-progress/:id', (req, res) => {
   const id = req.params.id;
   console.log(`SSE connection opened for progress id: ${id}`);
   res.set({
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-transform',
     'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
   });
 
   const sendProgress = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  // heartbeat để Heroku không cắt
+  const heartbeat = setInterval(() => {
+    res.write(`: keep-alive ${Date.now()}\n\n`);
+  }, 15000);
 
   const interval = setInterval(() => {
     const progress = progressMap.get(id) || { progress: 0, status: 'pending' };
@@ -550,14 +616,25 @@ app.get('/download-progress/:id', (req, res) => {
     if (progress.status === 'complete' || progress.status === 'error') {
       console.log(`Closing SSE for id: ${id}, status: ${progress.status}`);
       clearInterval(interval);
+      clearInterval(heartbeat);
+      // Xoá map và kết thúc
       progressMap.delete(id);
       res.end();
     }
   }, 2000);
 
   req.on('close', () => {
-    console.log(`SSE connection closed for id: ${id}`);
+    console.log(`SSE connection closed by client for id: ${id} — marking cancelRequested`);
     clearInterval(interval);
+    clearInterval(heartbeat);
+    // Đánh dấu để tiến trình có thể tự hủy (nếu hỗ trợ)
+    const p = progressMap.get(id);
+    if (p) {
+      progressMap.set(id, { ...p, cancelRequested: true });
+      try {
+        p.abortController?.abort();
+      } catch {}
+    }
     res.end();
   });
 });
@@ -616,37 +693,9 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-app.post('/verify', async (req, res) => {
-  try {
-    const { APPLE_ID, PASSWORD, CODE } = req.body;
-    
-    if (!APPLE_ID || !PASSWORD || !CODE) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
+// ⚠️ XÓA ROUTE TRÙNG /verify (giữ một bản bên dưới). Bản bị xoá là bản khai báo sớm hơn.
 
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      throw new Error(user.customerMessage || 'Verification failed');
-    }
-
-    res.json({ 
-      success: true,
-      dsid: user.dsPersonId
-    });
-  } catch (error) {
-    console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Verification error' 
-    });
-  }
-});
-
+// Download (có giới hạn số job đồng thời)
 app.post('/download', async (req, res) => {
   console.log('Received /download request:', { body: req.body });
   try {
@@ -660,9 +709,19 @@ app.post('/download', async (req, res) => {
       });
     }
 
+    if (currentJobs >= MAX_JOBS) {
+      console.warn(`Server busy: currentJobs=${currentJobs}, MAX_JOBS=${MAX_JOBS}`);
+      return res.status(429).json({
+        success: false,
+        error: 'SERVER_BUSY',
+        message: 'Máy chủ đang bận, vui lòng thử lại sau.',
+      });
+    }
+
     const requestId = generateRandomString();
     const uniqueDownloadPath = path.join(__dirname, 'app', generateRandomString());
     console.log(`Download request for app: ${APPID}, requestId: ${requestId}`);
+    currentJobs += 1;
 
     res.json({
       success: true,
@@ -683,7 +742,7 @@ app.post('/download', async (req, res) => {
           requestId,
         });
 
-        if (result.require2FA) {
+        if (result?.require2FA) {
           progressMap.set(requestId, {
             progress: 0,
             status: 'error',
@@ -721,11 +780,20 @@ app.post('/download', async (req, res) => {
         }, 1000);
       } catch (error) {
         console.error('Background download error:', error);
+        const msg = String(error.message || '');
+        let code = undefined;
+        if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
+        else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
+        else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+
         progressMap.set(requestId, {
           progress: 0,
           status: 'error',
-          error: error.message || 'Download failed',
+          error: msg || 'Download failed',
+          code,
         });
+      } finally {
+        currentJobs = Math.max(0, currentJobs - 1);
       }
     });
   } catch (error) {
@@ -737,6 +805,7 @@ app.post('/download', async (req, res) => {
   }
 });
 
+// (Giữ lại bản /verify đầy đủ, đã có log rõ ràng)
 app.post('/verify', async (req, res) => {
   console.log('Received /verify request:', { body: req.body });
   try {

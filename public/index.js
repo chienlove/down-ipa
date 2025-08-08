@@ -128,14 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 300);
   };
 
-  const setProgress = (stepOrPercent) => {
-    console.log(`Set progress: ${stepOrPercent}`);
-    if (typeof stepOrPercent === 'number') {
-      elements.progressBar.style.width = `${stepOrPercent}%`;
-    } else {
-      const map = { 1: '25%', 2: '60%', 3: '90%', 4: '100%' };
-      elements.progressBar.style.width = map[stepOrPercent] || '0%';
-    }
+  const setProgress = (percent) => {
+    console.log(`Set progress: ${percent}`);
+    if (!elements.progressBar) return;
+    elements.progressBar.style.width = `${percent}%`;
+    // đảm bảo có hiển thị
+    elements.progressBar.classList.remove('hidden');
+    elements.progressBar.style.display = 'block';
   };
 
   const updateProgressSteps = (message, status = 'pending') => {
@@ -153,12 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const clearProgressSteps = () => {
-  if (elements.progressSteps) {
-    elements.progressSteps.innerHTML = '';
-    state.lastProgressStep = null;
-    state.progressHistory = [];
-  }
-};
+    if (elements.progressSteps) {
+      elements.progressSteps.innerHTML = '';
+      state.lastProgressStep = null;
+      state.progressHistory = [];
+    }
+  };
 
   const setLoading = (loading) => {
     console.log(`Set loading: ${loading}`);
@@ -248,6 +247,22 @@ document.addEventListener('DOMContentLoaded', () => {
     transition(elements.step1, elements.step2);
     setProgress(2);
     setLoading(false);
+  };
+
+  // Chuẩn hoá lỗi từ server thành thông báo dễ hiểu
+  const mapServerErrorToMessage = (error, message) => {
+    const raw = `${error || ''} ${message || ''}`.trim();
+    if (raw.includes('SERVER_BUSY')) return 'Máy chủ đang bận, vui lòng thử lại sau.';
+    if (raw.startsWith('FILE_TOO_LARGE') || raw.includes('File IPA vượt quá giới hạn')) {
+      return 'Ứng dụng vượt quá dung lượng cho phép (300MB). Vui lòng chọn phiên bản nhỏ hơn.';
+    }
+    if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) {
+      return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau hoặc tải vào thời điểm ít người dùng.';
+    }
+    if (raw === 'CANCELLED_BY_CLIENT') {
+      return 'Tiến trình đã bị hủy.';
+    }
+    return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
   const listenProgress = (requestId) => {
@@ -340,7 +355,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }, 500);
         } else if (data.status === 'error') {
           console.error('SSE error:', data.error);
-          showError(data.error || 'Tải ứng dụng thất bại.');
+          const friendly = mapServerErrorToMessage(data.code, data.error);
+          showError(friendly);
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
           eventSource.close();
@@ -348,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (error) {
         console.error('SSE parse error:', error, event.data);
-        showError('Lỗi xử lý tiến trình tải.');
+        showError('Lỗi xử lý tiến trình.');
         updateProgressSteps('Lỗi xử lý tiến trình', 'error');
         setLoading(false);
         eventSource?.close();
@@ -409,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Auth response data:', data);
 
         if (!response.ok) {
-          showError(data.error || 'Lỗi từ máy chủ.');
+          showError(mapServerErrorToMessage(data.error, data.message));
           setLoading(false);
           return;
         }
@@ -428,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setProgress(3);
           setLoading(false);
         } else {
-          showError(data.error || 'Đăng nhập thất bại');
+          showError(mapServerErrorToMessage(data.error, data.message) || 'Đăng nhập thất bại');
           setLoading(false);
         }
       } catch (error) {
@@ -487,7 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Verify response:', data);
 
         if (!response.ok) {
-          showError(data.error || 'Xác minh thất bại.');
+          showError(mapServerErrorToMessage(data.error, data.message) || 'Xác minh thất bại.');
           setLoading(false);
           return;
         }
@@ -503,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
           setProgress(3);
           setLoading(false);
         } else {
-          showError(data.error || 'Mã xác minh không đúng.');
+          showError(mapServerErrorToMessage(data.error, data.message) || 'Mã xác minh không đúng.');
           setLoading(false);
         }
       } catch (error) {
@@ -516,12 +532,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
-  // 🚨 Hủy tiến trình cũ nếu có
-  if (eventSource) {
-    console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới');
-    eventSource.close();
-    eventSource = null;
-  }
+      // 🚨 Hủy tiến trình cũ nếu có
+      if (eventSource) {
+        console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới');
+        eventSource.close();
+        eventSource = null;
+      }
 
       e.preventDefault();
       console.log('Download button clicked');
@@ -530,12 +546,12 @@ document.addEventListener('DOMContentLoaded', () => {
       hideError();
       setLoading(true);
       clearProgressSteps();
-elements.progressSteps.classList.remove('hidden');
-elements.progressSteps.style.display = 'block';
-elements.progressBar.classList.remove('hidden');
-elements.progressBar.style.display = 'block';
-elements.progressBar.style.width = '0%';
-updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
+      elements.progressSteps.classList.remove('hidden');
+      elements.progressSteps.style.display = 'block';
+      elements.progressBar.classList.remove('hidden');
+      elements.progressBar.style.display = 'block';
+      elements.progressBar.style.width = '0%';
+      updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
 
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
       
@@ -586,6 +602,14 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
         const data = await response.json();
         console.log('Download response:', data);
 
+        if (!response.ok || !data.success) {
+          const friendly = mapServerErrorToMessage(data.error, data.message);
+          showError(friendly);
+          updateProgressSteps('Lỗi tải ứng dụng', 'error');
+          setLoading(false);
+          return;
+        }
+
         if (data.require2FA) {
           updateProgressSteps('Yêu cầu xác thực 2FA', 'pending');
           handle2FARedirect(data);
@@ -596,7 +620,7 @@ updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
           updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
         } else {
-          showError(data.error || 'Tải ứng dụng thất bại.');
+          showError('Tải ứng dụng thất bại.');
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
         }

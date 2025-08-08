@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
   <style>
-    /* Thêm style cho progressSteps và progress-step */
+    /* ====== Progress steps list ====== */
     #progressSteps {
       max-height: 150px;
       overflow-y: auto;
@@ -36,20 +36,19 @@
     .progress-step.success .progress-icon { color: #10b981; }
     .progress-step.error .progress-icon { color: #ef4444; }
     .progress-step.pending .progress-icon { color: #6b7280; }
-    
-    /* Style cho icon trong tiêu đề thành công */
+
     .success-icon {
       margin-right: 8px;
       color: #10b981;
       font-size: 18px;
     }
-    
+
     /* Đảm bảo card container không bị tràn */
     #step3 {
       max-width: 100%;
       overflow: hidden;
     }
-    
+
     /* Animation slide-up */
     .slide-up {
       animation: slideUp 0.5s ease-out;
@@ -58,8 +57,8 @@
       from { transform: translateY(20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
-    
-    /* Toast notification */
+
+    /* Toast */
     .toast-container {
       position: fixed;
       top: 20px;
@@ -88,53 +87,28 @@
       background-color: #fef2f2;
       color: #991b1b;
     }
-    .toast-icon {
-      margin-right: 10px;
-      font-size: 18px;
-    }
-    @keyframes toastFadeIn {
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes toastFadeOut {
-      to { opacity: 0; transform: translateY(-20px); }
-    }
-    
+    .toast-icon { margin-right: 10px; font-size: 18px; }
+    @keyframes toastFadeIn { to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastFadeOut { to { opacity: 0; transform: translateY(-20px); } }
+
     /* Input số cho mã 2FA */
     input[type="tel"]::-webkit-inner-spin-button,
-    input[type="tel"]::-webkit-outer-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    input[type="tel"] {
-      -moz-appearance: textfield;
-    }
-    
-    /* Hiệu ứng loading */
-    .button-loading {
-      position: relative;
-      pointer-events: none;
-    }
+    input[type="tel"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="tel"] { -moz-appearance: textfield; }
+
+    /* Loading trên button */
+    .button-loading { position: relative; pointer-events: none; }
     .button-loading::after {
       content: "";
       position: absolute;
-      width: 20px;
-      height: 20px;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      margin: auto;
-      border: 3px solid transparent;
-      border-top-color: white;
-      border-radius: 50%;
+      width: 20px; height: 20px;
+      top: 0; left: 0; right: 0; bottom: 0; margin: auto;
+      border: 3px solid transparent; border-top-color: white; border-radius: 50%;
       animation: button-loading-spinner 1s linear infinite;
     }
-    @keyframes button-loading-spinner {
-      from { transform: rotate(0turn); }
-      to { transform: rotate(1turn); }
-    }
-    
-    /* Các style khác */
+    @keyframes button-loading-spinner { from { transform: rotate(0turn); } to { transform: rotate(1turn); } }
+
+    /* Các class tiện ích */
     .hidden { display: none; }
     .btn { padding: 8px 16px; }
     .btn-primary { background-color: #2563eb; color: white; }
@@ -142,6 +116,53 @@
     .fade-out { animation: fadeOut 0.3s; }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+    /* ====== Progress bar "đúng chuẩn" ======
+       - #progressBar là "inner bar" (JS chỉnh width% như cũ)
+       - .progress-track là "nền" chứa bar */
+    .progress-wrap { margin-top: 16px; }
+    .progress-track {
+      width: 100%;
+      height: 12px;
+      background: #e5e7eb;          /* gray-200 */
+      border-radius: 9999px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+    }
+    #progressBar {
+      height: 12px;
+      background: linear-gradient(90deg, #3b82f6, #2563eb); /* blue-500 -> blue-600 */
+      width: 0%;
+      transition: width .25s ease;
+    }
+
+    /* ====== Callout chú thích (chỉ thêm CSS, không đổi layout gốc) ====== */
+    .note {
+      font-size: 12px;
+      line-height: 1.5;
+      border-left-width: 4px;
+      border-radius: 6px;
+      padding: 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .note i { margin-top: 2px; }
+    .note-info {
+      background: #eff6ff;           /* blue-50 */
+      border-left-color: #3b82f6;    /* blue-500 */
+      color: #1e3a8a;                /* blue-900 */
+    }
+    .note-warn {
+      background: #fff7ed;           /* orange-50 */
+      border-left-color: #f97316;    /* orange-500 */
+      color: #7c2d12;                /* orange-900 */
+    }
+    .note-muted {
+      background: #f9fafb;           /* gray-50 */
+      border-left-color: #9ca3af;    /* gray-400 */
+      color: #374151;                /* gray-700 */
+    }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
@@ -219,6 +240,14 @@
           </div>
         </div>
 
+        <!-- Chú thích thêm cho Step 2 -->
+        <div class="note note-warn">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <div>
+            <strong>Lưu ý:</strong> Nếu sau khi đăng nhập <u>không có mã 2FA gửi về</u> và <u>không chuyển sang Bước 3</u>, có thể bạn đã nhập sai Apple ID hoặc mật khẩu. Vui lòng kiểm tra và thử lại.
+          </div>
+        </div>
+
         <div class="space-y-1">
           <label for="VERIFICATION_CODE" class="block text-sm font-medium text-gray-700">Mã xác minh 2FA</label>
           <input id="VERIFICATION_CODE" name="VERIFICATION_CODE" required
@@ -232,14 +261,32 @@
             oninput="this.value = this.value.replace(/[^0-9]/g, '')">
         </div>
 
-        <button id="verifyBtn"
-          class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
-          Xác thực
-        </button>
+        <div class="flex gap-3">
+          <button id="verifyBtn"
+            class="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
+            Xác thực
+          </button>
+          <!-- Nút quay lại Step 1 -->
+          <button id="backToStep1"
+            class="px-4 py-3 rounded-lg font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300">
+            ← Quay lại Bước 1
+          </button>
+        </div>
       </div>
 
       <!-- Step 3: App Download -->
       <div id="step3" class="hidden space-y-4">
+        <!-- Chú thích chi tiết cho Step 3 -->
+        <div class="note note-info">
+          <i class="fa-solid fa-circle-info"></i>
+          <div>
+            <strong>Về file IPA & thời gian tải:</strong>
+            File IPA càng lớn thì thời gian tải xuống, ký và tải lên máy chủ sẽ càng lâu.
+            Với kết nối ổn định, mỗi <u>100MB</u> thường mất vài chục giây đến vài phút.
+            Một số ứng dụng lớn có thể vượt quá giới hạn dung lượng cho phép (300MB).
+          </div>
+        </div>
+
         <div class="space-y-1">
           <label for="APPID" class="block text-sm font-medium text-gray-700">App ID hoặc URL AppStore</label>
           <input id="APPID" name="APPID" required
@@ -266,10 +313,16 @@
         <strong class="font-bold">Lỗi:</strong>
         <span id="errorMessage" class="block sm:inline">Có lỗi xảy ra.</span>
       </div>
-      
+
       <!-- Progress Sections -->
       <div id="progressSteps" class="mt-4"></div>
-      <div id="progressBar" class="mt-4 hidden"></div>
+
+      <!-- Progress bar “đúng chuẩn” với track + inner bar (#progressBar vẫn giữ nguyên ID cho JS) -->
+      <div class="progress-wrap hidden" id="progressWrap">
+        <div class="progress-track rounded-full">
+          <div id="progressBar" class="hidden rounded-full"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Result Section -->
@@ -336,6 +389,41 @@
       </p>
     </div>
   </div>
+
+  <!-- Giữ nguyên: index.js của bạn -->
   <script src="index.js"></script>
+
+  <!-- Script nhỏ cho nút Back step 2 -> step 1 (không đụng index.js) -->
+  <script>
+    (function(){
+      const backBtn = document.getElementById('backToStep1');
+      if (backBtn) {
+        backBtn.addEventListener('click', function() {
+          const s1 = document.getElementById('step1');
+          const s2 = document.getElementById('step2');
+          if (s1 && s2) {
+            // Ẩn step 2
+            s2.classList.add('hidden'); s2.style.display = 'none';
+            // Hiện step 1
+            s1.classList.remove('hidden'); s1.style.display = 'block';
+            // Ẩn lỗi nếu có
+            const err = document.getElementById('error');
+            if (err) err.classList.add('hidden');
+          }
+          // Cuộn lên trên để thấy form đăng nhập
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+
+      // Đồng bộ hiển thị progress track khi JS bật progressBar
+      const pb = document.getElementById('progressBar');
+      const wrap = document.getElementById('progressWrap');
+      const showWrap = () => { if (wrap) { wrap.classList.remove('hidden'); wrap.style.display = 'block'; } };
+      const observer = new MutationObserver(() => {
+        if (pb && (pb.style.display === 'block' || !pb.classList.contains('hidden'))) showWrap();
+      });
+      if (pb) observer.observe(pb, { attributes: true, attributeFilter: ['class', 'style'] });
+    })();
+  </script>
 </body>
 </html>
