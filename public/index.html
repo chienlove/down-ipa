@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-  <!-- reCAPTCHA explicit render -->
+  <!-- reCAPTCHA explicit render (server đã có /recaptcha-sitekey) -->
   <script src="https://www.google.com/recaptcha/api.js?render=explicit" async defer></script>
   <style>
     /* ====== Progress steps list ====== */
@@ -64,7 +64,7 @@
     .progress-track { width: 100%; height: 12px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); }
     #progressBar { height: 12px; background: linear-gradient(90deg, #3b82f6, #2563eb); width: 0%; transition: width .25s ease; }
 
-    /* ====== Callout note ====== */
+    /* ====== Callout note (THÔNG BÁO RIÊNG) ====== */
     .note { font-size: 14px; line-height: 1.6; border-left-width: 4px; border-radius: 6px; padding: 10px 12px; display: flex; gap: 8px; align-items: flex-start; }
     .note i { margin-top: 2px; }
     .note-info { background: #eff6ff; border-left-color: #3b82f6; color: #1e3a8a; }
@@ -74,12 +74,13 @@
     /* label required star */
     .req::after { content:" *"; color:#ef4444; }
 
-    /* focus border luôn hiện rõ (không biến mất) */
+    /* focus border luôn hiện rõ */
     .focus-visible-border { border-color:#d1d5db; }
     .focus-visible-border:focus { border-color:#3b82f6 !important; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen p-4">
+  <!-- CHỈ 1 toast-container, không tạo trùng bằng JS -->
   <div id="toast-container" class="toast-container"></div>
 
   <div class="max-w-xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
@@ -88,7 +89,7 @@
         🚀 IPADL Pro
       </h1>
 
-      <!-- Thông báo RIÊNG, không thuộc tiến trình -->
+      <!-- THÔNG BÁO RIÊNG (KHÔNG dính tiến trình) -->
       <div id="sessionNotice" class="note note-warn hidden">
         <i class="fa-solid fa-circle-exclamation"></i>
         <div>
@@ -138,7 +139,7 @@
           <p class="text-xs text-gray-500">Sử dụng mật khẩu Apple ID của bạn. Nếu có bật 2FA, bạn sẽ được yêu cầu nhập mã xác minh ở bước sau.</p>
         </div>
 
-        <button id="loginBtn"
+        <button id="loginBtn" type="button"
           class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
           Đăng nhập
         </button>
@@ -182,11 +183,11 @@
         </div>
 
         <div class="flex gap-3">
-          <button id="verifyBtn"
+          <button id="verifyBtn" type="button"
             class="flex-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
             Xác thực
           </button>
-          <button id="backToStep1"
+          <button id="backToStep1" type="button"
             class="px-4 py-3 rounded-lg font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300">
             ← Quay lại Bước 1
           </button>
@@ -195,6 +196,7 @@
 
       <!-- Step 3 -->
       <div id="step3" class="hidden space-y-4">
+        <!-- Giữ chú thích NGẮN gọn phía trên (khuyến nghị) -->
         <div class="note note-info">
           <i class="fa-solid fa-circle-info"></i>
           <div>
@@ -252,8 +254,8 @@
           <p class="text-xs text-gray-500">Vui lòng xác minh trước khi tải.</p>
         </div>
 
-        <!-- Nút tải IPA (xanh dương + icon download) -->
-        <button id="downloadBtn"
+        <!-- Nút tải IPA (xanh dương) -->
+        <button id="downloadBtn" type="button"
           class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-300 font-semibold flex items-center justify-center shadow-md hover:shadow-lg">
           <i class="fas fa-download mr-2"></i> Tải IPA
         </button>
@@ -264,7 +266,7 @@
         <span id="errorMessage" class="block sm:inline">Có lỗi xảy ra.</span>
       </div>
 
-      <!-- Progress sections -->
+      <!-- Progress sections (KHÔNG chứa 2 dòng thông báo) -->
       <div id="progressSteps" class="mt-4"></div>
       <div class="progress-wrap hidden" id="progressWrap">
         <div class="progress-track rounded-full">
