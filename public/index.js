@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      compatNote.innerHTML = `<i class="fas a-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
+      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
     }
   };
 
@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       console.warn('Cannot fetch sitekey from server:', e);
     }
-    // 2) fallback từ HTML
+    // 2) fallback từ HTML (nếu có)
     if (!recaptchaSiteKey && elements.recaptchaContainer) {
       const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
       if (dataAttr) recaptchaSiteKey = dataAttr;
@@ -210,14 +210,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const tryRender = () => {
       if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
         try {
-          if (recaptchaWidgetId !== null) {
-            window.grecaptcha.reset(recaptchaWidgetId);
-          } else {
+          // ❗ KHÔNG reset nếu đã render — tránh xoá token người dùng vừa tích
+          if (recaptchaWidgetId === null) {
             recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, {
               sitekey: recaptchaSiteKey
             });
+            console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
           }
-          console.log('reCAPTCHA widget:', recaptchaWidgetId);
         } catch (err) {
           console.error('grecaptcha.render error:', err);
         }
@@ -234,8 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey.');
       return;
     }
-    // container phải đang hiển thị (step3 visible)
-    renderRecaptchaWhenReady();
+    renderRecaptchaWhenReady(); // chỉ render nếu chưa có
   }
 
   /* ========== SSE listen ========== */
@@ -392,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
           state.dsid = data.dsid || null;
           showToast('Đăng nhập thành công!');
           transition(elements.step1, elements.step3);
-          await ensureRecaptchaOnStep3();  // <-- render reCAPTCHA khi Step 3 hiển thị
+          await ensureRecaptchaOnStep3();  // render reCAPTCHA khi Step 3 hiển thị
           setProgress(3);
           setLoading(false);
         } else {
@@ -455,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
           elements.verificationCodeInput.value = '';
           elements.verifyMessage.textContent = '';
           transition(elements.step2, elements.step3);
-          await ensureRecaptchaOnStep3();  // <-- render reCAPTCHA khi Step 3 hiển thị
+          await ensureRecaptchaOnStep3();  // render reCAPTCHA khi Step 3 hiển thị
           setProgress(3);
           setLoading(false);
         } else {
@@ -508,31 +506,41 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Đảm bảo reCAPTCHA đã render
-      await ensureRecaptchaOnStep3();
-      const bodyPayload = { APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE: state.CODE, APPID, appVerId, dsid: state.dsid };
+      // Đảm bảo reCAPTCHA đã render — nhưng KHÔNG reset nếu đã có
+      if (recaptchaWidgetId === null) {
+        await ensureRecaptchaOnStep3();
+        // Render xong thì yêu cầu người dùng tick trước khi gửi
+        showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
+        setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+        return;
+      }
 
-      if (typeof grecaptcha !== 'undefined') {
-        if (recaptchaWidgetId === null) {
-          showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.');
-          setLoading(false);
-          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-          return;
-        }
-        const token = grecaptcha.getResponse(recaptchaWidgetId);
-        if (!token) {
-          showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
-          setLoading(false);
-          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-          return;
-        }
-        bodyPayload.recaptchaToken = token;
-      } else {
+      // Lấy token reCAPTCHA
+      if (typeof grecaptcha === 'undefined') {
         showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.');
         setLoading(false);
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         return;
       }
+
+      const token = grecaptcha.getResponse(recaptchaWidgetId);
+      if (!token) {
+        showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
+        setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+        return;
+      }
+
+      const bodyPayload = {
+        APPLE_ID: state.APPLE_ID,
+        PASSWORD: state.PASSWORD,
+        CODE: state.CODE,
+        APPID,
+        appVerId,
+        dsid: state.dsid,
+        recaptchaToken: token
+      };
 
       setProgress(3);
 
@@ -543,6 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify(bodyPayload)
         });
 
+        // Sau khi gửi xong, reset widget để lần sau người dùng tick lại
         try { if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
 
         let data = null;
@@ -623,7 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
         safeCloseEventSource();
-        await ensureRecaptchaOnStep3(); // render lại recaptcha khi quay lại step3
+        await ensureRecaptchaOnStep3(); // render lại recaptcha khi quay lại step3 (không reset token)
         elements.appIdInput?.focus();
       }, 300);
     });
