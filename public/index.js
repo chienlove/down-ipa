@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
   console.log('index.js loaded');
-  // DOM Elements
   const elements = {
     step1: document.getElementById('step1'),
     step2: document.getElementById('step2'),
@@ -24,45 +23,25 @@ document.addEventListener('DOMContentLoaded', () => {
     recaptchaContainer: document.getElementById('recaptcha-container'),
     progressWrap: document.getElementById('progressWrap'),
     installLink: document.getElementById('installLink'),
-    downloadLink: document.getElementById('downloadLink')
+    downloadLink: document.getElementById('downloadLink'),
+    sessionNotice: document.getElementById('sessionNotice')
   };
 
-  // Kiểm tra DOM elements an toàn
-  Object.keys(elements).forEach(key => {
-    if (!elements[key]) {
-      console.warn(`⚠ DOM element "${key}" not found`);
-    }
-  });
+  Object.keys(elements).forEach(key => { if (!elements[key]) console.warn(`⚠ DOM element "${key}" not found`); });
 
-  // Hàm showError/hideError
   const showError = (msg) => {
     console.log(`Error: ${msg}`);
     if (elements.errorMessage && elements.errorBox) {
       elements.errorMessage.textContent = msg;
       elements.errorBox.classList.remove('hidden');
-    } else {
-      alert(msg);
-    }
+    } else { alert(msg); }
   };
-  const hideError = () => {
-    if (elements.errorBox) {
-      elements.errorBox.classList.add('hidden');
-    } else {
-      console.warn('Không tìm thấy phần tử errorBox để ẩn');
-    }
-  };
+  const hideError = () => { if (elements.errorBox) elements.errorBox.classList.add('hidden'); };
 
-  // App State
   const state = {
-    APPLE_ID: '',
-    PASSWORD: '',
-    CODE: '',
-    verified2FA: false,
-    dsid: null,
-    requires2FA: false,
-    requestId: null,
-    iosVersion: null,
-    lastProgressStep: null,
+    APPLE_ID: '', PASSWORD: '', CODE: '',
+    verified2FA: false, dsid: null, requires2FA: false,
+    requestId: null, iosVersion: null, lastProgressStep: null,
     progressHistory: []
   };
 
@@ -70,48 +49,32 @@ document.addEventListener('DOMContentLoaded', () => {
   let eventSource = null;
   let deviceOSVersion = null;
 
-  // Helper đóng SSE an toàn
-  function safeCloseEventSource() {
-    if (eventSource) {
-      try { eventSource.close(); } catch (e) {}
-      eventSource = null;
-    }
-  }
+  function safeCloseEventSource() { if (eventSource) { try{eventSource.close();}catch(e){} eventSource = null; } }
 
-  // Detect device iOS version
   function detectIOSVersion() {
     const ua = navigator.userAgent;
-    const match = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
-    if (match) {
-      return `${match[1]}.${match[2]}${match[3] ? `.${match[3]}` : ''}`;
-    }
-    return 'Unknown';
+    const m = ua.match(/OS (\d+)_(\d+)(?:_(\d+))?/);
+    return m ? `${m[1]}.${m[2]}${m[3] ? `.${m[3]}` : ''}` : 'Unknown';
   }
   deviceOSVersion = detectIOSVersion();
   state.iosVersion = deviceOSVersion;
 
-  /* ========== UI HELPERS ========== */
   const toastContainer = document.createElement('div');
   toastContainer.id = 'toast-container';
   toastContainer.className = 'toast-container';
   document.body.appendChild(toastContainer);
 
   const showToast = (message, type = 'success') => {
-    console.log(`Toast: ${message}, Type: ${type}`);
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span><span>${message}</span>`;
     toastContainer.appendChild(toast);
-    setTimeout(() => { toast.classList.add('show'); }, 10);
+    setTimeout(() => toast.classList.add('show'), 10);
     setTimeout(() => toast.remove(), 3000);
   };
 
   const transition = (from, to) => {
-    console.log(`Transition from ${from?.id} to ${to?.id}`);
-    if (!from || !to) {
-      console.error('Invalid transition elements:', { from, to });
-      return;
-    }
+    if (!from || !to) return;
     [elements.step1, elements.step2, elements.step3, elements.result].forEach(step => {
       if (step && step !== to) { step.classList.add('hidden'); step.style.display = 'none'; }
     });
@@ -124,7 +87,6 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setProgress = (percent) => {
-    console.log(`Set progress: ${percent}`);
     if (!elements.progressBar) return;
     elements.progressBar.style.width = `${percent}%`;
     elements.progressBar.classList.remove('hidden');
@@ -152,13 +114,8 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const setLoading = (loading) => {
-    console.log(`Set loading: ${loading}`);
     isLoading = loading;
-    if (!elements.progressBar) {
-      console.error('Progress bar element not found');
-      showError('Lỗi giao diện: Thanh tiến trình không được tìm thấy');
-      return;
-    }
+    if (!elements.progressBar) return;
     if (loading) {
       elements.progressBar.classList.remove('hidden');
       elements.progressBar.style.display = 'block';
@@ -171,38 +128,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const compareVersions = (a, b) => {
     if (!a || !b) return 0;
-    const v1 = a.split('.').map(Number), v2 = b.split('.').map(Number);
-    const L = Math.max(v1.length, v2.length);
-    for (let i=0;i<L;i++){ const x=v1[i]||0, y=v2[i]||0; if (x>y) return 1; if (x<y) return -1; }
+    const v1=a.split('.').map(Number), v2=b.split('.').map(Number), L=Math.max(v1.length,v2.length);
+    for (let i=0;i<L;i++){ const x=v1[i]||0,y=v2[i]||0; if(x>y)return 1; if(x<y)return -1; }
     return 0;
   };
 
-  const updateInstallButton = (minimumOSVersion, userIOSVersion, installUrl, downloadUrl) => {
+  const updateInstallButton = (minOS, userOS, installUrl, downloadUrl) => {
     const installLink = document.getElementById('installLink');
     const compatNote = document.getElementById('compatNote');
     installLink.href = installUrl || downloadUrl || '#';
-    userIOSVersion = userIOSVersion || 'Unknown';
+    userOS = userOS || 'Unknown';
     installLink.className = 'px-6 py-3 rounded-lg font-medium text-white flex items-center justify-center';
-    if (minimumOSVersion === 'Unknown' || userIOSVersion === 'Unknown') {
+    if (minOS === 'Unknown' || userOS === 'Unknown') {
       installLink.innerHTML = '<i class="fas fa-question-circle mr-2"></i> Không rõ tương thích';
       installLink.classList.add('bg-yellow-400');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex';
       compatNote.innerHTML = '<i class="fas fa-question-circle mr-2 mt-1"></i>Không xác định được phiên bản iOS thiết bị.';
-    } else if (compareVersions(userIOSVersion, minimumOSVersion) >= 0) {
+    } else if (compareVersions(userOS, minOS) >= 0) {
       installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
       installLink.classList.add('bg-green-500', 'hover:bg-green-600');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-green-50 text-green-700 border border-green-300 flex';
-      compatNote.innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userIOSVersion} tương thích (yêu cầu iOS ${minimumOSVersion})`;
+      compatNote.innerHTML = `<i class="fas fa-check-circle mr-2 mt-1"></i>Thiết bị iOS ${userOS} tương thích (yêu cầu iOS ${minOS})`;
     } else {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userIOSVersion}) KHÔNG tương thích. Yêu cầu iOS ${minimumOSVersion}.`;
+      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
     }
   };
 
   const handle2FARedirect = (responseData) => {
-    console.log('Handle 2FA redirect:', responseData);
     state.requires2FA = true;
     state.verified2FA = false;
     state.dsid = responseData.dsid || null;
@@ -215,13 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setLoading(false);
   };
 
-  // Chuẩn hoá lỗi server
   const mapServerErrorToMessage = (error, message) => {
     const raw = `${error || ''} ${message || ''}`.trim();
     if (raw.includes('SERVER_BUSY')) return 'Máy chủ đang bận, vui lòng thử lại sau.';
     if (raw.startsWith('FILE_TOO_LARGE') || raw.includes('File IPA vượt quá giới hạn')) return 'Ứng dụng vượt quá dung lượng cho phép (300MB). Vui lòng chọn phiên bản nhỏ hơn.';
     if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau hoặc tải vào thời điểm ít người dùng.';
-    if (raw === 'CANCELLED_BY_CLIENT') return 'Tiến trình đã bị hủy.';
+    if (raw === 'CANCELLED_BY_CLIENT')) return 'Tiến trình đã bị hủy.';
     if (raw.startsWith('RECAPTCHA')) return 'Xác minh reCAPTCHA thất bại. Vui lòng thử lại.';
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
@@ -233,37 +187,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('/recaptcha-sitekey');
       const json = await resp.json();
       const siteKey = json?.siteKey || '';
-      if (!siteKey) {
-        console.warn('Missing RECAPTCHA_SITE_KEY from server');
-        return;
-      }
+      if (!siteKey) { console.warn('Missing RECAPTCHA_SITE_KEY from server'); return; }
       const renderIt = () => {
         if (window.grecaptcha && elements.recaptchaContainer) {
           recaptchaWidgetId = grecaptcha.render(elements.recaptchaContainer, { sitekey: siteKey });
           console.log('reCAPTCHA rendered with widgetId:', recaptchaWidgetId);
-        } else {
-          setTimeout(renderIt, 200);
-        }
+        } else { setTimeout(renderIt, 200); }
       };
       if (window.grecaptcha) renderIt();
       else {
-        const interval = setInterval(() => {
-          if (window.grecaptcha) {
-            clearInterval(interval);
-            renderIt();
-          }
-        }, 200);
+        const interval = setInterval(() => { if (window.grecaptcha) { clearInterval(interval); renderIt(); } }, 200);
       }
-    } catch (e) {
-      console.error('Failed to init reCAPTCHA:', e);
-    }
+    } catch (e) { console.error('Failed to init reCAPTCHA:', e); }
   }
   initRecaptcha();
 
-  /* ========== SSE listen ========== */
   const listenProgress = (requestId) => {
-    console.log(`Start SSE for requestId: ${requestId}`);
-    if (eventSource) { console.log('Closing existing EventSource'); safeCloseEventSource(); }
+    if (eventSource) safeCloseEventSource();
 
     elements.progressBar.style.width = '0%';
     elements.progressBar.classList.remove('hidden');
@@ -273,14 +213,11 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.progressSteps.style.display = 'block';
 
     eventSource = new EventSource(`/download-progress/${requestId}`);
-    eventSource.onopen = () => { console.log('SSE connection opened'); updateProgressSteps('Đang kết nối với máy chủ', 'success'); };
+    eventSource.onopen = () => { updateProgressSteps('Đang kết nối với máy chủ', 'success'); };
 
     eventSource.onmessage = (event) => {
-      console.log('SSE message received:', event.data);
       try {
         const data = JSON.parse(event.data);
-        console.log(`Progress: ${data.progress}%, Status: ${data.status}`);
-
         if (!state.progressHistory.includes(data.progress)) state.progressHistory.push(data.progress);
 
         let stepMessage = '';
@@ -296,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setProgress(data.progress);
 
         if (data.status === 'complete') {
-          console.log('Download complete:', data);
           setTimeout(() => {
             const appInfo = data.appInfo || {};
             document.getElementById('appName').textContent = appInfo.name || 'Unknown';
@@ -306,14 +242,19 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('appDate').textContent = appInfo.releaseDate || 'Unknown';
             document.getElementById('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
 
-            // Sử dụng trang trung gian /go (đếm ngược 10s)
+            // Dùng trang trung gian /go: BẮT BUỘC gỡ download attribute để tránh tải go.html
             const encodedDownload = encodeURIComponent(data.downloadUrl || '#');
             const encodedInstall  = encodeURIComponent(data.installUrl || data.downloadUrl || '#');
+
             elements.downloadLink.href = `/go?type=download&url=${encodedDownload}`;
+            elements.downloadLink.removeAttribute('download');
+            elements.downloadLink.setAttribute('rel','noopener');
+
             if (data.installUrl) {
               elements.installLink.href = `/go?type=install&url=${encodedInstall}`;
               elements.installLink.classList.remove('cursor-not-allowed', 'bg-gray-400');
               elements.installLink.classList.add('bg-green-500', 'hover:bg-green-600');
+              elements.installLink.setAttribute('rel','noopener');
             }
 
             document.getElementById('ipaFileSize').textContent = data.fileSizeMB ? `${data.fileSizeMB} MB` : 'Unknown';
@@ -322,6 +263,9 @@ document.addEventListener('DOMContentLoaded', () => {
             transition(elements.step3, elements.result);
             setLoading(false);
 
+            // Ẩn thông báo chung sau khi xong
+            if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+
             elements.progressSteps.classList.add('hidden'); elements.progressSteps.style.display = 'none';
             elements.progressBar.classList.add('hidden'); elements.progressBar.style.display = 'none';
             if (elements.progressWrap) { elements.progressWrap.classList.add('hidden'); elements.progressWrap.style.display = 'none'; }
@@ -329,29 +273,29 @@ document.addEventListener('DOMContentLoaded', () => {
             safeCloseEventSource();
           }, 500);
         } else if (data.status === 'error') {
-          console.error('SSE error:', data.error);
           const friendly = mapServerErrorToMessage(data.code, data.error);
           showError(friendly);
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
           safeCloseEventSource();
         }
       } catch (error) {
-        console.error('SSE parse error:', error, event.data);
         showError('Lỗi xử lý tiến trình.');
         updateProgressSteps('Lỗi xử lý tiến trình', 'error');
         setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         safeCloseEventSource();
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
+    eventSource.onerror = () => {
       if (!state.progressHistory.includes(100)) {
         showError('Mất kết nối với server.');
         updateProgressSteps('Lỗi kết nối với server', 'error');
       }
       setLoading(false);
+      if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
       safeCloseEventSource();
     };
   };
@@ -361,9 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (elements.loginBtn) {
     elements.loginBtn.addEventListener('click', async (e) => {
       e.preventDefault();
-      console.log('Login button clicked');
       if (isLoading) return;
-
       hideError();
       setLoading(true);
 
@@ -386,10 +328,10 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ APPLE_ID, PASSWORD })
         });
-
         const data = await response.json();
+
         if (!response.ok) {
-          showError(mapServerErrorToMessage(data.error, data.message));
+          showError((data && (data.error || data.message)) || 'Lỗi từ máy chủ.');
           setLoading(false);
           return;
         }
@@ -408,23 +350,20 @@ document.addEventListener('DOMContentLoaded', () => {
           setProgress(3);
           setLoading(false);
         } else {
-          showError(mapServerErrorToMessage(data.error, data.message) || 'Đăng nhập thất bại');
+          showError(data.error || 'Đăng nhập thất bại');
           setLoading(false);
         }
       } catch (error) {
-        console.error('Auth error:', error.message);
         showError('Không thể kết nối tới máy chủ.');
         setLoading(false);
       }
     });
   } else {
-    console.error('loginBtn not found in DOM');
     showError('Lỗi giao diện: Nút đăng nhập không được tìm thấy.');
   }
 
   if (elements.togglePassword) {
     elements.togglePassword.addEventListener('click', () => {
-      console.log('Toggle password clicked');
       const isPassword = elements.passwordInput.type === 'password';
       elements.passwordInput.type = isPassword ? 'text' : 'password';
       elements.togglePassword.innerHTML = isPassword ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
@@ -434,9 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (elements.verifyBtn) {
     elements.verifyBtn.addEventListener('click', async (e) => {
       e.preventDefault();
-      console.log('Verify button clicked');
       if (isLoading) return;
-
       hideError();
       setLoading(true);
 
@@ -446,7 +383,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
         return;
       }
-
       setProgress(2);
 
       try {
@@ -455,10 +391,10 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE, dsid: state.dsid })
         });
-
         const data = await response.json();
+
         if (!response.ok) {
-          showError(mapServerErrorToMessage(data.error, data.message) || 'Xác minh thất bại.');
+          showError((data && (data.error || data.message)) || 'Xác minh thất bại.');
           setLoading(false);
           return;
         }
@@ -474,11 +410,10 @@ document.addEventListener('DOMContentLoaded', () => {
           setProgress(3);
           setLoading(false);
         } else {
-          showError(mapServerErrorToMessage(data.error, data.message) || 'Mã xác minh không đúng.');
+          showError(data.error || 'Mã xác minh không đúng.');
           setLoading(false);
         }
       } catch (error) {
-        console.error('Verify error:', error);
         showError('Không thể kết nối tới máy chủ.');
         setLoading(false);
       }
@@ -487,11 +422,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
-      // Đóng SSE cũ nếu có
-      if (eventSource) { console.log('Đóng tiến trình cũ trước khi bắt đầu cái mới'); safeCloseEventSource(); }
+      if (eventSource) safeCloseEventSource();
 
       e.preventDefault();
-      console.log('Download button clicked');
       if (isLoading) return;
 
       hideError();
@@ -502,11 +435,11 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.style.width = '0%';
       if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
 
+      // Hiển thị thông báo chung (không phải tiến trình)
+      if (elements.sessionNotice) elements.sessionNotice.classList.remove('hidden');
+
       updateProgressSteps('Chuẩn bị tải ứng dụng...', 'pending');
       updateProgressSteps('Bắt đầu quá trình tải', 'pending');
-      // Thêm nhắc giữ tab & file lớn xử lý lâu
-      updateProgressSteps('Để tránh gián đoạn, vui lòng GIỮ TAB NÀY MỞ trong suốt quá trình tải/ký/upload.', 'pending');
-      updateProgressSteps('Lưu ý: File IPA càng lớn thì thời gian xử lý sẽ càng lâu.', 'pending');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
       const appVerId = elements.appVerInput?.value.trim() || '';
@@ -516,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showError('Vui lòng nhập App ID hợp lệ.');
         updateProgressSteps('Lỗi: App ID không hợp lệ', 'error');
         setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         return;
       }
 
@@ -523,38 +457,19 @@ document.addEventListener('DOMContentLoaded', () => {
         showError('Vui lòng hoàn thành xác thực 2FA trước khi tải.');
         updateProgressSteps('Lỗi: Yêu cầu xác thực 2FA', 'error');
         setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         transition(elements.step3, elements.step2);
         return;
       }
 
-      // reCAPTCHA token
-      const bodyPayload = {
-        APPLE_ID: state.APPLE_ID,
-        PASSWORD: state.PASSWORD,
-        CODE: state.CODE,
-        APPID,
-        appVerId,
-        dsid: state.dsid
-      };
-
+      // reCAPTCHA
+      const bodyPayload = { APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE: state.CODE, APPID, appVerId, dsid: state.dsid };
       if (typeof grecaptcha !== 'undefined') {
-        if (recaptchaWidgetId === null) {
-          showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.');
-          setLoading(false);
-          return;
-        }
+        if (recaptchaWidgetId === null) { showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
         const token = grecaptcha.getResponse(recaptchaWidgetId);
-        if (!token) {
-          showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
-          setLoading(false);
-          return;
-        }
+        if (!token) { showError('Vui lòng xác minh reCAPTCHA trước khi tải.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
         bodyPayload.recaptchaToken = token;
-      } else {
-        showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.');
-        setLoading(false);
-        return;
-      }
+      } else { showError('Không tải được reCAPTCHA. Hãy refresh trang rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
 
       setProgress(3);
 
@@ -564,16 +479,14 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bodyPayload)
         });
-
-        // reset reCAPTCHA sau khi yêu cầu được gửi
         try { if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch (e) {}
 
         const data = await response.json();
         if (!response.ok || !data.success) {
-          const friendly = mapServerErrorToMessage(data.error, data.message);
-          showError(friendly);
+          showError((data && (data.error || data.message)) || 'Tải ứng dụng thất bại.');
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
           return;
         }
 
@@ -581,28 +494,28 @@ document.addEventListener('DOMContentLoaded', () => {
           updateProgressSteps('Yêu cầu xác thực 2FA', 'pending');
           handle2FARedirect(data);
           setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         } else if (data.success && data.requestId) {
           state.requestId = data.requestId;
-          console.log(`Starting progress listener for requestId: ${data.requestId}`);
           updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
         } else {
           showError('Tải ứng dụng thất bại.');
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
+          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         }
       } catch (error) {
-        console.error('Download error:', error);
         showError('Không thể kết nối tới máy chủ.');
         updateProgressSteps('Lỗi kết nối máy chủ', 'error');
         setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
       }
     });
   }
 
   if (elements.downloadAnotherBtn) {
     elements.downloadAnotherBtn.addEventListener('click', () => {
-      console.log('Download another button clicked');
       state.requestId = null;
       clearProgressSteps();
       isLoading = false;
@@ -627,10 +540,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if (el) el.textContent = 'Unknown';
         });
 
-        const installLink = document.getElementById('installLink');
-        installLink.href = '#';
-        installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
-        installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
+        // Reset links & remove download attribute
+        elements.installLink.href = '#';
+        elements.installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
+        elements.installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
+
+        elements.downloadLink.href = '#';
+        elements.downloadLink.removeAttribute('download');
 
         document.getElementById('compatNote').className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
         document.getElementById('compatNote').innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
@@ -639,7 +555,5 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.appIdInput?.focus();
       }, 300);
     });
-  } else {
-    console.error('downloadAnotherBtn not found in DOM');
   }
 });
