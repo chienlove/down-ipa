@@ -51,54 +51,62 @@ class Store {
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
-  static async purchase(bundleId, Cookie) {
-  // bước 1: gọi buyProduct như cũ
-  const firstJson = { guid: this.guid, salableAdamId: bundleId };
-  const firstBody = plist.build(firstJson);
-  const baseUrl = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
-  const url = `${baseUrl}/buyProduct?guid=${this.guid}`;
+  static async purchase(adamId, Cookie) {
+  const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
+  const url1 = `${base}/buyProduct?guid=${this.guid}`;
 
-  const resp1 = await this.fetch(url, {
-    method: 'POST',
-    body: firstBody,
-    headers: {
-      ...this.Headers,
-      'X-Dsid': Cookie.dsPersonId,
-      'iCloud-DSID': Cookie.dsPersonId
-    }
-  });
+  // BƯỚC 1: gửi plist để mở dialog
+  const firstBody = plist.build({ guid: this.guid, salableAdamId: adamId });
+  const headers1 = {
+    ...this.Headers,
+    'Content-Type': 'application/x-apple-plist', // plist -> dùng mime plist
+    'X-Dsid': Cookie.dsPersonId,
+    'iCloud-DSID': Cookie.dsPersonId,
+    'Accept': '*/*',
+    'Accept-Language': 'en-us,en;q=0.9'
+  };
+
+  const resp1 = await this.fetch(url1, { method: 'POST', body: firstBody, headers: headers1 });
   const text1 = await resp1.text();
-  const data1 = plist.parse(text1);
-  const state1 = { ...data1, _state: data1.failureType ? 'failure' : 'success' };
 
-  // Nếu thành công ngay thì trả luôn
-  if (!data1?.failureType && !data1?.dialog) return state1;
+  let data1;
+  try { data1 = plist.parse(text1); }
+  catch (e) { console.error('purchase step1 parse error:', text1); throw e; }
 
-  // Apple trả dialog “Sign-In Required” (2060) với okButtonAction.buyParams
-  const buyParams = data1?.dialog?.okButtonAction?.buyParams;
-  const actionPath = (data1?.metrics?.actionUrl || '').replace(/^https?:\/\//, '');
-  const actionUrl = actionPath
-    ? `https://${actionPath}` // ví dụ: p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct
-    : url;
-
-  if (buyParams) {
-    // bước 2: gửi lại với buyParams (đã là form-urlencoded, có cả guid & flags như ageCheck/hasBeenAuthedForBuy)
-    const resp2 = await this.fetch(actionUrl, {
-      method: 'POST',
-      body: buyParams,
-      headers: {
-        ...this.Headers,
-        'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId
-      }
-    });
-    const text2 = await resp2.text();
-    const data2 = plist.parse(text2);
-    return { ...data2, _state: data2.failureType ? 'failure' : 'success' };
+  // Thành công ngay
+  if (!data1?.failureType && !data1?.dialog) {
+    return { ...data1, _state: 'success' };
   }
 
-  // Không có buyParams -> trả về như cũ để client hiển thị thông báo
-  return state1;
+  // Có dialog -> cần "bấm Buy" bằng buyParams
+  const buyParams = data1?.dialog?.okButtonAction?.buyParams;
+  const actionUrl = data1?.metrics?.actionUrl
+    ? `https://${String(data1.metrics.actionUrl).replace(/^https?:\/\//, '')}`
+    : url1;
+
+  if (!buyParams) {
+    // không có buyParams -> trả kết quả bước 1 cho client tự hiện thông báo
+    return { ...data1, _state: 'failure' };
+  }
+
+  // BƯỚC 2: gửi lại FORM URLENCODED y nguyên buyParams
+  const headers2 = {
+    ...this.Headers,
+    'Content-Type': 'application/x-www-form-urlencoded', // buyParams là form
+    'X-Dsid': Cookie.dsPersonId,
+    'iCloud-DSID': Cookie.dsPersonId,
+    'Accept': '*/*',
+    'Accept-Language': 'en-us,en;q=0.9'
+  };
+
+  const resp2 = await this.fetch(actionUrl, { method: 'POST', body: buyParams, headers: headers2 });
+  const text2 = await resp2.text();
+
+  let data2;
+  try { data2 = plist.parse(text2); }
+  catch (e) { console.error('purchase step2 parse error:', text2); throw e; }
+
+  return { ...data2, _state: data2.failureType ? 'failure' : 'success' };
 }
 
   static async purchaseHistory(Cookie) {
