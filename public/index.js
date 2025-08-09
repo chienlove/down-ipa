@@ -134,7 +134,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const updateInstallButton = (minOS, userOS, installUrl, downloadUrl) => {
     const installLink = elements.installLink;
     const compatNote = $('compatNote');
-    installLink.href = installUrl || downloadUrl || '#';
     userOS = userOS || 'Unknown';
     installLink.className = 'px-6 py-3 rounded-lg font-medium text-white flex items-center justify-center';
     if (minOS === 'Unknown' || userOS === 'Unknown') {
