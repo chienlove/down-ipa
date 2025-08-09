@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
+      compatNote.innerHTML = `<i class="fas a-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
     }
   };
 
@@ -270,18 +270,20 @@ document.addEventListener('DOMContentLoaded', () => {
             $('appDate').textContent = appInfo.releaseDate || 'Unknown';
             $('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
 
+            // 🔗 Điều hướng qua go.html (mở tab mới)
             const encodedDownload = encodeURIComponent(data.downloadUrl || '#');
             const encodedInstall  = encodeURIComponent(data.installUrl || data.downloadUrl || '#');
 
-            elements.downloadLink.href = `/go?type=download&url=${encodedDownload}`;
-            elements.downloadLink.removeAttribute('download');
+            elements.downloadLink.href = `/go.html?type=download&url=${encodedDownload}`;
+            elements.downloadLink.setAttribute('target', '_blank');
             elements.downloadLink.setAttribute('rel','noopener');
 
             if (data.installUrl) {
-              elements.installLink.href = `/go?type=install&url=${encodedInstall}`;
+              elements.installLink.href = `/go.html?type=install&url=${encodedInstall}`;
+              elements.installLink.setAttribute('target', '_blank');
+              elements.installLink.setAttribute('rel','noopener');
               elements.installLink.classList.remove('cursor-not-allowed', 'bg-gray-400');
               elements.installLink.classList.add('bg-green-500', 'hover:bg-green-600');
-              elements.installLink.setAttribute('rel','noopener');
             }
 
             $('ipaFileSize').textContent = data.fileSizeMB ? `${data.fileSizeMB} MB` : 'Unknown';
@@ -468,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.style.width = '0%';
       if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
 
-      // ⬇️ HIỆN 2 DÒNG THÔNG BÁO cùng lúc với tiến trình
+      // HIỆN 2 DÒNG THÔNG BÁO cùng lúc với tiến trình
       if (elements.sessionNotice) elements.sessionNotice.classList.remove('hidden');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
@@ -608,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
           compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
         }
 
-        // ẨN 2 dòng thông báo khi chưa có tiến trình
+        // ẨN thông báo khi chưa có tiến trình
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
 
         safeCloseEventSource();

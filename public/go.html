@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Đang chuẩn bị…</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <!-- Google AdSense (mã client của bạn) - CHỈ NHÚNG 1 LẦN TRÊN TRANG -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3905625903416797" crossorigin="anonymous"></script>
+
+  <style>
+    .card { max-width: 520px; }
+    .count { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen">
+  <div class="mx-auto card mt-10 bg-white rounded-xl shadow p-6">
+    <h1 class="text-2xl font-bold mb-2">⏳ Đang chuẩn bị liên kết</h1>
+    <p class="text-gray-600 mb-4">Vui lòng chờ đếm ngược kết thúc để tiếp tục.</p>
+
+    <!-- Ad trên: slot 5160182988 -->
+    <div class="mb-4">
+      <!-- Storeios ads -->
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-3905625903416797"
+           data-ad-slot="5160182988"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+    </div>
+
+    <div id="info" class="bg-blue-50 border border-blue-200 text-blue-900 rounded px-4 py-3 mb-4 text-sm">
+      <div id="typeLabel" class="font-medium"></div>
+      <div>Liên kết sẽ sẵn sàng sau <span id="secs" class="count font-semibold">10</span>s…</div>
+    </div>
+
+    <a id="actionBtn" href="#" target="_blank" rel="noopener"
+       class="w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-gray-400 cursor-not-allowed">
+      <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>
+      Đang chuẩn bị…
+    </a>
+
+    <p class="text-xs text-gray-500 mt-4">Nếu nút không hoạt động, hãy thử làm mới trang hoặc kiểm tra trình chặn cửa sổ bật lên.</p>
+
+    <!-- Ad dưới: slot 4575220124 -->
+    <div class="mt-6">
+      <!-- Ads appcuios 01 -->
+      <ins class="adsbygoogle"
+           style="display:block"
+           data-ad-client="ca-pub-3905625903416797"
+           data-ad-slot="4575220124"
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+    </div>
+
+    <div class="mt-6 flex justify-center">
+      <a href="/" class="text-sm text-gray-600 hover:text-gray-800">
+        ← Quay về trang chính
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // Render 2 vị trí ads
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+
+    // Lọc URL an toàn (https: hoặc itms-services:)
+    function isSafeUrl(u) {
+      try {
+        const parsed = new URL(u);
+        const protocol = parsed.protocol.toLowerCase();
+        return protocol === 'https:' || protocol === 'itms-services:';
+      } catch {
+        return false;
+      }
+    }
+
+    const params = new URLSearchParams(location.search);
+    const type = (params.get('type') || '').toLowerCase(); // "download" | "install"
+    const rawUrl = params.get('url') || '';
+    const targetUrl = decodeURIComponent(rawUrl);
+
+    const actionBtn = document.getElementById('actionBtn');
+    const secs = document.getElementById('secs');
+    const typeLabel = document.getElementById('typeLabel');
+
+    if (!type || !rawUrl || !isSafeUrl(targetUrl)) {
+      typeLabel.textContent = 'Yêu cầu không hợp lệ hoặc URL không an toàn.';
+      secs.textContent = '0';
+      actionBtn.textContent = 'Không hợp lệ';
+      actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-red-500';
+      actionBtn.href = '#';
+    } else {
+      if (type === 'download') {
+        typeLabel.textContent = 'Chuẩn bị tải file IPA…';
+      } else if (type === 'install') {
+        typeLabel.textContent = 'Chuẩn bị cài đặt trực tiếp…';
+      } else {
+        typeLabel.textContent = 'Yêu cầu không hợp lệ.';
+      }
+
+      let n = 10;
+      secs.textContent = String(n);
+      const t = setInterval(() => {
+        n -= 1;
+        secs.textContent = String(n);
+        if (n <= 0) {
+          clearInterval(t);
+          if (type === 'download') {
+            actionBtn.innerHTML = '<i class="fa-solid fa-download mr-2"></i> Tải file IPA';
+            actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-blue-600 hover:bg-blue-700';
+            actionBtn.href = targetUrl; // https://...ipa
+          } else if (type === 'install') {
+            actionBtn.innerHTML = '<i class="fa-solid fa-mobile-screen mr-2"></i> Cài đặt';
+            actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-green-600 hover:bg-green-700';
+            actionBtn.href = targetUrl; // itms-services://...
+          } else {
+            actionBtn.innerHTML = 'Không hợp lệ';
+            actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-red-500';
+            actionBtn.href = '#';
+          }
+          actionBtn.target = '_blank';
+          actionBtn.rel = 'noopener';
+          actionBtn.classList.remove('cursor-not-allowed');
+        }
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
