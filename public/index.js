@@ -512,4 +512,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  /* ====== (NEW) backToStep1 & downloadAnotherBtn ====== */
+
+  // ← Quay lại (Step 2 → Step 1)
+  if (elements.backToStep1) {
+    elements.backToStep1.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideError();
+
+      // Reset trạng thái 2FA để nhập lại nếu cần
+      state.requires2FA = false;
+      state.verified2FA = false;
+      state.CODE = '';
+      if (elements.verificationCodeInput) elements.verificationCodeInput.value = '';
+
+      // Dọn tiến trình + SSE + notice
+      clearProgressSteps();
+      safeCloseEventSource();
+      if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+      if (elements.progressSteps) { elements.progressSteps.classList.add('hidden'); elements.progressSteps.style.display = 'none'; }
+      if (elements.progressBar)  { elements.progressBar.style.width = '0%'; elements.progressBar.classList.add('hidden'); elements.progressBar.style.display = 'none'; }
+      if (elements.progressWrap) { elements.progressWrap.classList.add('hidden'); elements.progressWrap.style.display = 'none'; }
+
+      // Reset reCAPTCHA nếu có
+      try { if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
+
+      transition(elements.step2, elements.step1);
+      setLoading(false);
+    });
+  }
+
+  // Tải ứng dụng khác (Result → Step 3)
+  if (elements.downloadAnotherBtn) {
+    elements.downloadAnotherBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideError();
+      safeCloseEventSource();
+
+      // Dọn input AppID/AppVer
+      if (elements.appIdInput)  elements.appIdInput.value  = '';
+      if (elements.appVerInput) elements.appVerInput.value = '';
+
+      // Reset ghi chú tương thích & nút cài đặt
+      const compatNote = document.getElementById('compatNote');
+      if (compatNote) {
+        compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start hidden';
+        compatNote.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích...</span>';
+      }
+      if (elements.installLink) {
+        elements.installLink.href = '#';
+        elements.installLink.className = 'flex-1 px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
+        elements.installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
+      }
+      if (elements.downloadLink) elements.downloadLink.href = '#';
+
+      // Dọn tiến trình + notice
+      clearProgressSteps();
+      if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+      if (elements.progressSteps) { elements.progressSteps.classList.add('hidden'); elements.progressSteps.style.display = 'none'; }
+      if (elements.progressBar)  { elements.progressBar.style.width = '0%'; elements.progressBar.classList.add('hidden'); elements.progressBar.style.display = 'none'; }
+      if (elements.progressWrap) { elements.progressWrap.classList.add('hidden'); elements.progressWrap.style.display = 'none'; }
+
+      // Reset reCAPTCHA để chuẩn bị lượt tải mới
+      try { if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
+
+      transition(elements.result, elements.step3);
+      setProgress(0);
+      setLoading(false);
+      if (elements.appIdInput) elements.appIdInput.focus();
+    });
+  }
 });
