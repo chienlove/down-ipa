@@ -728,6 +728,73 @@ app.post('/auth', async (req, res) => {
   }
 });
 
+    // purchase route
+
+app.post('/purchase', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE, input } = req.body || {};
+
+    if (!APPLE_ID || !PASSWORD || !input) {
+      return res.status(400).json({
+        success: false,
+        error: 'APPLE_ID, PASSWORD, input (AppID hoặc App Store URL) là bắt buộc',
+      });
+    }
+
+    // 1) Rút adamId từ input (hỗ trợ số thuần hoặc URL dạng .../id{digits})
+    const idFromUrl = String(input).match(/id(\d+)/)?.[1];
+    const idFromDigits = String(input).match(/^\d+$/)?.[0];
+    const adamId = idFromUrl || idFromDigits;
+    if (!adamId) {
+      return res.status(400).json({ success: false, error: 'Không lấy được App ID từ input' });
+    }
+
+    // 2) Đăng nhập (nếu phiên còn sống, Apple sẽ cho qua luôn, không hỏi 2FA)
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    if (user._state !== 'success') {
+      // Apple yêu cầu MFA → trả về để frontend chuyển sang Step 2
+      const isMfa = (user.failureType || '').toLowerCase().includes('mfa');
+      return res.status(isMfa ? 401 : 400).json({
+        success: false,
+        require2FA: isMfa,
+        error: user.customerMessage || 'Đăng nhập thất bại',
+      });
+    }
+
+    // 3) Gọi purchase để thêm vào "Đã mua"
+    const pr = await Store.purchase(adamId, user);
+
+    if (pr._state === 'success') {
+      // Một số phản hồi có songList/receipt; ta trả gọn thông tin
+      const song0 = pr?.songList?.[0];
+      const meta = song0?.metadata || {};
+      return res.json({
+        success: true,
+        message: 'Đã thêm vào mục Đã mua (nếu là app miễn phí).',
+        adamId,
+        app: {
+          name: meta.bundleDisplayName || meta.softwareTitle || null,
+          bundleId: meta.softwareVersionBundleId || null,
+          version: meta.bundleShortVersionString || null,
+          artistName: meta.artistName || null,
+        },
+        raw: pr, // giữ cho debug, có thể bỏ nếu bạn muốn gọn
+      });
+    }
+
+    // Lỗi từ Apple (ví dụ app trả phí, không mua được, hay cần xác minh lại)
+    return res.status(400).json({
+      success: false,
+      error: pr.customerMessage || 'Không thể thêm vào mục Đã mua',
+      failureType: pr.failureType || undefined,
+      raw: pr,
+    });
+  } catch (e) {
+    console.error('purchase error:', e);
+    return res.status(500).json({ success: false, error: e.message || 'Server error' });
+  }
+});
+
 // Download (áp verifyRecaptcha + giới hạn số job)
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
