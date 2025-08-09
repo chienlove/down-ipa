@@ -30,14 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     toastContainer: $('toast-container'),
     recaptchaContainer: $('recaptcha-container')
   };
-  if (elements.downloadAnotherBtn) {
-  elements.downloadAnotherBtn.addEventListener('click', () => {
-    clearProgressSteps?.(); // chỉ gọi nếu hàm tồn tại
-    if (elements.appIdInput) elements.appIdInput.value = '';
-    if (elements.appVerInput) elements.appVerInput.value = '';
-    transition?.(elements.result, elements.step3); // chỉ gọi nếu hàm tồn tại
-  });
-}
 
   const showError = (msg) => {
     if (elements.errorMessage && elements.errorBox) {
