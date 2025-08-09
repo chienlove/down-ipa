@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
       installLink.innerHTML = '<i class="fas fa-ban mr-2"></i> Không tương thích';
       installLink.classList.add('bg-red-500', 'opacity-80', 'cursor-not-allowed');
       compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-300 flex';
-      compatNote.innerHTML = `<i class="fas a-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
+      compatNote.innerHTML = `<i class="fas fa-times-circle mr-2 mt-1"></i>Thiết bị (${userOS}) KHÔNG tương thích. Yêu cầu iOS ${minOS}.`;
     }
   };
 
@@ -172,61 +172,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const raw = `${error || ''} ${message || ''}`.trim();
     if (raw.includes('SERVER_BUSY')) return 'Máy chủ đang bận, vui lòng thử lại sau.';
     if (raw.startsWith('FILE_TOO_LARGE') || raw.includes('File IPA vượt quá giới hạn')) return 'Ứng dụng vượt quá dung lượng cho phép (300MB). Vui lòng chọn phiên bản nhỏ hơn.';
-    if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau hoặc tải vào thời điểm ít người dùng.';
+    if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau.';
     if (raw === 'CANCELLED_BY_CLIENT') return 'Tiến trình đã bị hủy.';
     if (raw.startsWith('RECAPTCHA')) return 'Xác minh reCAPTCHA thất bại. Vui lòng thử lại.';
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
-  /* ========== reCAPTCHA explicit render (không reset token ngoài ý muốn) ========== */
+  /* ========== reCAPTCHA explicit render ========== */
   let recaptchaWidgetId = null;
-  let recaptchaSiteKey = null;
-
-  async function loadSiteKeyOnce() {
-    if (recaptchaSiteKey) return recaptchaSiteKey;
+  async function initRecaptcha() {
     try {
-      const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
-      if (resp.ok) {
-        const json = await resp.json();
-        recaptchaSiteKey = json?.siteKey || '';
-      }
-    } catch (e) {
-      console.warn('Cannot fetch sitekey from server:', e);
-    }
-    if (!recaptchaSiteKey && elements.recaptchaContainer) {
-      const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
-      if (dataAttr) recaptchaSiteKey = dataAttr;
-    }
-    return recaptchaSiteKey;
-  }
-
-  function renderRecaptchaWhenReady() {
-    if (!elements.recaptchaContainer) return;
-    const tryRender = () => {
-      if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
-        try {
-          if (recaptchaWidgetId === null) {
-            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, { sitekey: recaptchaSiteKey });
-            console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
-          }
-        } catch (err) {
-          console.error('grecaptcha.render error:', err);
+      if (!elements.recaptchaContainer) return;
+      let siteKey = '';
+      try {
+        const resp = await fetch('/recaptcha-sitekey', { cache: 'no-store' });
+        if (resp.ok) {
+          const json = await resp.json();
+          siteKey = json?.siteKey || '';
         }
-      } else {
-        setTimeout(tryRender, 200);
+      } catch {}
+      if (!siteKey) {
+        const dataAttr = elements.recaptchaContainer.getAttribute('data-sitekey');
+        if (dataAttr) siteKey = dataAttr;
       }
-    };
-    tryRender();
+      if (!siteKey) {
+        console.error('Missing reCAPTCHA siteKey.');
+        return;
+      }
+      const renderWhenReady = () => {
+        if (window.grecaptcha && typeof window.grecaptcha.render === 'function') {
+          try {
+            recaptchaWidgetId = window.grecaptcha.render(elements.recaptchaContainer, { sitekey: siteKey });
+            console.log('reCAPTCHA rendered, widgetId:', recaptchaWidgetId);
+          } catch (err) { console.error('grecaptcha.render error:', err); }
+        } else {
+          setTimeout(renderWhenReady, 200);
+        }
+      };
+      renderWhenReady();
+    } catch (e) { console.error('Failed to init reCAPTCHA:', e); }
   }
-
-  async function ensureRecaptchaOnStep3() {
-    await loadSiteKeyOnce();
-    if (!recaptchaSiteKey) {
-      console.error('Missing reCAPTCHA siteKey. Provide via /recaptcha-sitekey or data-sitekey.');
-      return;
-    }
-    renderRecaptchaWhenReady();
-  }
+  initRecaptcha();
 
   /* ========== SSE listen ========== */
   const listenProgress = (requestId) => {
@@ -270,20 +256,21 @@ document.addEventListener('DOMContentLoaded', () => {
             $('appDate').textContent = appInfo.releaseDate || 'Unknown';
             $('minimumOSVersion').textContent = appInfo.minimumOSVersion || 'Unknown';
 
-            // 🔗 Điều hướng qua go.html (mở tab mới)
             const encodedDownload = encodeURIComponent(data.downloadUrl || '#');
             const encodedInstall  = encodeURIComponent(data.installUrl || data.downloadUrl || '#');
 
-            elements.downloadLink.href = `/go.html?type=download&url=${encodedDownload}`;
-            elements.downloadLink.setAttribute('target', '_blank');
+            // ✅ MỞ TAB MỚI qua trang /go — DOWNLOAD
+            elements.downloadLink.href = `/go?type=download&url=${encodedDownload}`;
+            elements.downloadLink.setAttribute('target','_blank');
             elements.downloadLink.setAttribute('rel','noopener');
 
+            // ✅ MỞ TAB MỚI qua trang /go — INSTALL
             if (data.installUrl) {
-              elements.installLink.href = `/go.html?type=install&url=${encodedInstall}`;
-              elements.installLink.setAttribute('target', '_blank');
-              elements.installLink.setAttribute('rel','noopener');
+              elements.installLink.href = `/go?type=install&url=${encodedInstall}`;
               elements.installLink.classList.remove('cursor-not-allowed', 'bg-gray-400');
               elements.installLink.classList.add('bg-green-500', 'hover:bg-green-600');
+              elements.installLink.setAttribute('target','_blank');
+              elements.installLink.setAttribute('rel','noopener');
             }
 
             $('ipaFileSize').textContent = data.fileSizeMB ? `${data.fileSizeMB} MB` : 'Unknown';
@@ -328,11 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   };
 
-  /* ========== EVENT HANDLERS ========== */
-
-  if ($('backToStep1')) {
-    $('backToStep1').addEventListener('click', () => transition(elements.step2, elements.step1));
-  }
+  /* ========== EVENTS ========== */
 
   if (elements.loginBtn) {
     elements.loginBtn.addEventListener('click', async (e) => {
@@ -380,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
           state.dsid = data.dsid || null;
           showToast('Đăng nhập thành công!');
           transition(elements.step1, elements.step3);
-          await ensureRecaptchaOnStep3();
           setProgress(3);
           setLoading(false);
         } else {
@@ -441,7 +423,6 @@ document.addEventListener('DOMContentLoaded', () => {
           elements.verificationCodeInput.value = '';
           elements.verifyMessage.textContent = '';
           transition(elements.step2, elements.step3);
-          await ensureRecaptchaOnStep3();
           setProgress(3);
           setLoading(false);
         } else {
@@ -470,7 +451,6 @@ document.addEventListener('DOMContentLoaded', () => {
       elements.progressBar.style.width = '0%';
       if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
 
-      // HIỆN 2 DÒNG THÔNG BÁO cùng lúc với tiến trình
       if (elements.sessionNotice) elements.sessionNotice.classList.remove('hidden');
 
       const APPID = elements.appIdInput?.value.trim().match(/id(\d+)|^\d+$/)?.[1] || elements.appIdInput?.value.trim().match(/\d+/)?.[0] || '';
@@ -494,34 +474,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Đảm bảo reCAPTCHA đã render
-      if (typeof grecaptcha === 'undefined' || recaptchaWidgetId === null) {
-        await ensureRecaptchaOnStep3();
-        showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
-        setLoading(false);
-        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-        return;
+      const bodyPayload = { APPLE_ID: state.APPLE_ID, PASSWORD: state.PASSWORD, CODE: state.CODE, APPID, appVerId, dsid: state.dsid };
+      if (typeof grecaptcha !== 'undefined') {
+        if (recaptchaWidgetId === null) { showError('reCAPTCHA chưa sẵn sàng. Vui lòng đợi 1-2 giây rồi thử lại.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
+        const token = grecaptcha.getResponse(recaptchaWidgetId);
+        if (!token) { showError('Vui lòng xác minh reCAPTCHA trước khi tải.'); setLoading(false); if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden'); return; }
+        bodyPayload.recaptchaToken = token;
       }
-
-      const token = grecaptcha.getResponse(recaptchaWidgetId);
-      if (!token) {
-        showError('Vui lòng xác minh reCAPTCHA trước khi tải.');
-        setLoading(false);
-        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-        return;
-      }
-
-      const bodyPayload = {
-        APPLE_ID: state.APPLE_ID,
-        PASSWORD: state.PASSWORD,
-        CODE: state.CODE,
-        APPID,
-        appVerId,
-        dsid: state.dsid,
-        recaptchaToken: token
-      };
-
-      setProgress(3);
 
       try {
         const response = await fetch('/download', {
@@ -530,29 +489,17 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify(bodyPayload)
         });
 
-        // reset reCAPTCHA sau khi gửi
-        try { if (recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok || !data.success) {
-          showError((data && (data.error || data.message)) || 'Tải ứng dụng thất bại.');
-          updateProgressSteps('Lỗi tải ứng dụng', 'error');
-          setLoading(false);
-          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-          return;
-        }
+        const data = await response.json();
 
         if (data.require2FA) {
-          updateProgressSteps('Yêu cầu xác thực 2FA', 'pending');
           handle2FARedirect(data);
           setLoading(false);
-          if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         } else if (data.success && data.requestId) {
           state.requestId = data.requestId;
+          updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
         } else {
-          showError('Tải ứng dụng thất bại.');
+          showError(data.error || 'Tải ứng dụng thất bại.');
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
           if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
@@ -564,59 +511,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(false);
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
       }
-    });
-  }
-
-  if (elements.downloadAnotherBtn) {
-    elements.downloadAnotherBtn.addEventListener('click', () => {
-      state.requestId = null;
-      clearProgressSteps();
-      isLoading = false;
-
-      elements.result.classList.add('fade-out');
-      setTimeout(async () => {
-        elements.result.classList.add('hidden');
-        elements.result.style.display = 'none';
-        elements.result.classList.remove('fade-out');
-
-        elements.step3.classList.remove('hidden');
-        elements.step3.style.display = 'block';
-        elements.step3.classList.add('fade-in');
-        setTimeout(() => { elements.step3.classList.remove('fade-in'); }, 300);
-
-        elements.progressBar.style.width = '0%';
-        elements.progressBar.classList.remove('hidden'); elements.progressBar.style.display = 'block';
-        elements.progressSteps.classList.remove('hidden'); elements.progressSteps.style.display = 'block';
-        if (elements.progressWrap) { elements.progressWrap.classList.remove('hidden'); elements.progressWrap.style.display = 'block'; }
-
-        elements.appIdInput.value = '';
-        elements.appVerInput.value = '';
-
-        ['appName', 'appVersion', 'ipaFileSize', 'appDate', 'appAuthor', 'appBundleId', 'minimumOSVersion'].forEach(id => {
-          const el = $(id);
-          if (el) el.textContent = 'Unknown';
-        });
-
-        elements.installLink.href = '#';
-        elements.installLink.className = 'px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
-        elements.installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
-
-        elements.downloadLink.href = '#';
-        elements.downloadLink.removeAttribute('download');
-
-        const compat = $('compatNote');
-        if (compat) {
-          compat.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start';
-          compat.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích với thiết bị của bạn...</span>';
-        }
-
-        // ẨN thông báo khi chưa có tiến trình
-        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-
-        safeCloseEventSource();
-        await ensureRecaptchaOnStep3();
-        elements.appIdInput?.focus();
-      }, 300);
     });
   }
 });
