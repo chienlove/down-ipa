@@ -52,54 +52,24 @@ class Store {
   }
 
   static async purchase(bundleId, Cookie) {
-  // bước 1: gọi buyProduct như cũ
-  const firstJson = { guid: this.guid, salableAdamId: bundleId };
-  const firstBody = plist.build(firstJson);
-  const baseUrl = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
-  const url = `${baseUrl}/buyProduct?guid=${this.guid}`;
-
-  const resp1 = await this.fetch(url, {
-    method: 'POST',
-    body: firstBody,
-    headers: {
-      ...this.Headers,
-      'X-Dsid': Cookie.dsPersonId,
-      'iCloud-DSID': Cookie.dsPersonId
-    }
-  });
-  const text1 = await resp1.text();
-  const data1 = plist.parse(text1);
-  const state1 = { ...data1, _state: data1.failureType ? 'failure' : 'success' };
-
-  // Nếu thành công ngay thì trả luôn
-  if (!data1?.failureType && !data1?.dialog) return state1;
-
-  // Apple trả dialog “Sign-In Required” (2060) với okButtonAction.buyParams
-  const buyParams = data1?.dialog?.okButtonAction?.buyParams;
-  const actionPath = (data1?.metrics?.actionUrl || '').replace(/^https?:\/\//, '');
-  const actionUrl = actionPath
-    ? `https://${actionPath}` // ví dụ: p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct
-    : url;
-
-  if (buyParams) {
-    // bước 2: gửi lại với buyParams (đã là form-urlencoded, có cả guid & flags như ageCheck/hasBeenAuthedForBuy)
-    const resp2 = await this.fetch(actionUrl, {
+    const dataJson = {
+      guid: this.guid,
+      salableAdamId: bundleId
+    };
+    const body = plist.build(dataJson);
+    const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct?guid=${this.guid}`;
+    const resp = await this.fetch(url, {
       method: 'POST',
-      body: buyParams,
+      body,
       headers: {
         ...this.Headers,
         'X-Dsid': Cookie.dsPersonId,
         'iCloud-DSID': Cookie.dsPersonId
       }
     });
-    const text2 = await resp2.text();
-    const data2 = plist.parse(text2);
-    return { ...data2, _state: data2.failureType ? 'failure' : 'success' };
+    const parsedResp = plist.parse(await resp.text());
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
-
-  // Không có buyParams -> trả về như cũ để client hiển thị thông báo
-  return state1;
-}
 
   static async purchaseHistory(Cookie) {
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
