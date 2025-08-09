@@ -6,24 +6,22 @@
   <title>Đang chuẩn bị…</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-
-  <!-- Google AdSense client của bạn – chỉ nhúng 1 lần -->
+  <!-- Google AdSense (client của bạn) -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3905625903416797" crossorigin="anonymous"></script>
-
   <style>
     .card { max-width: 520px; }
     .count { font-variant-numeric: tabular-nums; }
-    .ring { width: 120px; height: 120px; }
-    .ring svg { transform: rotate(-90deg); }
+    /* Vòng tròn đếm mượt */
+    .ring { transition: stroke-dashoffset 1s linear; }
   </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 to-gray-100 min-h-screen">
-  <div class="mx-auto card mt-10 bg-white rounded-xl shadow p-6">
+  <div class="mx-auto card mt-10 bg-white rounded-xl shadow p-6 text-center">
     <h1 class="text-2xl font-bold mb-2">⏳ Đang chuẩn bị liên kết</h1>
-    <p class="text-gray-600 mb-4">Vui lòng chờ đếm ngược kết thúc để tiếp tục.</p>
+    <p class="text-gray-600 mb-6">Vui lòng chờ đếm ngược kết thúc để tiếp tục.</p>
 
     <!-- Ad trên: slot 5160182988 -->
-    <div class="mb-4">
+    <div class="mb-6">
       <ins class="adsbygoogle"
            style="display:block"
            data-ad-client="ca-pub-3905625903416797"
@@ -32,25 +30,22 @@
            data-full-width-responsive="true"></ins>
     </div>
 
-    <!-- vòng đếm ngược -->
-    <div class="flex items-center justify-center my-4">
-      <div class="ring relative">
-        <svg viewBox="0 0 100 100" class="w-full h-full">
-          <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" stroke-width="8"></circle>
-          <circle id="ringFg" cx="50" cy="50" r="45" fill="none" stroke="#22c55e" stroke-width="8"
-                  stroke-linecap="round" stroke-dasharray="282.743"
-                  stroke-dashoffset="0"></circle>
-        </svg>
-        <span id="countText" class="absolute inset-0 flex items-center justify-center text-3xl font-bold text-gray-800">10</span>
-      </div>
+    <!-- Vòng tròn đếm ngược -->
+    <div class="relative w-32 h-32 mx-auto mb-4">
+      <svg class="w-full h-full" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" stroke-width="8"></circle>
+        <circle id="ring" class="ring"
+                cx="50" cy="50" r="45"
+                fill="none" stroke="#22c55e" stroke-width="8"
+                stroke-linecap="round"
+                transform="rotate(-90 50 50)"></circle>
+      </svg>
+      <span id="cdText" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-3xl font-bold text-gray-800">10</span>
     </div>
 
     <div id="info" class="bg-blue-50 border border-blue-200 text-blue-900 rounded px-4 py-3 mb-4 text-sm">
-      <div id="typeLabel" class="font-medium"></div>
+      <div id="typeLabel" class="font-medium mb-1"></div>
       <div>Liên kết sẽ sẵn sàng sau <span id="secs" class="count font-semibold">10</span>s…</div>
-      <div id="ttlWrap" class="mt-1 hidden text-gray-700">
-        Liên kết hết hạn sau: <span id="ttl" class="font-semibold">0</span>s
-      </div>
     </div>
 
     <a id="actionBtn" href="#" target="_blank" rel="noopener"
@@ -71,21 +66,22 @@
            data-full-width-responsive="true"></ins>
     </div>
 
-    <div class="mt-6 flex justify-center">
+    <div class="mt-6">
       <a href="/" class="text-sm text-gray-600 hover:text-gray-800">← Quay về trang chính</a>
     </div>
   </div>
 
   <script>
-    // render 2 block quảng cáo
+    // Render ads
     (window.adsbygoogle = window.adsbygoogle || []).push({});
     (window.adsbygoogle = window.adsbygoogle || []).push({});
 
+    // Validate target URL (https: hoặc itms-services:)
     function isSafeUrl(u) {
       try {
         const parsed = new URL(u);
-        const protocol = parsed.protocol.toLowerCase();
-        return protocol === 'https:' || protocol === 'itms-services:';
+        const proto = parsed.protocol.toLowerCase();
+        return proto === 'https:' || proto === 'itms-services:';
       } catch { return false; }
     }
 
@@ -93,78 +89,75 @@
     const type = (params.get('type') || '').toLowerCase(); // "download" | "install"
     const rawUrl = params.get('url') || '';
     const targetUrl = decodeURIComponent(rawUrl);
-    const ttlParam = Math.max(0, parseInt(params.get('ttl') || '0', 10)); // giây, tùy chọn
 
     const actionBtn = document.getElementById('actionBtn');
     const secs = document.getElementById('secs');
     const typeLabel = document.getElementById('typeLabel');
-    const ttlWrap = document.getElementById('ttlWrap');
-    const ttl = document.getElementById('ttl');
-    const countText = document.getElementById('countText');
-    const ringFg = document.getElementById('ringFg');
+    const cdText = document.getElementById('cdText');
+    const ring = document.getElementById('ring');
 
-    const total = 10; // 10s đếm ngược
-    const circumference = 2 * Math.PI * 45;
-    let countdown = total;
-    let tokenTimer = ttlParam;
-    let tokenTimerStarted = false;
-
-    const invalid = (!type || !rawUrl || !isSafeUrl(targetUrl));
-    if (invalid) {
+    if (!type || !rawUrl || !isSafeUrl(targetUrl)) {
       typeLabel.textContent = 'Yêu cầu không hợp lệ hoặc URL không an toàn.';
-      secs.textContent = '0';
-      countText.textContent = '0';
-      ringFg.setAttribute('stroke-dashoffset', circumference);
+      secs.textContent = '0'; cdText.textContent = '0';
       actionBtn.textContent = 'Không hợp lệ';
       actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-red-500';
       actionBtn.href = '#';
     } else {
-      typeLabel.textContent = (type === 'install')
-        ? 'Chuẩn bị cài đặt trực tiếp…'
-        : 'Chuẩn bị tải file IPA…';
-
-      // bắt đầu đếm ngược
-      const timer = setInterval(() => {
-        countdown -= 1;
-        if (countdown < 0) countdown = 0;
-        secs.textContent = String(countdown);
-        countText.textContent = String(countdown);
-        // cập nhật vòng
-        const offset = circumference * (1 - (total - countdown) / total);
-        ringFg.setAttribute('stroke-dashoffset', String(offset < 0 ? 0 : offset));
-
-        if (countdown === 0) {
-          clearInterval(timer);
-          // bật nút
-          actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-green-600 hover:bg-green-700';
-          actionBtn.innerHTML = (type === 'install')
-            ? '<i class="fa-solid fa-mobile-screen mr-2"></i> Cài đặt ngay'
-            : '<i class="fa-solid fa-download mr-2"></i> Tải xuống ngay';
-          actionBtn.href = targetUrl;
-          actionBtn.removeAttribute('aria-disabled');
-          actionBtn.classList.remove('cursor-not-allowed');
-
-          // đếm ngược hạn token nếu có
-          if (tokenTimer > 0 && !tokenTimerStarted) {
-            tokenTimerStarted = true;
-            ttlWrap.classList.remove('hidden');
-            ttl.textContent = String(tokenTimer);
-            const t = setInterval(() => {
-              tokenTimer -= 1;
-              if (tokenTimer <= 0) {
-                ttl.textContent = '0';
-                clearInterval(t);
-                actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-gray-400 cursor-not-allowed';
-                actionBtn.innerHTML = '<i class="fa-regular fa-clock mr-2"></i> Liên kết đã hết hạn';
-                actionBtn.href = '#';
-              } else {
-                ttl.textContent = String(tokenTimer);
-              }
-            }, 1000);
-          }
-        }
-      }, 1000);
+      typeLabel.textContent = (type === 'install') ? 'Chuẩn bị cài đặt trực tiếp…' : 'Chuẩn bị tải file IPA…';
+      actionBtn.href = '#';
+      actionBtn.target = '_blank';
+      actionBtn.rel = 'noopener';
     }
+
+    // Vẽ vòng tròn mượt (10s)
+    const radius = 45;
+    const circumference = 2 * Math.PI * radius;
+    ring.setAttribute('stroke-dasharray', String(circumference));
+    ring.setAttribute('stroke-dashoffset', String(circumference));
+
+    let countdown = 10;
+    function tick(){
+      if (countdown <= 0) return;
+      countdown -= 1;
+      secs.textContent = String(countdown);
+      cdText.textContent = String(countdown);
+      const progress = (10 - countdown) / 10; // 0..1
+      const offset = circumference * (1 - progress);
+      ring.setAttribute('stroke-dashoffset', String(offset));
+
+      if (countdown === 0) {
+        // Mở nút hành động
+        actionBtn.className = 'w-full inline-flex items-center justify-center px-4 py-3 rounded-lg text-white bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600 font-semibold';
+        actionBtn.innerHTML = (type === 'install')
+          ? '<i class="fa-solid fa-download mr-2"></i> Cài đặt ngay'
+          : '<i class="fa-solid fa-download mr-2"></i> Tải xuống ngay';
+
+        actionBtn.addEventListener('click', (e) => {
+          // Click người dùng → chuyển tới URL đích (itms-services hoặc https)
+          if (!isSafeUrl(targetUrl)) { e.preventDefault(); return; }
+          // Cho “cài trực tiếp”: nên dùng location.href (giữ tab) để iOS xử lí tốt hơn
+          if (type === 'install') {
+            e.preventDefault();
+            window.location.href = targetUrl;
+          } else {
+            // download: mở tab mới (đúng mong muốn)
+            actionBtn.href = targetUrl;
+          }
+        }, { once: true });
+      }
+    }
+
+    // Khởi tạo hiển thị 10 → chạy tick sau 1s
+    secs.textContent = '10'; cdText.textContent = '10';
+    // Nhảy frame đầu để áp transition mượt
+    requestAnimationFrame(() => {
+      ring.setAttribute('stroke-dashoffset', String(circumference * (1 - 0/10)));
+    });
+
+    let iv = setInterval(() => {
+      tick();
+      if (countdown <= 0) clearInterval(iv);
+    }, 1000);
   </script>
 </body>
 </html>
