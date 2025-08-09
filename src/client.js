@@ -54,109 +54,75 @@ class Store {
   static async purchase(adamId, Cookie) {
   const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
   const url1 = `${base}/buyProduct?guid=${this.guid}`;
-  const MAX_FOLLOWS = Number(process.env.PURCHASE_MAX_FOLLOWS || 5);
+  const MAX_FOLLOWS = 5;
 
-  // === CẤU HÌNH STOREFRONT (QUAN TRỌNG) ===
-  // Storefront US: '143441-1,32' | Storefront VN: '143471-1,32'
-  const storeFront = '143471-1,32'; // Mặc định dành cho tài khoản Việt Nam
-
-  // === STEP 1: GỬI YÊU CẦU BAN ĐẦU ===
-  const firstBody = plist.build({
-    guid: this.guid,
-    salableAdamId: adamId,
-    ageCheck: true, // Bật kiểm tra tuổi
-    hasBeenAuthedForBuy: true // Xác nhận đã đăng nhập
-  });
-
-  const headers1 = {
+  // Cấu hình quan trọng
+  const storeFront = '143441-1,32'; // Storefront US (thử cả VN '143471-1,32' nếu không work)
+  const headers = {
     ...this.Headers,
-    'Content-Type': 'application/x-apple-plist',
     'X-Dsid': Cookie.dsPersonId,
     'iCloud-DSID': Cookie.dsPersonId,
-    'X-Apple-Store-Front': storeFront, // Thêm storefront
+    'X-Apple-Store-Front': storeFront,
     'Accept': '*/*',
     'Accept-Language': 'en-us,en;q=0.9'
   };
 
-  console.log('[purchase] step1 POST ->', url1, 'adamId=', adamId);
-  const resp1 = await this.fetch(url1, { method: 'POST', body: firstBody, headers: headers1 });
-  const text1 = await resp1.text();
+  // Bước 1: Gửi yêu cầu ban đầu
+  const firstBody = plist.build({
+    guid: this.guid,
+    salableAdamId: adamId,
+    ageCheck: true,
+    hasBeenAuthedForBuy: true,
+    isInApp: false
+  });
 
-  let data;
-  try {
-    data = plist.parse(text1);
-  } catch (e) {
-    console.error('[purchase] step1 parse error (raw):', text1);
-    throw new Error('Không thể phân tích phản hồi từ Apple');
-  }
+  let response = await this.fetch(url1, {
+    method: 'POST',
+    body: firstBody,
+    headers: { ...headers, 'Content-Type': 'application/x-apple-plist' }
+  });
 
-  // === XỬ LÝ THÀNH CÔNG NGAY LẦN ĐẦU ===
-  if (!data?.failureType && !data?.dialog) {
-    console.log('[purchase] step1 success (no dialog).');
+  let data = plist.parse(await response.text());
+
+  // Xử lý trường hợp thành công ngay
+  if (!data.failureType && !data.dialog) {
     return { ...data, _state: 'success' };
   }
 
-  // === STEP 2: CHUẨN BỊ HEADER CHO CÁC REQUEST TIẾP THEO ===
-  const headers2 = {
-    ...this.Headers,
-    'Content-Type': 'application/x-www-form-urlencoded',
-    'X-Dsid': Cookie.dsPersonId,
-    'iCloud-DSID': Cookie.dsPersonId,
-    'X-Apple-Store-Front': storeFront, // Giữ nguyên storefront
-    'Accept': '*/*',
-    'Accept-Language': 'en-us,en;q=0.9',
-    'Referer': `${base}/buyProduct`
-  };
+  // Xử lý lỗi 2060 - Sign-In Required
+  if (data.failureType === '2060') {
+    // Tạo URL và params cho request tiếp theo
+    const actionUrl = data.metrics.actionUrl.startsWith('http') 
+      ? data.metrics.actionUrl 
+      : `https://${data.metrics.actionUrl}`;
+    
+    const buyParams = new URLSearchParams();
+    buyParams.append('salableAdamId', adamId);
+    buyParams.append('guid', this.guid);
+    buyParams.append('hasBeenAuthedForBuy', 'true');
+    buyParams.append('isInApp', 'false');
+    buyParams.append('ageCheck', 'true');
 
-  let params = data?.dialog?.okButtonAction?.buyParams || null;
-  let followUrl = data?.metrics?.actionUrl
-    ? `https://${String(data.metrics.actionUrl).replace(/^https?:\/\//, '')}`
-    : url1;
+    // Gửi request xác minh
+    response = await this.fetch(actionUrl, {
+      method: 'POST',
+      body: buyParams.toString(),
+      headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
 
-  // === XỬ LÝ ĐẶC BIỆT CHO LỖI 2060 (SIGN-IN REQUIRED) ===
-  if (data?.failureType === '2060' && data?.dialog?.okButtonAction?.buyParams) {
-    console.log('[purchase] Handling Sign-In Required dialog (2060)');
-    params = data.dialog.okButtonAction.buyParams;
-    followUrl = `https://${data.metrics.actionUrl.replace(/^https?:\/\//, '')}`;
+    data = plist.parse(await response.text());
   }
 
-  // === FOLLOW LOOP: XỬ LÝ CÁC BƯỚC TIẾP THEO ===
-  for (let i = 0; i < MAX_FOLLOWS && params; i++) {
-    console.log(`[purchase] follow #${i + 1} ->`, followUrl, 'params=', params);
-
-    const r = await this.fetch(followUrl, { method: 'POST', body: params, headers: headers2 });
-    const t = await r.text();
-
-    try {
-      data = plist.parse(t);
-    } catch (e) {
-      console.error('[purchase] follow parse error (raw):', t);
-      throw new Error('Phản hồi không hợp lệ từ Apple');
-    }
-
-    // THÀNH CÔNG: KHÔNG CÒN DIALOG HOẶC LỖI
-    if (!data?.failureType && !data?.dialog) {
-      console.log('[purchase] success after follow.');
-      return { ...data, _state: 'success' };
-    }
-
-    // TIẾP TỤC XỬ LÝ NẾU CÓ DIALOG MỚI
-    const nextParams = data?.dialog?.okButtonAction?.buyParams || null;
-    const nextUrl = data?.metrics?.actionUrl
-      ? `https://${String(data.metrics.actionUrl).replace(/^https?:\/\//, '')}`
-      : followUrl;
-
-    params = nextParams;
-    followUrl = nextUrl;
+  // Kiểm tra kết quả cuối cùng
+  if (data.failureType) {
+    return { 
+      ...data, 
+      _state: 'failure',
+      requiresAgeVerification: data.failureType === '2060'
+    };
   }
 
-  // === TRẢ VỀ LỖI NẾU VẪN THẤT BẠI SAU MAX_FOLLOWS ===
-  console.warn('[purchase] finished follows, still failure/dialog. Returning last response.');
-  return { 
-    ...data, 
-    _state: data?.failureType ? 'failure' : 'success',
-    requiresAgeVerification: data?.failureType === '2060' // Cờ xác minh tuổi
-  };
+  return { ...data, _state: 'success' };
 }
 
   static async purchaseHistory(Cookie) {
