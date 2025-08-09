@@ -55,11 +55,11 @@ class Store {
   const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
   const url1 = `${base}/buyProduct?guid=${this.guid}`;
 
-  // BƯỚC 1: gửi plist để mở dialog
+  // BƯỚC 1: gửi plist để Apple trả dialog
   const firstBody = plist.build({ guid: this.guid, salableAdamId: adamId });
   const headers1 = {
     ...this.Headers,
-    'Content-Type': 'application/x-apple-plist', // plist -> dùng mime plist
+    'Content-Type': 'application/x-apple-plist', // plist ở bước 1
     'X-Dsid': Cookie.dsPersonId,
     'iCloud-DSID': Cookie.dsPersonId,
     'Accept': '*/*',
@@ -73,32 +73,34 @@ class Store {
   try { data1 = plist.parse(text1); }
   catch (e) { console.error('purchase step1 parse error:', text1); throw e; }
 
-  // Thành công ngay
+  // Nếu thành công ngay (không có dialog), trả luôn
   if (!data1?.failureType && !data1?.dialog) {
     return { ...data1, _state: 'success' };
   }
 
-  // Có dialog -> cần "bấm Buy" bằng buyParams
+  // Có dialog 2060 -> lấy buyParams để "bấm Buy" lần 2
   const buyParams = data1?.dialog?.okButtonAction?.buyParams;
   const actionUrl = data1?.metrics?.actionUrl
     ? `https://${String(data1.metrics.actionUrl).replace(/^https?:\/\//, '')}`
     : url1;
 
   if (!buyParams) {
-    // không có buyParams -> trả kết quả bước 1 cho client tự hiện thông báo
+    // Không có buyParams -> trả lại để UI hiển thị thông báo
     return { ...data1, _state: 'failure' };
   }
 
-  // BƯỚC 2: gửi lại FORM URLENCODED y nguyên buyParams
   const headers2 = {
     ...this.Headers,
-    'Content-Type': 'application/x-www-form-urlencoded', // buyParams là form
+    'Content-Type': 'application/x-www-form-urlencoded', // form ở bước 2
     'X-Dsid': Cookie.dsPersonId,
     'iCloud-DSID': Cookie.dsPersonId,
     'Accept': '*/*',
     'Accept-Language': 'en-us,en;q=0.9'
   };
 
+  console.log('purchase step2 POST ->', actionUrl, 'params=', buyParams);
+
+  // BƯỚC 2: POST lại y nguyên buyParams
   const resp2 = await this.fetch(actionUrl, { method: 'POST', body: buyParams, headers: headers2 });
   const text2 = await resp2.text();
 
