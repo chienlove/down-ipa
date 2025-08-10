@@ -1,3 +1,5 @@
+// client.js — FIX 2060: bỏ Store-Front cứng + follow đúng buyParams, thêm time headers
+
 import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
@@ -6,6 +8,22 @@ import nodeFetch from 'node-fetch';
 class Store {
   static get guid() {
     return getMAC().replace(/:/g, '').toUpperCase();
+  }
+
+  // ---- Header động mỗi request (thêm time & timezone). KHÔNG set Store-Front cứng.
+  static dynHeaders(extra = {}) {
+    let tz = 'Asia/Bangkok';
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz;
+    } catch {}
+    return {
+      'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
+      'Accept': '*/*',
+      'Accept-Language': 'en-us,en;q=0.9',
+      'X-Apple-I-Client-Time': new Date().toISOString(),
+      'X-Apple-I-TimeZone': tz,
+      ...extra,
+    };
   }
 
   static async authenticate(email, password, mfa) {
@@ -23,7 +41,7 @@ class Store {
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
-      headers: this.Headers
+      headers: this.dynHeaders({ 'Content-Type': 'application/x-apple-plist' }),
     });
     const parsedResp = plist.parse(await resp.text());
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
@@ -41,131 +59,120 @@ class Store {
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
-      headers: {
-        ...this.Headers,
+      headers: this.dynHeaders({
+        'Content-Type': 'application/x-apple-plist',
         'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId
-      }
+        'iCloud-DSID': Cookie.dsPersonId,
+      }),
     });
     const parsedResp = plist.parse(await resp.text());
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
   static async purchase(adamId, Cookie) {
-  const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
-  const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
-  const MAX_FOLLOWS = 5;
+    const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
+    const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
+    const MAX_FOLLOWS = 6;
 
-  const commonHeaders = {
-    ...this.Headers,
-    'Accept': '*/*',
-    'Accept-Language': 'en-us,en;q=0.9',
-    // KHÔNG set X-Apple-Store-Front cứng nữa; để Apple tự xác định theo tài khoản
-    'X-Dsid': Cookie.dsPersonId,
-    'iCloud-DSID': Cookie.dsPersonId,
-  };
+    const authHeaders = {
+      'X-Dsid': Cookie.dsPersonId,
+      'iCloud-DSID': Cookie.dsPersonId,
+    };
 
-  const makePlistBody = () => plist.build({
-    guid: this.guid,
-    salableAdamId: adamId,
-    ageCheck: true,
-    hasBeenAuthedForBuy: true,
-    isInApp: false,
-  });
+    const normalizeUrl = (u) => (u?.startsWith('http') ? u : (u ? `https://${u}` : `${base}/buyProduct`));
 
-  // Helper: POST form-encoded tới actionUrl với đúng buyParams trả về từ dialog
-  const postBuyParams = async (actionUrl, buyParamsString) => {
-    // actionUrl có thể là host trần "p25-buy.itunes..." → chuẩn hoá https://
-    const finalUrl = actionUrl.startsWith('http') ? actionUrl : `https://${actionUrl}`;
-    return this.fetch(finalUrl, {
-      method: 'POST',
-      headers: { ...commonHeaders, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: buyParamsString,
+    const postForm = async (actionUrl, formBody) => {
+      return this.fetch(normalizeUrl(actionUrl), {
+        method: 'POST',
+        headers: this.dynHeaders({ ...authHeaders, 'Content-Type': 'application/x-www-form-urlencoded' }),
+        body: formBody,
+      });
+    };
+
+    // B1: request khởi tạo (PLIST)
+    const firstBody = plist.build({
+      guid: this.guid,
+      salableAdamId: adamId,
+      ageCheck: true,
+      hasBeenAuthedForBuy: true,
+      isInApp: false,
     });
-  };
 
-  // B1: request khởi tạo
-  let resp = await this.fetch(entryUrl, {
-    method: 'POST',
-    headers: { ...commonHeaders, 'Content-Type': 'application/x-apple-plist' },
-    body: makePlistBody(),
-  });
+    let resp = await this.fetch(entryUrl, {
+      method: 'POST',
+      headers: this.dynHeaders({ ...authHeaders, 'Content-Type': 'application/x-apple-plist' }),
+      body: firstBody,
+    });
 
-  let data = plist.parse(await resp.text());
-  if (!data.failureType && !data.dialog) {
+    let dataText = await resp.text();
+    let data = plist.parse(dataText);
+
+    if (!data.failureType && !data.dialog) {
+      return { ...data, _state: 'success' };
+    }
+
+    // B2: follow dialog nhiều bước — ƯU TIÊN dùng exact buyParams Apple trả
+    for (let i = 0; i < MAX_FOLLOWS; i++) {
+      const dialog = data.dialog || null;
+      const metrics = data.metrics || {};
+      let followed = false;
+
+      if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
+        resp = await postForm(metrics.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
+                              dialog.okButtonAction.buyParams);
+        data = plist.parse(await resp.text());
+        followed = true;
+      } else if (metrics?.actionUrl) {
+        // Dự phòng nếu không có okButtonAction
+        const bp = new URLSearchParams();
+        bp.append('salableAdamId', adamId);
+        bp.append('guid', this.guid);
+        bp.append('hasBeenAuthedForBuy', 'true');
+        bp.append('isInApp', 'false');
+        bp.append('ageCheck', 'true');
+        resp = await postForm(metrics.actionUrl, bp.toString());
+        data = plist.parse(await resp.text());
+        followed = true;
+      } else if (data.failureType === '2060') {
+        // Dự phòng bổ sung
+        const bp = new URLSearchParams();
+        bp.append('salableAdamId', adamId);
+        bp.append('guid', this.guid);
+        bp.append('hasBeenAuthedForBuy', 'true');
+        bp.append('isInApp', 'false');
+        bp.append('ageCheck', 'true');
+        resp = await postForm('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString());
+        data = plist.parse(await resp.text());
+        followed = true;
+      }
+
+      if (followed) {
+        if (!data.failureType && !data.dialog) {
+          return { ...data, _state: 'success' };
+        }
+        continue;
+      }
+      break;
+    }
+
+    if (data.failureType) {
+      return {
+        ...data,
+        _state: 'failure',
+        requiresAgeVerification: data.failureType === '2060',
+      };
+    }
     return { ...data, _state: 'success' };
   }
-
-  // B2: follow tối đa MAX_FOLLOWS lần theo dialog/actionUrl/buyParams
-  for (let i = 0; i < MAX_FOLLOWS; i++) {
-    // Trường hợp Apple yêu cầu Sign-In/AgeCheck qua dialog authorization
-    const dialog = data.dialog || null;
-    const metrics = data.metrics || {};
-    let followed = false;
-
-    if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
-      // Follow bằng chính buyParams mà Apple trả về
-      resp = await postBuyParams(metrics.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
-                                 dialog.okButtonAction.buyParams);
-      data = plist.parse(await resp.text());
-      followed = true;
-    } else if (metrics?.actionUrl) {
-      // Một số case không có okButtonAction nhưng có metrics.actionUrl + cần buyParams tối thiểu
-      const bp = new URLSearchParams();
-      bp.append('salableAdamId', adamId);
-      bp.append('guid', this.guid);
-      bp.append('hasBeenAuthedForBuy', 'true');
-      bp.append('isInApp', 'false');
-      bp.append('ageCheck', 'true');
-      resp = await postBuyParams(metrics.actionUrl, bp.toString());
-      data = plist.parse(await resp.text());
-      followed = true;
-    } else if (data.failureType === '2060') {
-      // Dự phòng: tự gửi lại buyProduct với form-encoded params
-      const bp = new URLSearchParams();
-      bp.append('salableAdamId', adamId);
-      bp.append('guid', this.guid);
-      bp.append('hasBeenAuthedForBuy', 'true');
-      bp.append('isInApp', 'false');
-      bp.append('ageCheck', 'true');
-      resp = await postBuyParams('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString());
-      data = plist.parse(await resp.text());
-      followed = true;
-    }
-
-    // Nếu đã follow một bước, kiểm tra trạng thái
-    if (followed) {
-      if (!data.failureType && !data.dialog) {
-        return { ...data, _state: 'success' };
-      }
-      // nếu vẫn còn dialog/failureType → vòng lặp sẽ tiếp tục follow
-      continue;
-    }
-
-    // Không có gì để follow nữa → dừng
-    break;
-  }
-
-  // Nếu tới đây mà vẫn lỗi
-  if (data.failureType) {
-    return {
-      ...data,
-      _state: 'failure',
-      requiresAgeVerification: data.failureType === '2060',
-    };
-  }
-  return { ...data, _state: 'success' };
-}
 
   static async purchaseHistory(Cookie) {
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
     const resp = await this.fetch(url, {
       method: 'POST',
-      headers: {
-        ...this.Headers,
+      headers: this.dynHeaders({
         'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId
-      }
+        'iCloud-DSID': Cookie.dsPersonId,
+      }),
     });
     const parsedResp = plist.parse(await resp.text());
     return parsedResp;
@@ -174,11 +181,8 @@ class Store {
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
-Store.Headers = {
-  'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-  'Content-Type': 'application/x-www-form-urlencoded',
-  'X-Apple-I-Client-Time': new Date().toISOString(),
-  'X-Apple-I-TimeZone': Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Bangkok',
-};
+
+// Store.Headers KHÔNG còn dùng cứng cho mọi request; để tương thích chỗ cũ nếu gọi:
+Store.Headers = Store.dynHeaders();
 
 export { Store };
