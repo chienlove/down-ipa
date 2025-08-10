@@ -8,14 +8,14 @@ class Store {
     return getMAC().replace(/:/g, '').toUpperCase();
   }
 
-  // Header động mỗi request (tránh lệch giờ)
+  // ===== Headers động mỗi request (tránh lệch giờ & timezone) =====
   static dynHeaders(extra = {}) {
     let tz = 'Asia/Bangkok';
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch {}
     return {
       'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
       'Accept': '*/*',
-      'Accept-Language': 'en-us,en;q=0.9',
+      'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
       'X-Apple-I-Client-Time': new Date().toISOString(),
       'X-Apple-I-TimeZone': tz,
       ...extra
@@ -25,11 +25,25 @@ class Store {
   // Wrapper fetch có cookie jar
   static async fetch(url, opts) { return Store._fetch(url, opts); }
 
-  /* ==================== AUTH ==================== */
-  static async authenticate(email, password, mfa, { debug = false } = {}) {
-    const steps = [];
-    const add = (obj) => debug && steps.push(obj);
+  // ===== Phát hiện Storefront của tài khoản (cache 15 phút) =====
+  static async detectStorefront() {
+    if (this._storefront && Date.now() - (this._sfAt || 0) < 15 * 60 * 1000) return this._storefront;
+    const url = 'https://itunes.apple.com/WebObjects/MZStore.woa/wa/storeFront';
+    const resp = await this.fetch(url, { method: 'GET', headers: this.dynHeaders() });
+    const sf = resp.headers?.get?.('x-apple-store-front');
+    if (sf) {
+      // thường dạng "143471-1,32;...": chỉ lấy phần trước dấu ;
+      this._storefront = sf.split(';')[0].trim();
+      this._sfAt = Date.now();
+      return this._storefront;
+    }
+    return null;
+  }
 
+  static get lastStorefront() { return this._storefront || null; }
+
+  /* ==================== AUTH ==================== */
+  static async authenticate(email, password, mfa) {
     const dataJson = {
       appleId: email,
       attempt: mfa ? 2 : 4,
@@ -41,37 +55,17 @@ class Store {
     };
     const body = plist.build(dataJson);
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-
-    add({ step: 'auth:init', url, method: 'POST',
-      req: { ct: 'application/x-apple-plist' } });
-
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
       headers: this.dynHeaders({ 'Content-Type': 'application/x-apple-plist' })
     });
-    const text = await resp.text();
-    let parsedResp = {};
-    try { parsedResp = plist.parse(text); } catch { parsedResp = { parseError: true, text: text?.slice(0, 4000) }; }
-
-    add({ step: 'auth:resp', status: resp.status,
-      resp: {
-        keys: Object.keys(parsedResp || {}),
-        failureType: parsedResp.failureType,
-        customerMessage: parsedResp.customerMessage,
-      }
-    });
-
-    const res = { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
-    if (debug) res._debug = { guid: this.guid, steps };
-    return res;
+    const parsedResp = plist.parse(await resp.text());
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
   /* ==================== DOWNLOAD TICKET ==================== */
-  static async download(appIdentifier, appVerId, Cookie, { debug = false } = {}) {
-    const steps = [];
-    const add = (obj) => debug && steps.push(obj);
-
+  static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
       creditDisplay: '',
       guid: this.guid,
@@ -79,43 +73,33 @@ class Store {
       ...(appVerId && { externalVersionId: appVerId })
     };
     const body = plist.build(dataJson);
+
+    // GẮN storefront đã phát hiện (nếu có)
+    const storefront = await this.detectStorefront();
+
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-
-    const hdrs = this.dynHeaders({
-      'Content-Type': 'application/x-apple-plist',
-      'X-Dsid': Cookie.dsPersonId,
-      'iCloud-DSID': Cookie.dsPersonId
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      body,
+      headers: this.dynHeaders({
+        'Content-Type': 'application/x-apple-plist',
+        'X-Dsid': Cookie.dsPersonId,
+        'iCloud-DSID': Cookie.dsPersonId,
+        ...(storefront ? { 'X-Apple-Store-Front': storefront } : {})
+      }),
     });
-
-    add({ step: 'download:init', url, method: 'POST',
-      req: { ct: hdrs['Content-Type'], XDsid: hdrs['X-Dsid'], iCloudDSID: hdrs['iCloud-DSID'] } });
-
-    const resp = await this.fetch(url, { method: 'POST', body, headers: hdrs });
-    const text = await resp.text();
-    let parsed = {};
-    try { parsed = plist.parse(text); } catch { parsed = { parseError: true, text: text?.slice(0, 4000) }; }
-
-    add({ step: 'download:resp', status: resp.status,
-      resp: {
-        keys: Object.keys(parsed || {}),
-        failureType: parsed.failureType,
-        customerMessage: parsed.customerMessage,
-      }
-    });
-
-    const res = { ...parsed, _state: parsed.failureType ? 'failure' : 'success' };
-    if (debug) res._debug = { guid: this.guid, steps };
-    return res;
+    const parsedResp = plist.parse(await resp.text());
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
   /* ==================== PURCHASE ==================== */
-  static async purchase(adamId, Cookie, { debug = false, storefront = null } = {}) {
-    const steps = [];
-    const add = (obj) => debug && steps.push(obj);
-
+  static async purchase(adamId, Cookie) {
     const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
     const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
     const MAX_FOLLOWS = 6;
+
+    // Tự phát hiện storefront rồi luôn gắn vào headers
+    const storefront = await this.detectStorefront();
 
     const commonAuth = {
       'X-Dsid': Cookie.dsPersonId,
@@ -125,83 +109,40 @@ class Store {
 
     const normalize = (u) => (u?.startsWith('http') ? u : (u ? `https://${u}` : `${base}/buyProduct`));
 
-    const postForm = async (actionUrl, formBody, tag) => {
-      const url = normalize(actionUrl);
-      const hdrs = this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-www-form-urlencoded' });
-      add({ step: `purchase:${tag}:postForm`, url, method: 'POST',
-        req: {
-          ct: hdrs['Content-Type'],
-          XDsid: hdrs['X-Dsid'],
-          iCloudDSID: hdrs['iCloud-DSID'],
-          storefront: hdrs['X-Apple-Store-Front'] || null,
-          bodyPreview: String(formBody).slice(0, 300)
-        } });
-      const resp = await this.fetch(url, { method: 'POST', headers: hdrs, body: formBody });
-      const text = await resp.text();
-      let parsed = {};
-      try { parsed = plist.parse(text); } catch { parsed = { parseError: true, text: text?.slice(0, 4000) }; }
-      add({ step: `purchase:${tag}:resp`, status: resp.status,
-        resp: {
-          keys: Object.keys(parsed || {}),
-          failureType: parsed.failureType,
-          customerMessage: parsed.customerMessage,
-          dialogId: parsed.metrics?.dialogId,
-          actionUrl: parsed.metrics?.actionUrl,
-          hasDialog: !!parsed.dialog,
-          hasBuyParams: !!parsed.dialog?.okButtonAction?.buyParams
-        } });
-      return parsed;
+    const postForm = async (actionUrl, formBody) => {
+      return this.fetch(normalize(actionUrl), {
+        method: 'POST',
+        headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-www-form-urlencoded' }),
+        body: formBody
+      });
     };
 
-    // B1: init (PLIST)
-    const initHdrs = this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-apple-plist' });
-    const initBody = plist.build({
+    // B1: khởi tạo (PLIST)
+    const firstBody = plist.build({
       guid: this.guid,
       salableAdamId: adamId,
       ageCheck: true,
       hasBeenAuthedForBuy: true,
       isInApp: false
     });
+    let resp = await this.fetch(entryUrl, {
+      method: 'POST',
+      headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-apple-plist' }),
+      body: firstBody
+    });
+    let data = plist.parse(await resp.text());
+    if (!data.failureType && !data.dialog) return { ...data, _state: 'success', storefrontUsed: storefront || null };
 
-    add({ step: 'purchase:init', url: entryUrl, method: 'POST',
-      req: {
-        ct: initHdrs['Content-Type'],
-        XDsid: initHdrs['X-Dsid'],
-        iCloudDSID: initHdrs['iCloud-DSID'],
-        storefront: initHdrs['X-Apple-Store-Front'] || null
-      } });
-
-    let resp = await this.fetch(entryUrl, { method: 'POST', headers: initHdrs, body: initBody });
-    let text = await resp.text();
-    let data = {};
-    try { data = plist.parse(text); } catch { data = { parseError: true, text: text?.slice(0, 4000) }; }
-
-    add({ step: 'purchase:init:resp', status: resp.status,
-      resp: {
-        keys: Object.keys(data || {}),
-        failureType: data.failureType,
-        customerMessage: data.customerMessage,
-        dialogId: data.metrics?.dialogId,
-        actionUrl: data.metrics?.actionUrl,
-        hasDialog: !!data.dialog,
-        hasBuyParams: !!data.dialog?.okButtonAction?.buyParams
-      } });
-
-    if (!data.failureType && !data.dialog) {
-      const out = { ...data, _state: 'success' };
-      if (debug) out._debug = { guid: this.guid, steps };
-      return out;
-    }
-
-    // B2: follow nhiều bước
+    // B2: follow dialog/buyParams
     for (let i = 0; i < MAX_FOLLOWS; i++) {
       const dialog = data.dialog || null;
       const metrics = data.metrics || {};
       let followed = false;
 
       if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
-        data = await postForm(metrics.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
-                              dialog.okButtonAction.buyParams, `follow${i}-okBtn`);
+        resp = await postForm(metrics.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
+                              dialog.okButtonAction.buyParams);
+        data = plist.parse(await resp.text());
         followed = true;
       } else if (metrics?.actionUrl) {
         const bp = new URLSearchParams();
@@ -210,7 +151,8 @@ class Store {
         bp.append('hasBeenAuthedForBuy', 'true');
         bp.append('isInApp', 'false');
         bp.append('ageCheck', 'true');
-        data = await postForm(metrics.actionUrl, bp.toString(), `follow${i}-metrics`);
+        resp = await postForm(metrics.actionUrl, bp.toString());
+        data = plist.parse(await resp.text());
         followed = true;
       } else if (data.failureType === '2060') {
         const bp = new URLSearchParams();
@@ -219,55 +161,55 @@ class Store {
         bp.append('hasBeenAuthedForBuy', 'true');
         bp.append('isInApp', 'false');
         bp.append('ageCheck', 'true');
-        data = await postForm('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString(), `follow${i}-fallback2060`);
+        resp = await postForm('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString());
+        data = plist.parse(await resp.text());
         followed = true;
       }
 
       if (followed) {
         if (!data.failureType && !data.dialog) {
-          const out = { ...data, _state: 'success' };
-          if (debug) out._debug = { guid: this.guid, steps };
-          return out;
+          return { ...data, _state: 'success', storefrontUsed: storefront || null };
         }
         continue;
       }
       break;
     }
 
-    const out = (!data.failureType)
-      ? { ...data, _state: 'success' }
-      : { ...data, _state: 'failure', requiresAgeVerification: data.failureType === '2060' };
-    if (debug) out._debug = { guid: this.guid, steps };
-    return out;
+    if (data.failureType) {
+      const isFamilyAge = data.metrics?.dialogId === 'MZCommerce.FamilyAgeCheck';
+      return {
+        ...data,
+        _state: 'failure',
+        storefrontUsed: storefront || null,
+        failureCode: isFamilyAge ? 'ACCOUNT_FAMILY_AGE_CHECK' : data.failureType,
+        customerMessage: isFamilyAge
+          ? 'Apple yêu cầu xác minh Family/Age hoặc khởi tạo mua hàng trên App Store. Hãy mở App Store, đăng nhập, tải 1 app miễn phí trong đúng quốc gia, hoặc tắt Ask To Buy.'
+          : (data.customerMessage || 'Purchase failed')
+      };
+    }
+    return { ...data, _state: 'success', storefrontUsed: storefront || null };
   }
 
-  static async purchaseHistory(Cookie, { debug = false } = {}) {
-    const steps = [];
-    const add = (obj) => debug && steps.push(obj);
-
+  static async purchaseHistory(Cookie) {
+    const storefront = await this.detectStorefront();
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
-    const hdrs = this.dynHeaders({ 'X-Dsid': Cookie.dsPersonId, 'iCloud-DSID': Cookie.dsPersonId });
-
-    add({ step: 'ph:init', url, method: 'POST', req: { XDsid: hdrs['X-Dsid'], iCloudDSID: hdrs['iCloud-DSID'] } });
-
-    const resp = await this.fetch(url, { method: 'POST', headers: hdrs });
-    const text = await resp.text();
-    let parsed = {};
-    try { parsed = plist.parse(text); } catch { parsed = { parseError: true, text: text?.slice(0, 4000) }; }
-
-    add({ step: 'ph:resp', status: resp.status,
-      resp: { keys: Object.keys(parsed || {}), failureType: parsed.failureType } });
-
-    const out = parsed;
-    if (debug) out._debug = { guid: this.guid, steps };
-    return out;
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      headers: this.dynHeaders({
+        'X-Dsid': Cookie.dsPersonId,
+        'iCloud-DSID': Cookie.dsPersonId,
+        ...(storefront ? { 'X-Apple-Store-Front': storefront } : {})
+      })
+    });
+    const parsedResp = plist.parse(await resp.text());
+    return parsedResp;
   }
 }
 
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store._fetch = fetchCookie(nodeFetch, Store.cookieJar);
 
-// Để tương thích code cũ nếu có chỗ dùng Store.Headers:
+// Giữ cho tương thích code cũ (nếu nơi nào lỡ dùng Store.Headers)
 Store.Headers = Store.dynHeaders();
 
 export { Store };
