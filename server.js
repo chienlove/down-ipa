@@ -730,9 +730,10 @@ app.post('/auth', async (req, res) => {
 
     // purchase route
 
+// purchase route (DEBUG enabled)
 app.post('/purchase', async (req, res) => {
   try {
-    const { APPLE_ID, PASSWORD, CODE, input } = req.body || {};
+    const { APPLE_ID, PASSWORD, CODE, input, storefront } = req.body || {};
 
     if (!APPLE_ID || !PASSWORD || !input) {
       return res.status(400).json({
@@ -741,7 +742,7 @@ app.post('/purchase', async (req, res) => {
       });
     }
 
-    // 1) Rút adamId từ input (hỗ trợ số thuần hoặc URL dạng .../id{digits})
+    // 1) Parse adamId
     const idFromUrl = String(input).match(/id(\d+)/)?.[1];
     const idFromDigits = String(input).match(/^\d+$/)?.[0];
     const adamId = idFromUrl || idFromDigits;
@@ -749,25 +750,25 @@ app.post('/purchase', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Không lấy được App ID từ input' });
     }
 
-    // 2) Đăng nhập (nếu phiên còn sống, Apple sẽ cho qua luôn, không hỏi 2FA)
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    // 2) Auth (DEBUG)
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE, { debug: true });
     if (user._state !== 'success') {
-      // Apple yêu cầu MFA → trả về để frontend chuyển sang Step 2
       const isMfa = (user.failureType || '').toLowerCase().includes('mfa');
       return res.status(isMfa ? 401 : 400).json({
         success: false,
         require2FA: isMfa,
         error: user.customerMessage || 'Đăng nhập thất bại',
+        _debug: { auth: user._debug } // đính kèm debug auth
       });
     }
 
-    // 3) Gọi purchase để thêm vào "Đã mua"
-    const pr = await Store.purchase(adamId, user);
+    // 3) Purchase (DEBUG + optional storefront override)
+    const pr = await Store.purchase(adamId, user, { debug: true, storefront });
+
+    const song0 = pr?.songList?.[0];
+    const meta = song0?.metadata || {};
 
     if (pr._state === 'success') {
-      // Một số phản hồi có songList/receipt; ta trả gọn thông tin
-      const song0 = pr?.songList?.[0];
-      const meta = song0?.metadata || {};
       return res.json({
         success: true,
         message: 'Đã thêm vào mục Đã mua (nếu là app miễn phí).',
@@ -778,16 +779,16 @@ app.post('/purchase', async (req, res) => {
           version: meta.bundleShortVersionString || null,
           artistName: meta.artistName || null,
         },
-        raw: pr, // giữ cho debug, có thể bỏ nếu bạn muốn gọn
+        _debug: pr._debug // toàn bộ bước debug purchase
       });
     }
 
-    // Lỗi từ Apple (ví dụ app trả phí, không mua được, hay cần xác minh lại)
+    // Trả lỗi + debug chi tiết
     return res.status(400).json({
       success: false,
       error: pr.customerMessage || 'Không thể thêm vào mục Đã mua',
       failureType: pr.failureType || undefined,
-      raw: pr,
+      _debug: pr._debug
     });
   } catch (e) {
     console.error('purchase error:', e);
