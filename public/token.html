@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <title>Firebase Token One-off</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    button { padding: 10px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; font-weight: 600; }
+    .row { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+    textarea { width: 100%; min-height: 200px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; }
+    .muted { color: #666; font-size: 14px; }
+    .box { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🔥 Lấy Firebase ID Token</h1>
+  <p class="muted">Trang tạm thời do bạn tự chạy. Sau khi lấy token có thể xoá file này.</p>
+
+  <div class="box">
+    <h3>Đăng nhập Google & lấy ID Token</h3>
+    <div class="row">
+      <button id="loginBtn">Đăng nhập với Google</button>
+      <button id="logoutBtn">Đăng xuất</button>
+      <button id="refreshBtn">Làm mới token</button>
+      <span id="authStatus" class="muted"></span>
+    </div>
+    <p><b>ID token</b> (JWT) — copy và dùng trên server của bạn:</p>
+    <textarea id="idToken" readonly></textarea>
+
+    <details style="margin-top:10px;">
+      <summary>Giải mã nhanh payload (để kiểm tra)</summary>
+      <pre id="decoded" style="white-space: pre-wrap;"></pre>
+    </details>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut
+    } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBTeAgL0IhlSKYZj94PTjwth_v81M0DSAE",
+      authDomain: "comments-storeios.firebaseapp.com",
+      projectId: "comments-storeios",
+      appId: "1:282448225375:web:843f17409eedbd0edc67ea"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const $ = (id) => document.getElementById(id);
+    const setDisabled = (el, v) => el.disabled = !!v;
+
+    function decodeJwt(idToken) {
+      try {
+        const [, payload] = idToken.split('.');
+        const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+        return JSON.stringify(json, null, 2);
+      } catch (e) {
+        return 'Không giải mã được payload.';
+      }
+    }
+
+    $('loginBtn').onclick = async () => {
+      try {
+        const provider = new GoogleAuthProvider();
+        const cred = await signInWithPopup(auth, provider);
+        const token = await cred.user.getIdToken(/* forceRefresh */ true);
+        $('idToken').value = token;
+        $('decoded').textContent = decodeJwt(token);
+        $('authStatus').textContent = `✅ Đã đăng nhập: ${cred.user.email}`;
+      } catch (e) {
+        $('authStatus').textContent = '❌ Lỗi đăng nhập: ' + e.message;
+      }
+    };
+
+    $('refreshBtn').onclick = async () => {
+      if (!auth || !auth.currentUser) return;
+      try {
+        const token = await auth.currentUser.getIdToken(true);
+        $('idToken').value = token;
+        $('decoded').textContent = decodeJwt(token);
+        $('authStatus').textContent = `🔁 Làm mới token cho: ${auth.currentUser.email}`;
+      } catch (e) {
+        $('authStatus').textContent = '❌ Lỗi làm mới: ' + e.message;
+      }
+    };
+
+    $('logoutBtn').onclick = async () => {
+      await signOut(auth);
+      $('idToken').value = '';
+      $('decoded').textContent = '';
+      $('authStatus').textContent = '🚪 Đã đăng xuất.';
+    };
+  </script>
+</body>
+</html>
