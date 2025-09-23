@@ -728,8 +728,6 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-    // purchase route
-
 // purchase route (DEBUG enabled)
 app.post('/purchase', async (req, res) => {
   try {
@@ -787,7 +785,8 @@ app.post('/purchase', async (req, res) => {
     return res.status(400).json({
       success: false,
       error: pr.customerMessage || 'Không thể thêm vào mục Đã mua',
-      failureType: pr.failureType || undefined,
+      failureType: pr.failureType || pr.failureCode || undefined,
+      storefrontUsed: pr.storefrontUsed || storefront || null,
       _debug: pr._debug
     });
   } catch (e) {

@@ -6,14 +6,21 @@
 <body style="max-width:680px;margin:40px auto;font-family:system-ui,-apple-system,Segoe UI,Roboto">
   <h1>⭐ Thêm ứng dụng vào “Đã mua”</h1>
   <p>Nhập Apple ID, mật khẩu, và App ID hoặc App Store URL. Với app miễn phí, Apple sẽ ghi nhận như “đã sở hữu”.</p>
+
   <form id="f" style="display:grid;gap:8px;margin:16px 0">
     <input id="APPLE_ID" placeholder="Apple ID" autocomplete="username" required />
     <input id="PASSWORD" placeholder="Mật khẩu" type="password" autocomplete="current-password" required />
     <input id="CODE" placeholder="Mã 2FA (nếu có)" />
     <input id="INPUT" placeholder="App ID hoặc https://apps.apple.com/.../id1234567890" required />
+
+    <!-- MỚI: Storefront tùy chọn để ép quốc gia khớp với Apple ID (ví dụ VN: 143471-1,32) -->
+    <input id="STOREFRONT" placeholder="Storefront (tùy chọn, ví dụ 143471-1,32 cho VN)" />
+
     <button type="submit">Thêm vào Đã mua</button>
   </form>
+
   <pre id="out" style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:6px"></pre>
+
   <script>
     const $ = s => document.querySelector(s);
     $('#f').addEventListener('submit', async (e) => {
@@ -23,7 +30,8 @@
         APPLE_ID: $('#APPLE_ID').value.trim(),
         PASSWORD: $('#PASSWORD').value,
         CODE: $('#CODE').value.trim() || undefined,
-        input: $('#INPUT').value.trim()
+        input: $('#INPUT').value.trim(),
+        storefront: $('#STOREFRONT').value.trim() || undefined
       };
       const r = await fetch('/purchase', {
         method:'POST', headers: {'Content-Type':'application/json'},

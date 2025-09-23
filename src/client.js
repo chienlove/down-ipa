@@ -3,6 +3,13 @@ import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
+/**
+ * Store client
+ * - authenticate(email, password, mfa?)
+ * - download(appIdentifier, appVerId?, Cookie, opts?)
+ * - purchase(adamId, Cookie, opts?)  // opts.storefront được ưu tiên nếu truyền vào
+ * - purchaseHistory(Cookie)
+ */
 class Store {
   static get guid() {
     return getMAC().replace(/:/g, '').toUpperCase();
@@ -25,21 +32,19 @@ class Store {
   // Wrapper fetch có cookie jar
   static async fetch(url, opts) { return Store._fetch(url, opts); }
 
-  // ===== Phát hiện Storefront của tài khoản (cache 15 phút) =====
+  // ===== Phát hiện Storefront (Apple trả về trong header). Giữ lại để dùng khi cần. =====
   static async detectStorefront() {
     if (this._storefront && Date.now() - (this._sfAt || 0) < 15 * 60 * 1000) return this._storefront;
     const url = 'https://itunes.apple.com/WebObjects/MZStore.woa/wa/storeFront';
     const resp = await this.fetch(url, { method: 'GET', headers: this.dynHeaders() });
     const sf = resp.headers?.get?.('x-apple-store-front');
     if (sf) {
-      // thường dạng "143471-1,32;...": chỉ lấy phần trước dấu ;
-      this._storefront = sf.split(';')[0].trim();
+      this._storefront = sf.split(';')[0].trim(); // ví dụ: "143471-1,32"
       this._sfAt = Date.now();
       return this._storefront;
     }
     return null;
   }
-
   static get lastStorefront() { return this._storefront || null; }
 
   /* ==================== AUTH ==================== */
@@ -65,7 +70,8 @@ class Store {
   }
 
   /* ==================== DOWNLOAD TICKET ==================== */
-  static async download(appIdentifier, appVerId, Cookie) {
+  // Giữ nguyên hành vi cũ (tự detect storefront) nhưng cho phép override qua opts.storefront nếu cần
+  static async download(appIdentifier, appVerId, Cookie, opts = {}) {
     const dataJson = {
       creditDisplay: '',
       guid: this.guid,
@@ -74,8 +80,7 @@ class Store {
     };
     const body = plist.build(dataJson);
 
-    // GẮN storefront đã phát hiện (nếu có)
-    const storefront = await this.detectStorefront();
+    const storefront = opts.storefront || await this.detectStorefront();
 
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
     const resp = await this.fetch(url, {
@@ -93,13 +98,17 @@ class Store {
   }
 
   /* ==================== PURCHASE ==================== */
-  static async purchase(adamId, Cookie) {
+  /**
+   * Thêm app vào "Đã mua" (app free). Không tự detect + gắn Storefront nữa.
+   * Ưu tiên opts.storefront nếu được truyền vào từ server.
+   * Follow dialog rộng hơn: trước hết okButtonAction.buttonParams (AskToBuy/Age/T&C), rồi mới buyParams.
+   */
+  static async purchase(adamId, Cookie, opts = {}) {
     const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
     const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
-    const MAX_FOLLOWS = 6;
+    const MAX_FOLLOWS = 8;
 
-    // Tự phát hiện storefront rồi luôn gắn vào headers
-    const storefront = await this.detectStorefront();
+    const storefront = opts.storefront || null; // << Ưu tiên storefront do server truyền vào
 
     const commonAuth = {
       'X-Dsid': Cookie.dsPersonId,
@@ -131,20 +140,29 @@ class Store {
       body: firstBody
     });
     let data = plist.parse(await resp.text());
-    if (!data.failureType && !data.dialog) return { ...data, _state: 'success', storefrontUsed: storefront || null };
+    if (!data.failureType && !data.dialog) return { ...data, _state: 'success', storefrontUsed: storefront };
 
-    // B2: follow dialog/buyParams
+    // B2: follow dialog/metrics nhiều kiểu hơn
     for (let i = 0; i < MAX_FOLLOWS; i++) {
       const dialog = data.dialog || null;
       const metrics = data.metrics || {};
+      const actionUrl = metrics?.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct';
       let followed = false;
 
-      if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
-        resp = await postForm(metrics.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
-                              dialog.okButtonAction.buyParams);
+      // Ưu tiên buttonParams (AskToBuy / AgeCheck / T&C)
+      if (dialog?.okButtonAction?.buttonParams) {
+        resp = await postForm(actionUrl, dialog.okButtonAction.buttonParams);
         data = plist.parse(await resp.text());
         followed = true;
-      } else if (metrics?.actionUrl) {
+      }
+      // Sau đó mới Buy flow
+      else if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
+        resp = await postForm(actionUrl, dialog.okButtonAction.buyParams);
+        data = plist.parse(await resp.text());
+        followed = true;
+      }
+      // Không có dialog nhưng có metrics.actionUrl → cố gắng tiếp tục với tham số tối thiểu
+      else if (metrics?.actionUrl) {
         const bp = new URLSearchParams();
         bp.append('salableAdamId', adamId);
         bp.append('guid', this.guid);
@@ -154,7 +172,9 @@ class Store {
         resp = await postForm(metrics.actionUrl, bp.toString());
         data = plist.parse(await resp.text());
         followed = true;
-      } else if (data.failureType === '2060') {
+      }
+      // Nỗ lực “đẩy” 2060 thêm một nhịp chuẩn hoá
+      else if (data.failureType === '2060') {
         const bp = new URLSearchParams();
         bp.append('salableAdamId', adamId);
         bp.append('guid', this.guid);
@@ -168,30 +188,34 @@ class Store {
 
       if (followed) {
         if (!data.failureType && !data.dialog) {
-          return { ...data, _state: 'success', storefrontUsed: storefront || null };
+          return { ...data, _state: 'success', storefrontUsed: storefront };
         }
         continue;
       }
       break;
     }
 
+    // Kết thúc: còn failure → phân loại thân thiện
     if (data.failureType) {
-      const isFamilyAge = data.metrics?.dialogId === 'MZCommerce.FamilyAgeCheck';
+      const did = data.metrics?.dialogId || '';
+      const isFamilyAge = did === 'MZCommerce.FamilyAgeCheck';
+      const isATB = /AskToBuy/i.test(did) || /MZCommerce\.AskToBuy/i.test(did);
       return {
         ...data,
         _state: 'failure',
-        storefrontUsed: storefront || null,
-        failureCode: isFamilyAge ? 'ACCOUNT_FAMILY_AGE_CHECK' : data.failureType,
-        customerMessage: isFamilyAge
-          ? 'Apple yêu cầu xác minh Family/Age hoặc khởi tạo mua hàng trên App Store. Hãy mở App Store, đăng nhập, tải 1 app miễn phí trong đúng quốc gia, hoặc tắt Ask To Buy.'
-          : (data.customerMessage || 'Purchase failed')
+        storefrontUsed: storefront,
+        failureCode: isFamilyAge ? 'ACCOUNT_FAMILY_AGE_CHECK' : (isATB ? 'ACCOUNT_ASK_TO_BUY' : data.failureType),
+        customerMessage:
+          isFamilyAge || isATB
+            ? 'Apple yêu cầu xác minh Family/Age hoặc khởi tạo mua hàng trên App Store. Hãy mở App Store, đăng nhập, tải 1 app miễn phí trong đúng quốc gia, hoặc tắt Ask To Buy.'
+            : (data.customerMessage || 'Purchase failed')
       };
     }
-    return { ...data, _state: 'success', storefrontUsed: storefront || null };
+    return { ...data, _state: 'success', storefrontUsed: storefront };
   }
 
-  static async purchaseHistory(Cookie) {
-    const storefront = await this.detectStorefront();
+  static async purchaseHistory(Cookie, opts = {}) {
+    const storefront = opts.storefront || await this.detectStorefront();
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
     const resp = await this.fetch(url, {
       method: 'POST',
@@ -206,6 +230,7 @@ class Store {
   }
 }
 
+// Cookie jar
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
 Store._fetch = fetchCookie(nodeFetch, Store.cookieJar);
 
