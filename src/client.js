@@ -103,116 +103,116 @@ class Store {
    * Ưu tiên opts.storefront nếu được truyền vào từ server.
    * Follow dialog rộng hơn: trước hết okButtonAction.buttonParams (AskToBuy/Age/T&C), rồi mới buyParams.
    */
-  static async purchase(adamId, Cookie, opts = {}) {
-    const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
-    const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
-    const MAX_FOLLOWS = 8;
+  // client.js — thay THAY TOÀN BỘ HÀM purchase bằng đoạn này
+static async purchase(adamId, Cookie, opts = {}) {
+  const base = 'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
+  const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
+  const MAX_FOLLOWS = 8;
 
-    const storefront = opts.storefront || null; // << Ưu tiên storefront do server truyền vào
+  // ƯU TIÊN storefront do server truyền xuống; KHÔNG auto detect ở hàm purchase
+  const storefront = opts.storefront || null;
 
-    const commonAuth = {
-      'X-Dsid': Cookie.dsPersonId,
-      'iCloud-DSID': Cookie.dsPersonId,
-      ...(storefront ? { 'X-Apple-Store-Front': storefront } : {})
-    };
-
-    const normalize = (u) => (u?.startsWith('http') ? u : (u ? `https://${u}` : `${base}/buyProduct`));
-
-    const postForm = async (actionUrl, formBody) => {
-      return this.fetch(normalize(actionUrl), {
-        method: 'POST',
-        headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-www-form-urlencoded' }),
-        body: formBody
-      });
-    };
-
-    // B1: khởi tạo (PLIST)
-    const firstBody = plist.build({
-      guid: this.guid,
-      salableAdamId: adamId,
-      ageCheck: true,
-      hasBeenAuthedForBuy: true,
-      isInApp: false
-    });
-    let resp = await this.fetch(entryUrl, {
+  const commonAuth = {
+    'X-Dsid': Cookie.dsPersonId,
+    'iCloud-DSID': Cookie.dsPersonId,
+    ...(storefront ? { 'X-Apple-Store-Front': storefront } : {})
+  };
+  const normalize = (u) => (u?.startsWith('http') ? u : (u ? `https://${u}` : `${base}/buyProduct`));
+  const postForm = async (actionUrl, formBody) => {
+    return this.fetch(normalize(actionUrl), {
       method: 'POST',
-      headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-apple-plist' }),
-      body: firstBody
+      headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-www-form-urlencoded' }),
+      body: formBody
     });
-    let data = plist.parse(await resp.text());
-    if (!data.failureType && !data.dialog) return { ...data, _state: 'success', storefrontUsed: storefront };
+  };
 
-    // B2: follow dialog/metrics nhiều kiểu hơn
-    for (let i = 0; i < MAX_FOLLOWS; i++) {
-      const dialog = data.dialog || null;
-      const metrics = data.metrics || {};
-      const actionUrl = metrics?.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct';
-      let followed = false;
+  // B1: khởi tạo (PLIST)
+  const firstBody = plist.build({
+    guid: this.guid,
+    salableAdamId: adamId,
+    ageCheck: true,
+    hasBeenAuthedForBuy: true,
+    isInApp: false
+  });
+  let resp = await this.fetch(entryUrl, {
+    method: 'POST',
+    headers: this.dynHeaders({ ...commonAuth, 'Content-Type': 'application/x-apple-plist' }),
+    body: firstBody
+  });
+  let data = plist.parse(await resp.text());
+  if (!data.failureType && !data.dialog) return { ...data, _state: 'success', storefrontUsed: storefront };
 
-      // Ưu tiên buttonParams (AskToBuy / AgeCheck / T&C)
-      if (dialog?.okButtonAction?.buttonParams) {
-        resp = await postForm(actionUrl, dialog.okButtonAction.buttonParams);
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // Sau đó mới Buy flow
-      else if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
-        resp = await postForm(actionUrl, dialog.okButtonAction.buyParams);
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // Không có dialog nhưng có metrics.actionUrl → cố gắng tiếp tục với tham số tối thiểu
-      else if (metrics?.actionUrl) {
-        const bp = new URLSearchParams();
-        bp.append('salableAdamId', adamId);
-        bp.append('guid', this.guid);
-        bp.append('hasBeenAuthedForBuy', 'true');
-        bp.append('isInApp', 'false');
-        bp.append('ageCheck', 'true');
-        resp = await postForm(metrics.actionUrl, bp.toString());
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // Nỗ lực “đẩy” 2060 thêm một nhịp chuẩn hoá
-      else if (data.failureType === '2060') {
-        const bp = new URLSearchParams();
-        bp.append('salableAdamId', adamId);
-        bp.append('guid', this.guid);
-        bp.append('hasBeenAuthedForBuy', 'true');
-        bp.append('isInApp', 'false');
-        bp.append('ageCheck', 'true');
-        resp = await postForm('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString());
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
+  // B2: follow dialog/metrics – ƯU TIÊN buttonParams rồi mới buyParams
+  for (let i = 0; i < MAX_FOLLOWS; i++) {
+    const dialog = data.dialog || null;
+    const metrics = data.metrics || {};
+    const actionUrl = metrics?.actionUrl || 'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct';
+    let followed = false;
 
-      if (followed) {
-        if (!data.failureType && !data.dialog) {
-          return { ...data, _state: 'success', storefrontUsed: storefront };
-        }
-        continue;
-      }
-      break;
+    // 1) Các dialog đặc biệt (AskToBuy / Age / T&C) đưa trong buttonParams
+    if (dialog?.okButtonAction?.buttonParams) {
+      resp = await postForm(actionUrl, dialog.okButtonAction.buttonParams);
+      data = plist.parse(await resp.text());
+      followed = true;
+    }
+    // 2) Luồng Buy truyền thống
+    else if (dialog?.okButtonAction?.kind === 'Buy' && dialog?.okButtonAction?.buyParams) {
+      resp = await postForm(actionUrl, dialog.okButtonAction.buyParams);
+      data = plist.parse(await resp.text());
+      followed = true;
+    }
+    // 3) Có metrics.actionUrl → tiếp tục với form tối thiểu
+    else if (metrics?.actionUrl) {
+      const bp = new URLSearchParams();
+      bp.append('salableAdamId', adamId);
+      bp.append('guid', this.guid);
+      bp.append('hasBeenAuthedForBuy', 'true');
+      bp.append('isInApp', 'false');
+      bp.append('ageCheck', 'true');
+      resp = await postForm(metrics.actionUrl, bp.toString());
+      data = plist.parse(await resp.text());
+      followed = true;
+    }
+    // 4) Vẫn 2060 → đẩy thêm 1 nhịp chuẩn hoá
+    else if (data.failureType === '2060') {
+      const bp = new URLSearchParams();
+      bp.append('salableAdamId', adamId);
+      bp.append('guid', this.guid);
+      bp.append('hasBeenAuthedForBuy', 'true');
+      bp.append('isInApp', 'false');
+      bp.append('ageCheck', 'true');
+      resp = await postForm('p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct', bp.toString());
+      data = plist.parse(await resp.text());
+      followed = true;
     }
 
-    // Kết thúc: còn failure → phân loại thân thiện
-    if (data.failureType) {
-      const did = data.metrics?.dialogId || '';
-      const isFamilyAge = did === 'MZCommerce.FamilyAgeCheck';
-      const isATB = /AskToBuy/i.test(did) || /MZCommerce\.AskToBuy/i.test(did);
-      return {
-        ...data,
-        _state: 'failure',
-        storefrontUsed: storefront,
-        failureCode: isFamilyAge ? 'ACCOUNT_FAMILY_AGE_CHECK' : (isATB ? 'ACCOUNT_ASK_TO_BUY' : data.failureType),
-        customerMessage:
-          isFamilyAge || isATB
-            ? 'Apple yêu cầu xác minh Family/Age hoặc khởi tạo mua hàng trên App Store. Hãy mở App Store, đăng nhập, tải 1 app miễn phí trong đúng quốc gia, hoặc tắt Ask To Buy.'
-            : (data.customerMessage || 'Purchase failed')
-      };
+    if (followed) {
+      if (!data.failureType && !data.dialog) {
+        return { ...data, _state: 'success', storefrontUsed: storefront };
+      }
+      continue;
     }
-    return { ...data, _state: 'success', storefrontUsed: storefront };
+    break;
   }
+
+  // Kết thúc: còn failure → phân loại thân thiện
+  if (data.failureType) {
+    const did = data.metrics?.dialogId || '';
+    const isFamilyAge = did === 'MZCommerce.FamilyAgeCheck';
+    const isATB = /AskToBuy/i.test(did) || /MZCommerce\.AskToBuy/i.test(did);
+    return {
+      ...data,
+      _state: 'failure',
+      storefrontUsed: storefront,
+      failureCode: isFamilyAge ? 'ACCOUNT_FAMILY_AGE_CHECK' : (isATB ? 'ACCOUNT_ASK_TO_BUY' : data.failureType),
+      customerMessage:
+        isFamilyAge || isATB
+          ? 'Apple yêu cầu xác minh Family/Age hoặc khởi tạo mua hàng trên App Store. Hãy mở App Store, đăng nhập, tải 1 app miễn phí trong đúng quốc gia, hoặc tắt Ask To Buy.'
+          : (data.customerMessage || 'Purchase failed')
+    };
+  }
+  return { ...data, _state: 'success', storefrontUsed: storefront };
+}
 
   static async purchaseHistory(Cookie, opts = {}) {
     const storefront = opts.storefront || await this.detectStorefront();
