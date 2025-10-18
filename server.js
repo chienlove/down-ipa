@@ -106,10 +106,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 app.use('/api', certApi);
 
-// Rate-limiting cho /download (theo IP)
+// Rate-limiting cho /download (theo IP) - SỬA: tăng giới hạn từ 3 lên 5
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3,
+  max: 5,
+  message: {
+    success: false,
+    error: 'RATE_LIMIT_EXCEEDED',
+    message: 'Quá nhiều yêu cầu. Vui lòng thử lại sau 15 phút.'
+  }
 });
 app.use('/download', limiter);
 
@@ -167,6 +172,14 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 // Giới hạn số job đồng thời (phù hợp Heroku Hobby)
 let currentJobs = 0;
 const MAX_JOBS = 2; // có thể hạ xuống 1 nếu vẫn quá tải
+
+// SỬA: Thêm hàm reset job counter tự động
+setInterval(() => {
+  if (currentJobs > 0) {
+    console.log(`Auto-reset job counter. Current jobs: ${currentJobs}`);
+    currentJobs = 0;
+  }
+}, 5 * 60 * 1000); // 5 phút
 
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -340,7 +353,14 @@ class IPATool {
             message: app.customerMessage || '2FA verification required',
           };
         }
-        throw new Error(app?.customerMessage || 'Failed to get app information');
+        
+        // SỬA: Xử lý lỗi "client not found" cụ thể
+        const errorMessage = app?.customerMessage || 'Failed to get app information';
+        if (errorMessage.includes('client not found') || errorMessage.includes('not found')) {
+          throw new Error('APP_NOT_OWNED: Ứng dụng này chưa được mua hoặc không có trong mục đã mua của Apple ID này.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const appInfo = {
@@ -578,11 +598,19 @@ class IPATool {
       console.error('Download error:', error);
       const msg = String(error.message || '');
       let code = undefined;
+      
+      // SỬA: Phân loại lỗi cụ thể hơn
       if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
       else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
       else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+      else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+      else if (msg.includes('client not found') || msg.includes('not found')) code = 'APP_NOT_OWNED';
+      else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
       progressMap.set(requestId, { progress: 0, status: 'error', error: msg, code });
+      
+      // SỬA: Đảm bảo giảm job counter ngay cả khi có lỗi
+      currentJobs = Math.max(0, currentJobs - 1);
       throw error;
     } finally {
       console.log(`Finished processing requestId: ${requestId}`);
@@ -850,6 +878,8 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
             require2FA: true,
             message: result.message,
           });
+          // SỬA: Đảm bảo giảm job counter khi có lỗi 2FA
+          currentJobs = Math.max(0, currentJobs - 1);
           return;
         }
 
@@ -878,6 +908,9 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
             }
           }
         }, 1000);
+        
+        // SỬA: Đảm bảo giảm job counter khi thành công
+        currentJobs = Math.max(0, currentJobs - 1);
       } catch (error) {
         console.error('Background download error:', error);
         const msg = String(error.message || '');
@@ -885,6 +918,8 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
         if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
         else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
         else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+        else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+        else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
         progressMap.set(requestId, {
           progress: 0,
@@ -892,12 +927,15 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
           error: msg || 'Download failed',
           code,
         });
-      } finally {
+        
+        // SỬA: Đảm bảo giảm job counter khi có lỗi
         currentJobs = Math.max(0, currentJobs - 1);
       }
     });
   } catch (error) {
     console.error('Download error:', error);
+    // SỬA: Đảm bảo giảm job counter khi có lỗi ở level ngoài
+    currentJobs = Math.max(0, currentJobs - 1);
     res.status(500).json({
       success: false,
       error: error.message || 'Download failed',

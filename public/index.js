@@ -167,13 +167,18 @@ document.addEventListener('DOMContentLoaded', () => {
     setLoading(false);
   };
 
+  // SỬA: Cập nhật hàm mapServerErrorToMessage để xử lý lỗi cụ thể
   const mapServerErrorToMessage = (error, message) => {
     const raw = `${error || ''} ${message || ''}`.trim();
+    
     if (raw.includes('SERVER_BUSY')) return 'Máy chủ đang bận, vui lòng thử lại sau.';
+    if (raw.includes('RATE_LIMIT_EXCEEDED') || raw.includes('too many')) return 'Quá nhiều yêu cầu. Vui lòng đợi 15 phút rồi thử lại.';
+    if (raw.includes('APP_NOT_OWNED') || raw.includes('client not found')) return 'Ứng dụng này chưa được mua hoặc không có trong mục đã mua của Apple ID. Vui lòng kiểm tra lại.';
     if (raw.startsWith('FILE_TOO_LARGE') || raw.includes('File IPA vượt quá giới hạn')) return 'Ứng dụng vượt quá dung lượng cho phép (300MB). Vui lòng chọn phiên bản nhỏ hơn.';
     if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau.';
     if (raw === 'CANCELLED_BY_CLIENT') return 'Tiến trình đã bị hủy.';
     if (raw.startsWith('RECAPTCHA')) return 'Xác minh reCAPTCHA thất bại. Vui lòng thử lại.';
+    
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
 
@@ -550,37 +555,64 @@ document.addEventListener('DOMContentLoaded', () => {
       hideError();
       safeCloseEventSource();
 
+      // SỬA: Reset tất cả state quan trọng
+      state.requestId = null;
+      state.lastProgressStep = null;
+      state.progressHistory = [];
+      
       // Dọn input AppID/AppVer
       if (elements.appIdInput)  elements.appIdInput.value  = '';
       if (elements.appVerInput) elements.appVerInput.value = '';
 
-      // Reset ghi chú tương thích & nút cài đặt
+      // Reset reCAPTCHA
+      try { 
+        if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) {
+          grecaptcha.reset(recaptchaWidgetId); 
+        }
+      } catch (e) {
+        console.log('Recaptcha reset error:', e);
+      }
+
+      // Reset giao diện
       const compatNote = document.getElementById('compatNote');
       if (compatNote) {
         compatNote.className = 'mt-3 px-4 py-3 rounded-lg text-sm bg-yellow-50 text-yellow-700 border border-yellow-300 flex items-start hidden';
         compatNote.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 mt-1"></i><span>Đang kiểm tra khả năng tương thích...</span>';
       }
+      
       if (elements.installLink) {
         elements.installLink.href = '#';
         elements.installLink.className = 'flex-1 px-6 py-3 rounded-lg font-medium text-white bg-gray-400 cursor-not-allowed flex items-center justify-center';
         elements.installLink.innerHTML = '<i class="fas fa-mobile-alt mr-2"></i> Cài trực tiếp';
       }
+      
       if (elements.downloadLink) elements.downloadLink.href = '#';
 
-      // Dọn tiến trình + notice
+      // Dọn tiến trình
       clearProgressSteps();
       if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
-      if (elements.progressSteps) { elements.progressSteps.classList.add('hidden'); elements.progressSteps.style.display = 'none'; }
-      if (elements.progressBar)  { elements.progressBar.style.width = '0%'; elements.progressBar.classList.add('hidden'); elements.progressBar.style.display = 'none'; }
-      if (elements.progressWrap) { elements.progressWrap.classList.add('hidden'); elements.progressWrap.style.display = 'none'; }
-
-      // Reset reCAPTCHA để chuẩn bị lượt tải mới
-      try { if (typeof grecaptcha !== 'undefined' && recaptchaWidgetId !== null) grecaptcha.reset(recaptchaWidgetId); } catch {}
+      if (elements.progressSteps) { 
+        elements.progressSteps.classList.add('hidden'); 
+        elements.progressSteps.style.display = 'none'; 
+      }
+      if (elements.progressBar)  { 
+        elements.progressBar.style.width = '0%'; 
+        elements.progressBar.classList.add('hidden'); 
+        elements.progressBar.style.display = 'none'; 
+      }
+      if (elements.progressWrap) { 
+        elements.progressWrap.classList.add('hidden'); 
+        elements.progressWrap.style.display = 'none'; 
+      }
 
       transition(elements.result, elements.step3);
       setProgress(0);
       setLoading(false);
-      if (elements.appIdInput) elements.appIdInput.focus();
+      
+      // Focus vào input AppID
+      setTimeout(() => {
+        if (elements.appIdInput) elements.appIdInput.focus();
+      }, 100);
     });
   }
 });
