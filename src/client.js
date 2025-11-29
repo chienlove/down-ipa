@@ -109,8 +109,8 @@ static async purchase(adamId, Cookie, opts = {}) {
   const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
   const MAX_FOLLOWS = 8;
 
-  // ƯU TIÊN storefront do server truyền xuống; KHÔNG auto detect ở hàm purchase
-  const storefront = opts.storefront || null;
+  // ✅ Ưu tiên storefront từ server; nếu không có thì tự detect giống download()
+  const storefront = opts.storefront || await this.detectStorefront();
 
   const commonAuth = {
     'X-Dsid': Cookie.dsPersonId,
