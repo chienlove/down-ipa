@@ -3,69 +3,11 @@ import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
 
-/**
- * Store client
- * - authenticate(email, password, mfa?)
- * - download(appIdentifier, appVerId?, Cookie, opts?)
- * - purchase(adamId, Cookie, opts?)  // opts.storefront được ưu tiên nếu truyền vào
- * - purchaseHistory(Cookie)
- */
 class Store {
   static get guid() {
     return getMAC().replace(/:/g, '').toUpperCase();
   }
 
-  // ===== Headers động mỗi request (tránh lệch giờ & timezone) =====
-  static dynHeaders(extra = {}) {
-    let tz = 'Asia/Bangkok';
-    try {
-      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz;
-    } catch {}
-    return {
-      'User-Agent':
-        'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-      Accept: '*/*',
-      'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-      'X-Apple-I-Client-Time': new Date().toISOString(),
-      'X-Apple-I-TimeZone': tz,
-      ...extra,
-    };
-  }
-
-  // Wrapper fetch có cookie jar
-  static async fetch(url, opts) {
-    return Store._fetch(url, opts);
-  }
-
-  // ===== Phát hiện Storefront (Apple trả về trong header). Giữ lại để dùng khi cần. =====
-  static async detectStorefront() {
-    if (
-      this._storefront &&
-      Date.now() - (this._sfAt || 0) < 15 * 60 * 1000
-    ) {
-      return this._storefront;
-    }
-    const url =
-      'https://itunes.apple.com/WebObjects/MZStore.woa/wa/storeFront';
-    const resp = await this.fetch(url, {
-      method: 'GET',
-      headers: this.dynHeaders(),
-    });
-    const sf = resp.headers?.get?.('x-apple-store-front');
-    if (sf) {
-      // ví dụ header: "143471-1,32;hs=0"
-      this._storefront = sf.split(';')[0].trim();
-      this._sfAt = Date.now();
-      return this._storefront;
-    }
-    return null;
-  }
-
-  static get lastStorefront() {
-    return this._storefront || null;
-  }
-
-  /* ==================== AUTH ==================== */
   static async authenticate(email, password, mfa) {
     const dataJson = {
       appleId: email,
@@ -81,267 +23,74 @@ class Store {
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
-      headers: this.dynHeaders({
-        'Content-Type': 'application/x-apple-plist',
-      }),
+      headers: this.Headers
     });
     const parsedResp = plist.parse(await resp.text());
-    return {
-      ...parsedResp,
-      _state: parsedResp.failureType ? 'failure' : 'success',
-    };
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
-  /* ==================== DOWNLOAD TICKET ==================== */
-  // Giữ nguyên hành vi cũ (tự detect storefront) nhưng cho phép override qua opts.storefront nếu cần
-  static async download(appIdentifier, appVerId, Cookie, opts = {}) {
+  static async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
       creditDisplay: '',
       guid: this.guid,
       salableAdamId: appIdentifier,
-      ...(appVerId && { externalVersionId: appVerId }),
+      ...(appVerId && { externalVersionId: appVerId })
     };
     const body = plist.build(dataJson);
-
-    const storefront = opts.storefront || (await this.detectStorefront());
-
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
-      headers: this.dynHeaders({
-        'Content-Type': 'application/x-apple-plist',
+      headers: {
+        ...this.Headers,
         'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId,
-        ...(storefront ? { 'X-Apple-Store-Front': storefront } : {}),
-      }),
+        'iCloud-DSID': Cookie.dsPersonId
+      }
     });
     const parsedResp = plist.parse(await resp.text());
-    return {
-      ...parsedResp,
-      _state: parsedResp.failureType ? 'failure' : 'success',
-    };
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
-  /* ==================== PURCHASE ==================== */
-  /**
-   * Thêm app vào "Đã mua" (app free).
-   * Ưu tiên opts.storefront nếu được truyền vào từ server.
-   * Nếu không có thì tự detect, và (tuỳ chọn) fallback DEFAULT_APPLE_STOREFRONT từ env.
-   * Follow dialog rộng: buttonParams → buyParams → metrics.actionUrl → 2060 retry.
-   * Nếu vẫn 2060 thì kiểm tra purchaseHistory; nếu app đã nằm trong đó thì coi là success.
-   */
-  static async purchase(adamId, Cookie, opts = {}) {
-    const base =
-      'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa';
-    const entryUrl = `${base}/buyProduct?guid=${this.guid}`;
-    const MAX_FOLLOWS = 8;
-
-    // ✅ Ưu tiên storefront từ server; nếu không có thì tự detect giống download()
-    let storefront = opts.storefront || (await this.detectStorefront());
-
-    // Fallback thêm từ env nếu vẫn không có
-    if (!storefront && process.env.DEFAULT_APPLE_STOREFRONT) {
-      storefront = process.env.DEFAULT_APPLE_STOREFRONT;
-    }
-
-    const commonAuth = {
-      'X-Dsid': Cookie.dsPersonId,
-      'iCloud-DSID': Cookie.dsPersonId,
-      ...(storefront ? { 'X-Apple-Store-Front': storefront } : {}),
-    };
-
-    const normalize = (u) =>
-      u?.startsWith('http')
-        ? u
-        : u
-        ? `https://${u}`
-        : `${base}/buyProduct`;
-
-    const postForm = async (actionUrl, formBody) => {
-      return this.fetch(normalize(actionUrl), {
-        method: 'POST',
-        headers: this.dynHeaders({
-          ...commonAuth,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        }),
-        body: formBody,
-      });
-    };
-
-    // B1: khởi tạo (PLIST)
-    const firstBody = plist.build({
+  static async purchase(bundleId, Cookie) {
+    const dataJson = {
       guid: this.guid,
-      salableAdamId: adamId,
-      ageCheck: true,
-      hasBeenAuthedForBuy: true,
-      isInApp: false,
-    });
-    let resp = await this.fetch(entryUrl, {
-      method: 'POST',
-      headers: this.dynHeaders({
-        ...commonAuth,
-        'Content-Type': 'application/x-apple-plist',
-      }),
-      body: firstBody,
-    });
-    let data = plist.parse(await resp.text());
-    if (!data.failureType && !data.dialog) {
-      return { ...data, _state: 'success', storefrontUsed: storefront };
-    }
-
-    // B2: follow dialog/metrics – ƯU TIÊN buttonParams rồi mới buyParams
-    for (let i = 0; i < MAX_FOLLOWS; i++) {
-      const dialog = data.dialog || null;
-      const metrics = data.metrics || {};
-      const actionUrl =
-        metrics?.actionUrl ||
-        'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct';
-      let followed = false;
-
-      // 1) Các dialog đặc biệt (AskToBuy / Age / T&C) đưa trong buttonParams
-      if (dialog?.okButtonAction?.buttonParams) {
-        resp = await postForm(actionUrl, dialog.okButtonAction.buttonParams);
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // 2) Luồng Buy truyền thống
-      else if (
-        dialog?.okButtonAction?.kind === 'Buy' &&
-        dialog?.okButtonAction?.buyParams
-      ) {
-        resp = await postForm(actionUrl, dialog.okButtonAction.buyParams);
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // 3) Có metrics.actionUrl → tiếp tục với form tối thiểu
-      else if (metrics?.actionUrl) {
-        const bp = new URLSearchParams();
-        bp.append('salableAdamId', adamId);
-        bp.append('guid', this.guid);
-        bp.append('hasBeenAuthedForBuy', 'true');
-        bp.append('isInApp', 'false');
-        bp.append('ageCheck', 'true');
-        resp = await postForm(metrics.actionUrl, bp.toString());
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-      // 4) Vẫn 2060 → đẩy thêm 1 nhịp chuẩn hoá
-      else if (data.failureType === '2060') {
-        const bp = new URLSearchParams();
-        bp.append('salableAdamId', adamId);
-        bp.append('guid', this.guid);
-        bp.append('hasBeenAuthedForBuy', 'true');
-        bp.append('isInApp', 'false');
-        bp.append('ageCheck', 'true');
-        resp = await postForm(
-          'p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct',
-          bp.toString()
-        );
-        data = plist.parse(await resp.text());
-        followed = true;
-      }
-
-      if (followed) {
-        if (!data.failureType && !data.dialog) {
-          return { ...data, _state: 'success', storefrontUsed: storefront };
-        }
-        continue;
-      }
-      break;
-    }
-
-    // ⚠️ Nếu Apple trả failureType 2060, thử kiểm tra purchaseHistory xem app đã được add chưa
-    if (data.failureType === '2060') {
-      try {
-        const hist = await this.purchaseHistory(Cookie, { storefront });
-        const songs = hist?.songList || [];
-
-        const found = songs.some((s) => {
-          const m = s.metadata || {};
-          const candidates = [
-            s.itemId,
-            s.adamId,
-            m.itemId,
-            m.adamId,
-          ].filter(Boolean);
-
-          return candidates.some(
-            (v) => String(v) === String(adamId)
-          );
-        });
-
-        if (found) {
-          // Apple trả 2060 nhưng lịch sử mua cho thấy app đã được add
-          return {
-            ...data,
-            _state: 'success',
-            storefrontUsed: storefront,
-            note:
-              'Apple trả mã 2060 nhưng app đã xuất hiện trong purchaseHistory.',
-          };
-        }
-      } catch (err) {
-        // Nếu purchaseHistory lỗi thì cứ để flow cũ xử lý
-        // console.error('purchaseHistory check failed', err);
-      }
-    }
-
-    // Kết thúc: còn failure → phân loại thân thiện
-    if (data.failureType) {
-      const did = data.metrics?.dialogId || '';
-      const isFamilyAge = did === 'MZCommerce.FamilyAgeCheck';
-      const isATB =
-        /AskToBuy/i.test(did) || /MZCommerce\.AskToBuy/i.test(did);
-
-      const baseMsg =
-        data.customerMessage ||
-        `Apple từ chối giao dịch (mã ${data.failureType}).`;
-
-      const hint =
-        isFamilyAge || isATB
-          ? ' Thường gặp khi Apple yêu cầu xác minh tài khoản (tuổi, Family/Ask To Buy hoặc điều khoản mới). Hãy thử mở App Store với Apple ID này và tải 1 app miễn phí trong đúng quốc gia.'
-          : ' Có thể liên quan đến vùng tài khoản, điều khoản mới hoặc hạn chế Family/Ask To Buy.';
-
-      return {
-        ...data,
-        _state: 'failure',
-        storefrontUsed: storefront,
-        failureCode: isFamilyAge
-          ? 'ACCOUNT_FAMILY_AGE_CHECK'
-          : isATB
-          ? 'ACCOUNT_ASK_TO_BUY'
-          : data.failureType,
-        customerMessage: baseMsg + hint,
-      };
-    }
-
-    return { ...data, _state: 'success', storefrontUsed: storefront };
-  }
-
-  /* ==================== PURCHASE HISTORY ==================== */
-  static async purchaseHistory(Cookie, opts = {}) {
-    const storefront = opts.storefront || (await this.detectStorefront());
-    const url =
-      'https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory';
+      salableAdamId: bundleId
+    };
+    const body = plist.build(dataJson);
+    const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct?guid=${this.guid}`;
     const resp = await this.fetch(url, {
       method: 'POST',
-      headers: this.dynHeaders({
+      body,
+      headers: {
+        ...this.Headers,
         'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId,
-        ...(storefront ? { 'X-Apple-Store-Front': storefront } : {}),
-      }),
+        'iCloud-DSID': Cookie.dsPersonId
+      }
+    });
+    const parsedResp = plist.parse(await resp.text());
+    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+  }
+
+  static async purchaseHistory(Cookie) {
+    const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
+    const resp = await this.fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.Headers,
+        'X-Dsid': Cookie.dsPersonId,
+        'iCloud-DSID': Cookie.dsPersonId
+      }
     });
     const parsedResp = plist.parse(await resp.text());
     return parsedResp;
   }
 }
 
-// Cookie jar
 Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
-Store._fetch = fetchCookie(nodeFetch, Store.cookieJar);
-
-// Giữ cho tương thích code cũ (nếu nơi nào lỡ dùng Store.Headers)
-Store.Headers = Store.dynHeaders();
+Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
+Store.Headers = {
+  'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
+  'Content-Type': 'application/x-www-form-urlencoded',
+};
 
 export { Store };
