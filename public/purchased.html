@@ -1,49 +1,514 @@
 <!doctype html>
 <html lang="vi">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Thêm vào Đã mua</title>
-<body style="max-width:680px;margin:40px auto;font-family:system-ui,-apple-system,Segoe UI,Roboto">
-  <h1>⭐ Thêm ứng dụng vào “Đã mua”</h1>
-  <p>Nhập Apple ID, mật khẩu, và App ID hoặc App Store URL. Với app miễn phí, Apple sẽ ghi nhận như “đã sở hữu”.</p>
-
-  <form id="f" style="display:grid;gap:8px;margin:16px 0">
-    <input id="APPLE_ID" placeholder="Apple ID" autocomplete="username" required />
-    <input id="PASSWORD" placeholder="Mật khẩu" type="password" autocomplete="current-password" required />
-    <input id="CODE" placeholder="Mã 2FA (nếu có)" />
-    <input id="INPUT" placeholder="App ID hoặc https://apps.apple.com/.../id1234567890" required />
-
-    <!-- MỚI: Storefront tùy chọn để ép quốc gia khớp với Apple ID (ví dụ VN: 143471-1,32) -->
-    <input id="STOREFRONT" placeholder="Storefront (tùy chọn, ví dụ 143471-1,32 cho VN)" />
-
-    <button type="submit">Thêm vào Đã mua</button>
-  </form>
-
-  <pre id="out" style="white-space:pre-wrap;background:#f7f7f7;border:1px solid #ddd;padding:12px;border-radius:6px"></pre>
-
-  <script>
-    const $ = s => document.querySelector(s);
-    $('#f').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      $('#out').textContent = 'Đang xử lý...';
-      const body = {
-        APPLE_ID: $('#APPLE_ID').value.trim(),
-        PASSWORD: $('#PASSWORD').value,
-        CODE: $('#CODE').value.trim() || undefined,
-        input: $('#INPUT').value.trim(),
-        storefront: $('#STOREFRONT').value.trim() || undefined
-      };
-      const r = await fetch('/purchase', {
-        method:'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(body)
-      });
-      const data = await r.json();
-      if (data.require2FA) {
-        $('#out').textContent = 'Yêu cầu 2FA. Nhập mã vào ô CODE rồi bấm lại.';
-      } else {
-        $('#out').textContent = JSON.stringify(data, null, 2);
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <title>Thêm ứng dụng vào “Đã mua”</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f3f4f6;
+        --card-bg: #ffffff;
+        --text: #111827;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --primary: #2563eb;
+        --primary-dark: #1d4ed8;
+        --danger: #dc2626;
+        --success: #16a34a;
+        --radius: 10px;
       }
-    });
-  </script>
-</body>
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #020617;
+          --card-bg: #020617;
+          --text: #e5e7eb;
+          --muted: #9ca3af;
+          --border: #111827;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        background: radial-gradient(circle at top, #0f172a, #020617 60%);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          Roboto, sans-serif;
+        color: var(--text);
+        padding: 24px 12px;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 720px;
+        background: var(--card-bg);
+        border-radius: 20px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
+        padding: 20px 18px 18px;
+      }
+
+      @media (min-width: 640px) {
+        .card {
+          padding: 24px 24px 20px;
+        }
+      }
+
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      h1 span.emoji {
+        font-size: 24px;
+      }
+
+      .subtitle {
+        margin: 0 0 16px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      form {
+        display: grid;
+        gap: 10px;
+        margin-top: 8px;
+        margin-bottom: 14px;
+      }
+
+      label {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        display: block;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      input,
+      select {
+        width: 100%;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        padding: 8px 14px;
+        font-size: 13px;
+        background: rgba(15, 23, 42, 0.02);
+        color: var(--text);
+        outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease,
+          background 0.15s ease;
+      }
+
+      input::placeholder {
+        color: #9ca3af;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.35);
+        background: rgba(15, 23, 42, 0.03);
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 10px;
+      }
+
+      @media (max-width: 480px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      button[type='submit'] {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #2563eb, #4f46e5);
+        color: #f9fafb;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: transform 0.12s ease, box-shadow 0.12s ease,
+          filter 0.12s ease;
+        box-shadow: 0 10px 18px rgba(37, 99, 235, 0.45);
+      }
+
+      button[type='submit']:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.03);
+        box-shadow: 0 14px 26px rgba(37, 99, 235, 0.55);
+      }
+
+      button[type='submit']:active {
+        transform: translateY(0);
+        box-shadow: 0 6px 12px rgba(15, 23, 42, 0.9);
+      }
+
+      button[type='submit']:disabled {
+        opacity: 0.6;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .btn-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.02);
+        color: var(--muted);
+      }
+
+      .status {
+        border-radius: 12px;
+        padding: 8px 10px;
+        font-size: 12px;
+        margin-bottom: 8px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status--info {
+        display: flex;
+        background: rgba(59, 130, 246, 0.08);
+        border: 1px solid rgba(59, 130, 246, 0.4);
+        color: #1d4ed8;
+      }
+
+      .status--success {
+        display: flex;
+        background: rgba(22, 163, 74, 0.08);
+        border: 1px solid rgba(22, 163, 74, 0.45);
+        color: #15803d;
+      }
+
+      .status--error {
+        display: flex;
+        background: rgba(220, 38, 38, 0.08);
+        border: 1px solid rgba(220, 38, 38, 0.4);
+        color: #b91c1c;
+      }
+
+      .status-icon {
+        font-size: 14px;
+      }
+
+      .status-text {
+        flex: 1;
+      }
+
+      .status-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          'Liberation Mono', 'Courier New', monospace;
+        font-size: 11px;
+        opacity: 0.8;
+      }
+
+      .output-wrap {
+        margin-top: 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.02);
+        padding: 8px;
+      }
+
+      #out {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          'Liberation Mono', 'Courier New', monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        max-height: 320px;
+        overflow: auto;
+      }
+
+      .helper-text {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .storefront-inline {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      @media (min-width: 520px) {
+        .storefront-inline {
+          flex-direction: row;
+          align-items: center;
+        }
+        .storefront-inline > * {
+          flex: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <header style="margin-bottom: 10px">
+        <h1>
+          <span class="emoji">⭐</span>
+          <span>Thêm ứng dụng vào “Đã mua”</span>
+          <span class="pill">
+            <span>Admin only</span>
+          </span>
+        </h1>
+        <p class="subtitle">
+          Dùng cho <strong>app miễn phí</strong>. Apple sẽ ghi nhận app vào Apple
+          ID như khi bạn bấm “Nhận/Get” trên App Store.
+        </p>
+      </header>
+
+      <form id="f">
+        <div class="field">
+          <label for="APPLE_ID">Apple ID (email)</label>
+          <input
+            id="APPLE_ID"
+            placeholder="ví dụ: user@example.com"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="PASSWORD">Mật khẩu Apple ID</label>
+          <input
+            id="PASSWORD"
+            placeholder="Nhập mật khẩu"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="CODE">Mã 2FA (nếu có)</label>
+            <input id="CODE" placeholder="Có thể để trống" />
+          </div>
+          <div class="field">
+            <label for="STOREFRONT_SELECT">Storefront</label>
+            <div class="storefront-inline">
+              <select id="STOREFRONT_SELECT">
+                <option value="">Tự động (khuyên dùng)</option>
+                <option value="143471-1,32">🇻🇳 Việt Nam (143471-1,32)</option>
+                <option value="143441-1,32">🇺🇸 United States (143441-1,32)</option>
+                <option value="143462-1,32">🇯🇵 Japan (143462-1,32)</option>
+                <option value="143466-1,32">🇰🇷 Korea (143466-1,32)</option>
+                <option value="143464-1,32">🇸🇬 Singapore (143464-1,32)</option>
+                <option value="custom">Tự nhập Storefront…</option>
+              </select>
+            </div>
+            <div class="helper-text">
+              Chọn quốc gia trùng với vùng Apple ID. Nếu không chắc, để
+              <strong>Tự động</strong>.
+            </div>
+          </div>
+        </div>
+
+        <div class="field" id="storefront-custom-wrap" style="display: none">
+          <label for="STOREFRONT">Storefront tùy chỉnh</label>
+          <input
+            id="STOREFRONT"
+            placeholder="Ví dụ: 143471-1,32"
+            autocomplete="off"
+          />
+          <div class="helper-text">
+            Chỉ cần nếu muốn ép một mã storefront cụ thể.
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="INPUT">App ID hoặc link App Store</label>
+          <input
+            id="INPUT"
+            placeholder="Ví dụ: 1174039276 hoặc https://apps.apple.com/.../id1174039276"
+            required
+          />
+        </div>
+
+        <div style="display: flex; justify-content: space-between; gap: 8px">
+          <button type="submit" id="submitBtn">
+            <span class="btn-label">
+              <span id="btnIcon">➕</span>
+              <span id="btnText">Thêm vào Đã mua</span>
+            </span>
+          </button>
+          <div class="helper-text" style="align-self: center; text-align: right">
+            ⚠️ Chỉ dùng với <strong>Apple ID phụ của bạn</strong>. Không nhập
+            tài khoản của người khác.
+          </div>
+        </div>
+      </form>
+
+      <div id="status" class="status">
+        <div class="status-icon" id="statusIcon">ℹ️</div>
+        <div class="status-text" id="statusText"></div>
+        <div class="status-code" id="statusCode"></div>
+      </div>
+
+      <div class="output-wrap">
+        <pre id="out">Chưa có request nào được gửi.</pre>
+      </div>
+    </main>
+
+    <script>
+      const $ = (s) => document.querySelector(s);
+
+      const statusEl = $('#status');
+      const statusIconEl = $('#statusIcon');
+      const statusTextEl = $('#statusText');
+      const statusCodeEl = $('#statusCode');
+      const outEl = $('#out');
+      const form = $('#f');
+      const submitBtn = $('#submitBtn');
+      const btnIcon = $('#btnIcon');
+      const btnText = $('#btnText');
+      const storefrontSelect = $('#STOREFRONT_SELECT');
+      const storefrontCustomWrap = $('#storefront-custom-wrap');
+      const storefrontInput = $('#STOREFRONT');
+
+      function setStatus(type, text, code) {
+        statusEl.className = 'status';
+        if (!type) {
+          statusEl.style.display = 'none';
+          return;
+        }
+        statusEl.style.display = 'flex';
+        if (type === 'info') {
+          statusEl.classList.add('status--info');
+          statusIconEl.textContent = 'ℹ️';
+        } else if (type === 'success') {
+          statusEl.classList.add('status--success');
+          statusIconEl.textContent = '✅';
+        } else if (type === 'error') {
+          statusEl.classList.add('status--error');
+          statusIconEl.textContent = '⚠️';
+        }
+        statusTextEl.textContent = text || '';
+        statusCodeEl.textContent = code ? `(${code})` : '';
+      }
+
+      storefrontSelect.addEventListener('change', () => {
+        if (storefrontSelect.value === 'custom') {
+          storefrontCustomWrap.style.display = 'block';
+          storefrontInput.focus();
+        } else {
+          storefrontCustomWrap.style.display = 'none';
+          storefrontInput.value = '';
+        }
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setStatus('info', 'Đang xử lý yêu cầu…', '');
+        outEl.textContent = 'Đang gọi API /purchase…';
+
+        const storefrontSelectVal = storefrontSelect.value;
+        const storefrontFinal =
+          storefrontSelectVal === 'custom'
+            ? storefrontInput.value.trim() || undefined
+            : storefrontSelectVal || undefined;
+
+        const body = {
+          APPLE_ID: $('#APPLE_ID').value.trim(),
+          PASSWORD: $('#PASSWORD').value,
+          CODE: $('#CODE').value.trim() || undefined,
+          input: $('#INPUT').value.trim(),
+          storefront: storefrontFinal,
+        };
+
+        submitBtn.disabled = true;
+        btnIcon.textContent = '⏳';
+        btnText.textContent = 'Đang thực hiện…';
+
+        try {
+          const r = await fetch('/purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+
+          const data = await r.json().catch(() => ({}));
+
+          if (data.require2FA) {
+            setStatus(
+              'info',
+              'Apple yêu cầu mã 2FA. Nhập mã vào ô "Mã 2FA" rồi bấm lại.',
+              ''
+            );
+            outEl.textContent = JSON.stringify(data, null, 2);
+          } else if (data.success) {
+            const msg =
+              data.message ||
+              data.customerMessage ||
+              'Đã thêm vào Đã mua (theo backend).';
+            setStatus('success', msg, data.failureType || '');
+            outEl.textContent = JSON.stringify(data, null, 2);
+          } else {
+            const msg =
+              data.error ||
+              data.customerMessage ||
+              'Không thể thêm vào mục Đã mua.';
+            setStatus(
+              'error',
+              msg,
+              data.failureType || data.failureCode || ''
+            );
+            outEl.textContent = JSON.stringify(data, null, 2);
+          }
+        } catch (err) {
+          setStatus(
+            'error',
+            'Lỗi mạng hoặc server. Xem console để biết thêm chi tiết.',
+            ''
+          );
+          outEl.textContent = String(err);
+        } finally {
+          submitBtn.disabled = false;
+          btnIcon.textContent = '➕';
+          btnText.textContent = 'Thêm vào Đã mua';
+        }
+      });
+    </script>
+  </body>
 </html>
