@@ -857,7 +857,7 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 2) Keychain pass + HÀM GỌI IPATOOL (đã sửa)
+    // 2) Keychain pass + HÀM GỌI IPATOOL
     // ==============================
     const keychainPass = `${APPLE_ID}-storeios-pass`;
 
@@ -873,7 +873,6 @@ app.post('/purchase', async (req, res) => {
           const out = stdout?.toString() || '';
           const errOut = stderr?.toString() || '';
 
-          // Nếu không có output JSON → coi như lỗi thực sự
           if (!out.trim()) {
             if (err) {
               return reject(
@@ -886,7 +885,6 @@ app.post('/purchase', async (req, res) => {
           try {
             const parsed = JSON.parse(out);
 
-            // Nếu ipatool exit code ≠ 0 vẫn resolve, chỉ gắn thêm meta
             if (err) {
               parsed.__exitCode = err.code;
               parsed.__signal = err.signal;
@@ -902,7 +900,7 @@ app.post('/purchase', async (req, res) => {
       });
 
     // ==============================
-    // 3) Bước 1: auth login (phát hiện 2FA)
+    // 3) Bước 1: auth login (bắt 2FA ở bước auth)
     // ==============================
     const authArgs = [
       'auth',
@@ -930,7 +928,6 @@ app.post('/purchase', async (req, res) => {
         /failed to get account: failed to get item/i.test(rawErr);
 
       if (looksLike2FA && !CODE) {
-        // Thiếu mã 2FA → yêu cầu người dùng nhập mã
         return res.status(401).json({
           success: false,
           require2FA: true,
@@ -950,7 +947,7 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 4) Bước 2: purchase (bắt STDQ và coi là đã mua)
+    // 4) Bước 2: purchase (bắt STDQ + 2FA ở bước purchase)
     // ==============================
     const purchaseArgs = [
       'purchase',
@@ -965,10 +962,25 @@ app.post('/purchase', async (req, res) => {
 
     if (purchase.success === false || purchase.error) {
       const rawErr = (purchase.error || purchase.message || '').toString();
-      const isSTDQ = /STDQ/i.test(rawErr);
 
+      const isSTDQ = /STDQ/i.test(rawErr);
+      const needs2FA =
+        /failed to get account: failed to get item/i.test(rawErr) ||
+        /two[- ]factor|2fa|required an auth code|auth code/i.test(rawErr);
+
+      // 🔐 Trường hợp ipatool báo lỗi keychain/account nhưng thực chất là cần 2FA
+      if (needs2FA && !CODE) {
+        return res.status(401).json({
+          success: false,
+          require2FA: true,
+          error:
+            'Tài khoản này đã bật xác minh 2 bước (2FA). Vui lòng nhập mã 6 số vào ô “Mã 2FA” rồi gửi lại.',
+          rawPurchase: purchase
+        });
+      }
+
+      // 📌 STDQ: app đã nằm trong Purchased
       if (isSTDQ) {
-        // Trường hợp app đã nằm trong “Đã mua” → coi như success
         return res.status(200).json({
           success: true,
           alreadyInPurchased: true,
@@ -979,6 +991,7 @@ app.post('/purchase', async (req, res) => {
         });
       }
 
+      // Các lỗi khác
       return res.status(400).json({
         success: false,
         error:
