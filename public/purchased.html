@@ -3,507 +3,526 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>Thêm ứng dụng vào “Đã mua” – iOS Purchase Helper</title>
+<title>Thêm ứng dụng vào "Đã mua" – iOS Purchase Helper</title>
 
 <style>
     :root {
-        --bg-top: #e0f2fe;
-        --bg-bottom: #fef9c3;
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
+        --secondary: #ec4899;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --bg-gradient-start: #fdf4ff;
+        --bg-gradient-end: #e0e7ff;
         --card-bg: #ffffff;
+        --text-dark: #1e293b;
+        --text-muted: #64748b;
         --border: #e2e8f0;
-        --primary: #2563eb;
-        --primary-dark: #1d4ed8;
-        --success: #16a34a;
-        --danger: #dc2626;
-        --warning: #f97316;
-        --text: #0f172a;
-        --muted: #6b7280;
-        --info: #4f46e5;
+        --input-bg: #f8fafc;
     }
 
     * {
         box-sizing: border-box;
+        margin: 0;
+        padding: 0;
     }
 
     body {
         min-height: 100vh;
-        margin: 0;
-        padding: 20px 16px 32px;
-        background: linear-gradient(135deg, var(--bg-top), var(--bg-bottom));
-        font-family: system-ui, -apple-system, Segoe UI, Roboto;
-        color: var(--text);
-        display: flex;
-        justify-content: center;
+        padding: 24px 16px 40px;
+        background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        color: var(--text-dark);
+        line-height: 1.6;
     }
 
-    .page {
-        width: 100%;
-        max-width: 720px;
+    .container {
+        max-width: 680px;
+        margin: 0 auto;
     }
 
-    .page-header {
+    /* Header */
+    .header {
         text-align: center;
-        margin-bottom: 16px;
+        margin-bottom: 32px;
     }
 
-    .page-title {
-        font-size: 26px;
+    .header-title {
+        font-size: 32px;
         font-weight: 800;
-        margin: 0;
-        display: inline-flex;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 8px;
+        display: flex;
         align-items: center;
-        gap: 8px;
-        color: #0f172a;
+        justify-content: center;
+        gap: 12px;
+        flex-wrap: wrap;
     }
 
-    .badge {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        padding: 3px 7px;
-        border-radius: 999px;
-        background: rgba(37,99,235,0.08);
-        color: var(--primary-dark);
-        font-weight: 700;
+    .header-icon {
+        font-size: 36px;
     }
 
-    .page-sub {
-        margin-top: 6px;
-        font-size: 14px;
-        color: var(--muted);
+    .header-subtitle {
+        font-size: 15px;
+        color: var(--text-muted);
+        font-weight: 500;
     }
 
+    /* Card */
     .card {
         background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 18px 18px 20px;
-        box-shadow: 0 6px 16px rgba(15,23,42,0.08);
-        margin-bottom: 16px;
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.8);
     }
 
-    .intro-card {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
+    /* Info Box */
+    .info-box {
+        background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+        border-radius: 16px;
+        padding: 20px;
+        border-left: 4px solid var(--primary);
     }
 
-    .intro-title {
-        font-weight: 700;
+    .info-title {
         font-size: 16px;
-        color: var(--info);
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 12px;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
     }
 
-    .intro-text {
+    .info-text {
         font-size: 14px;
-        line-height: 1.6;
-        color: var(--text);
-    }
-
-    .intro-example {
-        margin-top: 8px;
-        padding: 10px 12px;
-        border-radius: 10px;
-        background: #eef2ff;
-        font-size: 13px;
-        color: #312e81;
-        border-left: 3px solid #4f46e5;
-    }
-
-    .intro-example strong {
-        font-weight: 700;
-    }
-
-    .form-card-title {
-        font-size: 16px;
-        font-weight: 700;
-        margin-bottom: 10px;
-        color: #0f172a;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .form-card-title span.icon {
-        font-size: 18px;
-    }
-
-    .form-card-sub {
-        font-size: 13px;
-        color: var(--muted);
+        color: var(--text-dark);
         margin-bottom: 12px;
     }
 
-    .form-group {
-        display: flex;
-        flex-direction: column;
-        margin-bottom: 14px;
-    }
-
-    label {
-        font-weight: 600;
-        margin-bottom: 6px;
-        font-size: 14px;
-        color: #0f172a;
-    }
-
-    label span.required {
-        color: var(--danger);
-        margin-left: 3px;
-    }
-
-    input {
-        padding: 12px 12px;
-        font-size: 16px; /* FIX ZOOM iOS */
-        border-radius: 9px;
-        border: 1px solid var(--border);
-        outline: none;
-        transition: border-color .18s, box-shadow .18s, background-color .18s;
-        background: #f9fafb;
-    }
-
-    input:focus {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 1px rgba(37,99,235,0.3);
-        background: #ffffff;
-    }
-
-    .hint-list {
-        margin-top: 4px;
-        padding-left: 16px;
-        font-size: 12px;
-        color: var(--muted);
-    }
-
-    .hint-list li {
-        margin-bottom: 3px;
-    }
-
-    button {
-        background: var(--primary);
-        color: white;
-        width: 100%;
-        border: none;
-        padding: 13px;
-        font-size: 16px;
-        font-weight: 700;
-        border-radius: 999px;
-        cursor: pointer;
-        transition: background .2s, transform .05s, box-shadow .1s;
-        margin-top: 8px;
-        box-shadow: 0 4px 10px rgba(37,99,235,0.3);
-    }
-
-    button:hover {
-        background: var(--primary-dark);
-    }
-
-    button:active {
-        transform: translateY(1px);
-        box-shadow: 0 2px 6px rgba(37,99,235,0.25);
-    }
-
-    .loading-spinner {
-        display: none;
-        margin-top: 10px;
-        text-align: center;
+    .info-example {
+        background: rgba(255, 255, 255, 0.7);
+        padding: 14px;
+        border-radius: 12px;
         font-size: 13px;
+        color: var(--text-dark);
+        line-height: 1.7;
+    }
+
+    .info-example strong {
         color: var(--primary);
     }
 
+    /* Form */
+    .form-header {
+        margin-bottom: 20px;
+    }
+
+    .form-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .form-subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+    }
+
+    .form-group {
+        margin-bottom: 18px;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-dark);
+        margin-bottom: 8px;
+    }
+
+    .required {
+        color: var(--danger);
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 16px;
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        background: var(--input-bg);
+        transition: all 0.2s ease;
+        outline: none;
+    }
+
+    .form-input:focus {
+        border-color: var(--primary);
+        background: #ffffff;
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+    }
+
+    .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 6px;
+        line-height: 1.5;
+    }
+
+    .form-hint code {
+        background: rgba(99, 102, 241, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--primary);
+    }
+
+    /* Button */
+    .btn-submit {
+        width: 100%;
+        padding: 16px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #ffffff;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        margin-top: 8px;
+    }
+
+    .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+    }
+
+    .btn-submit:active {
+        transform: translateY(0);
+    }
+
+    /* Loading */
+    .loading {
+        display: none;
+        text-align: center;
+        margin-top: 16px;
+    }
+
     .spinner {
-        width: 26px;
-        height: 26px;
-        border: 3px solid #d1d5db;
+        width: 32px;
+        height: 32px;
+        border: 3px solid var(--border);
         border-top-color: var(--primary);
         border-radius: 50%;
-        animation: spin 0.9s linear infinite;
-        margin: 0 auto 6px;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 10px;
     }
 
     @keyframes spin {
         to { transform: rotate(360deg); }
     }
 
-    .error-box {
-        border: 1px solid var(--danger);
-        background: #fef2f2;
-        padding: 12px;
-        border-radius: 10px;
-        margin-top: 10px;
-        color: var(--danger);
-        font-weight: 600;
-        display: none;
-        font-size: 13px;
-    }
-
-    .error-box::before {
-        content: "⚠️ ";
-        margin-right: 3px;
-    }
-
-    .result-card {
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 14px;
-        padding: 16px 16px 18px;
-        margin-top: 12px;
-        display: none;
-        animation: fadeIn .25s ease-out;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(8px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    .success-msg {
-        color: var(--success);
-        font-weight: 700;
-        margin-bottom: 8px;
-        font-size: 15px;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
-
-    .success-msg span.icon {
-        font-size: 18px;
-    }
-
-    .app-info {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-        margin-top: 4px;
-    }
-
-    .app-info img {
-        width: 68px;
-        height: 68px;
-        border-radius: 16px;
-        border: 1px solid var(--border);
-        object-fit: cover;
-        background: #f9fafb;
-    }
-
-    .app-meta-main {
+    .loading-text {
         font-size: 14px;
+        color: var(--text-muted);
+        font-weight: 500;
     }
 
-    .app-title {
-        font-size: 18px;
-        font-weight: 700;
-        margin-bottom: 4px;
+    /* Alert */
+    .alert {
+        padding: 14px 16px;
+        border-radius: 12px;
+        margin-top: 16px;
+        font-size: 14px;
+        font-weight: 500;
+        display: none;
+        animation: slideIn 0.3s ease;
     }
 
-    .app-meta-main div {
-        margin-bottom: 2px;
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
-    .info-card {
-        font-size: 13px;
-        color: var(--text);
+    .alert-error {
+        background: #fee2e2;
+        color: #991b1b;
+        border-left: 4px solid var(--danger);
     }
 
-    .info-card h2 {
-        margin: 0 0 6px;
+    /* Result */
+    .result {
+        display: none;
+        margin-top: 16px;
+        padding: 20px;
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        border-radius: 16px;
+        border-left: 4px solid var(--success);
+        animation: slideIn 0.3s ease;
+    }
+
+    .result-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 16px;
         font-size: 15px;
         font-weight: 700;
-        color: var(--info);
-    }
-
-    .info-card p {
-        margin: 4px 0;
-        line-height: 1.5;
-    }
-
-    .info-card .example {
-        margin-top: 8px;
-        padding: 8px 10px;
-        border-radius: 10px;
-        background: #ecfdf5;
-        border-left: 3px solid var(--success);
-        font-size: 13px;
         color: #065f46;
     }
 
-    .note-card {
+    .app-display {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.7);
+        padding: 16px;
+        border-radius: 12px;
+    }
+
+    .app-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 16px;
+        object-fit: cover;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.8);
+    }
+
+    .app-details {
+        flex: 1;
+    }
+
+    .app-name {
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--text-dark);
+        margin-bottom: 8px;
+    }
+
+    .app-meta {
+        font-size: 13px;
+        color: var(--text-muted);
+        line-height: 1.6;
+    }
+
+    .app-meta strong {
+        color: var(--text-dark);
+    }
+
+    /* Tips */
+    .tips-box {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-radius: 16px;
+        padding: 20px;
         border-left: 4px solid var(--warning);
     }
 
-    .note-title {
-        font-size: 15px;
-        font-weight: 800;
-        color: var(--warning);
-        margin-bottom: 6px;
+    .tips-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #92400e;
+        margin-bottom: 12px;
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
     }
 
-    .note-title span.icon {
-        font-size: 18px;
-    }
-
-    .note-list {
-        margin: 2px 0 0;
-        padding-left: 18px;
+    .tips-list {
+        list-style: none;
         font-size: 13px;
-        color: var(--text);
+        color: var(--text-dark);
     }
 
-    .note-list li {
-        margin: 4px 0;
+    .tips-list li {
+        margin-bottom: 10px;
+        padding-left: 24px;
+        position: relative;
+        line-height: 1.6;
     }
 
-    .note-list span.num {
-        font-weight: 700;
+    .tips-list li::before {
+        content: "→";
+        position: absolute;
+        left: 0;
         color: var(--warning);
-        margin-right: 4px;
+        font-weight: 700;
     }
 
+    /* Responsive */
     @media (max-width: 480px) {
-        .card {
-            padding: 16px 14px 17px;
+        .header-title {
+            font-size: 26px;
         }
-        .page-title {
-            font-size: 23px;
+
+        .card {
+            padding: 20px 16px;
+        }
+
+        .app-display {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .app-icon {
+            width: 80px;
+            height: 80px;
         }
     }
 </style>
 </head>
 
 <body>
-<div class="page">
-    <header class="page-header">
-        <h1 class="page-title">
-            Thêm vào “Đã mua”
-            <span class="badge">Helper</span>
+<div class="container">
+    <!-- Header -->
+    <header class="header">
+        <h1 class="header-title">
+            <span class="header-icon">📱</span>
+            iOS Purchase Helper
         </h1>
-        <div class="page-sub">
-            Đưa app miễn phí vào mục Purchased để tải lại trên thiết bị iOS cũ.
-        </div>
+        <p class="header-subtitle">Thêm app miễn phí vào "Đã mua" để tải trên thiết bị iOS cũ</p>
     </header>
 
-    <!-- Card giới thiệu ngắn gọn (trên form) -->
-    <section class="card intro-card">
-        <div class="intro-title">
-            <span>📌</span> Giới thiệu nhanh
+    <!-- Quick Info -->
+    <div class="card">
+        <div class="info-box">
+            <div class="info-title">
+                💡 Công cụ này làm gì?
+            </div>
+            <div class="info-text">
+                Giúp bạn thêm app miễn phí vào danh sách "Đã mua" của Apple ID. Sau đó, bạn có thể tải phiên bản tương thích với iOS cũ hơn (nếu nhà phát triển vẫn hỗ trợ).
+            </div>
+            <div class="info-example">
+                <strong>Ví dụ:</strong> iPhone cũ chạy iOS 10 không cài được Facebook phiên bản mới. Dùng công cụ này để thêm vào "Đã mua", sau đó mở App Store → tab Đã mua → tải phiên bản cũ phù hợp.
+            </div>
         </div>
-        <div class="intro-text">
-            Công cụ này giúp bạn thêm <strong>ứng dụng miễn phí</strong> vào mục <strong>“Đã mua” (Purchased)</strong> của Apple ID, 
-            từ đó App Store thường cho phép tải lại <strong>phiên bản tương thích nhất</strong> với iOS đang dùng (nếu nhà phát triển vẫn giữ bản cũ).
-        </div>
-        <div class="intro-example">
-            <strong>Ví dụ:</strong> Bạn có iPhone cũ chạy iOS thấp, Apple ID mới chưa từng tải Facebook, Zalo, Messenger…  
-            Khi tìm trên App Store, máy báo <em>“Yêu cầu iOS cao hơn”</em> và không cho cài.  
-            Bạn dùng công cụ này để đưa app vào “Đã mua”, sau đó:
-            <br>• Mở App Store → tab <strong>Đã mua</strong>  
-            <br>• Tìm app vừa thêm  
-            <br>→ Nếu Apple/nhà phát triển còn giữ bản cũ, bạn có thể tải phiên bản phù hợp với iOS hiện tại.
-        </div>
-    </section>
+    </div>
 
-    <!-- Card form -->
-    <section class="card">
-        <div class="form-card-title">
-            <span class="icon">🧩</span>
-            Nhập thông tin Apple ID & ứng dụng
-        </div>
-        <div class="form-card-sub">
-            Hệ thống sẽ dùng ipatool để đăng nhập Apple ID (không lưu tài khoản) và gửi yêu cầu thêm app vào mục “Đã mua”.
+    <!-- Form -->
+    <div class="card">
+        <div class="form-header">
+            <div class="form-title">
+                🔐 Nhập thông tin
+            </div>
+            <div class="form-subtitle">
+                Thông tin chỉ dùng để đăng nhập và không được lưu trữ
+            </div>
         </div>
 
         <form id="purchaseForm">
             <div class="form-group">
-                <label>Apple ID <span class="required">*</span></label>
-                <input type="email" id="APPLE_ID" autocomplete="username" placeholder="example@gmail.com" required>
+                <label class="form-label">
+                    Apple ID <span class="required">*</span>
+                </label>
+                <input 
+                    type="email" 
+                    id="APPLE_ID" 
+                    class="form-input"
+                    autocomplete="username" 
+                    placeholder="your.email@example.com" 
+                    required
+                />
             </div>
 
             <div class="form-group">
-                <label>Mật khẩu <span class="required">*</span></label>
-                <input type="password" id="PASSWORD" autocomplete="current-password" placeholder="Mật khẩu Apple ID" required>
+                <label class="form-label">
+                    Mật khẩu <span class="required">*</span>
+                </label>
+                <input 
+                    type="password" 
+                    id="PASSWORD" 
+                    class="form-input"
+                    autocomplete="current-password" 
+                    placeholder="Nhập mật khẩu Apple ID" 
+                    required
+                />
             </div>
 
             <div class="form-group">
-                <label>Mã 2FA (nếu có)</label>
-                <input id="CODE" inputmode="numeric" pattern="[0-9]*" placeholder="Nhập mã 6 số nếu Apple yêu cầu">
+                <label class="form-label">
+                    Mã 2FA (nếu có)
+                </label>
+                <input 
+                    id="CODE" 
+                    class="form-input"
+                    inputmode="numeric" 
+                    pattern="[0-9]*" 
+                    placeholder="Mã xác thực 6 số"
+                />
             </div>
 
             <div class="form-group">
-                <label>Ứng dụng cần thêm <span class="required">*</span></label>
-                <input id="INPUT" placeholder="URL App Store, App ID (số), hoặc Bundle ID (com.xxx.yyy)" required>
-                <ul class="hint-list">
-                    <li>Ví dụ URL: <code>https://apps.apple.com/vn/app/facebook/id284882215</code></li>
-                    <li>Ví dụ App ID: <code>284882215</code></li>
-                    <li>Ví dụ Bundle ID: <code>com.facebook.Facebook</code></li>
-                </ul>
+                <label class="form-label">
+                    Ứng dụng cần thêm <span class="required">*</span>
+                </label>
+                <input 
+                    id="INPUT" 
+                    class="form-input"
+                    placeholder="URL, App ID hoặc Bundle ID" 
+                    required
+                />
+                <div class="form-hint">
+                    URL: <code>https://apps.apple.com/.../id284882215</code><br>
+                    App ID: <code>284882215</code><br>
+                    Bundle ID: <code>com.facebook.Facebook</code>
+                </div>
             </div>
 
-            <button type="submit">Thêm ứng dụng vào “Đã mua”</button>
+            <button type="submit" class="btn-submit">
+                ✨ Thêm vào "Đã mua"
+            </button>
 
-            <div class="loading-spinner" id="loading">
+            <div class="loading" id="loading">
                 <div class="spinner"></div>
-                Đang xử lý yêu cầu của bạn...
+                <div class="loading-text">Đang xử lý...</div>
             </div>
         </form>
 
-        <div id="errorBox" class="error-box"></div>
-        <div id="resultCard" class="result-card">
-            <div class="success-msg">
-                <span class="icon">✅</span>
-                Đã thêm app vào “Đã mua” thành công (nếu không có cảnh báo từ Apple).
+        <div id="errorBox" class="alert alert-error"></div>
+        
+        <div id="resultCard" class="result">
+            <div class="result-header">
+                ✅ Thành công!
             </div>
-            <div class="app-info" id="appInfo"></div>
+            <div class="app-display" id="appInfo"></div>
         </div>
-    </section>
+    </div>
 
-    <!-- Card giải thích chi tiết -->
-    <section class="card info-card">
-        <h2>Ứng dụng thực tế của công cụ</h2>
-        <p>
-            Sau khi một app được đưa vào “Đã mua”, bạn có thể mở App Store trên các thiết bị khác dùng chung Apple ID:
-        </p>
-        <p>
-            • Với iOS mới: tải bản mới nhất bình thường.<br>
-            • Với iOS thấp: nếu nhà phát triển vẫn cho phép tải bản cũ hơn, App Store sẽ cho chọn phiên bản phù hợp hơn với hệ điều hành hiện tại.
-        </p>
-        <div class="example">
-            Điều này rất hữu ích khi bạn muốn giữ lại những ứng dụng quen thuộc trên iPhone/iPad cũ, hoặc khởi tạo “lịch sử mua” cho Apple ID mới để kết hợp với các công cụ tải IPA.
+    <!-- Tips -->
+    <div class="card">
+        <div class="tips-box">
+            <div class="tips-title">
+                ⚠️ Lưu ý quan trọng
+            </div>
+            <ul class="tips-list">
+                <li>Thông tin đăng nhập không được lưu trữ trên hệ thống</li>
+                <li>Chỉ hỗ trợ app miễn phí, không dùng cho app trả phí</li>
+                <li>Kết quả phụ thuộc vào chính sách của Apple và nhà phát triển</li>
+                <li>Sau khi thêm, mở App Store → Đã mua để tải app</li>
+            </ul>
         </div>
-    </section>
-
-    <!-- Card lưu ý quan trọng -->
-    <section class="card note-card">
-        <div class="note-title">
-            <span class="icon">🔒</span>
-            Lưu ý quan trọng
-        </div>
-        <ul class="note-list">
-            <li><span class="num">1.</span>
-                <strong>Không lưu tài khoản & mật khẩu.</strong>  
-                Thông tin Apple ID chỉ được dùng để đăng nhập qua ipatool ngay tại thời điểm bạn gửi yêu cầu.  
-                Hệ thống không thiết kế để lưu trữ hoặc chia sẻ tài khoản của bạn.
-            </li>
-            <li><span class="num">2.</span>
-                <strong>Chỉ hỗ trợ ứng dụng miễn phí.</strong>  
-                Công cụ này không dùng để tải app trả phí, crack, hack, cheat hay nội dung vi phạm bản quyền.  
-                Bạn vẫn phải tuân thủ đầy đủ điều khoản sử dụng của Apple và nhà phát triển.
-            </li>
-            <li><span class="num">3.</span>
-                <strong>Kết quả phụ thuộc vào Apple & nhà phát triển.</strong>  
-                Việc có tải được bản cũ hay không còn tùy thuộc vào việc app đó còn duy trì phiên bản tương thích iOS thấp và chính sách của Apple tại thời điểm bạn sử dụng.
-            </li>
-        </ul>
-    </section>
+    </div>
 </div>
 
 <script>
-    // Helper chọn phần tử
     const $ = (sel) => document.querySelector(sel);
 
     const form = $("#purchaseForm");
@@ -515,12 +534,10 @@
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        // Reset trạng thái
         errorBox.style.display = "none";
         errorBox.textContent = "";
         resultCard.style.display = "none";
         appInfo.innerHTML = "";
-
         loadingEl.style.display = "block";
 
         const body = {
@@ -541,7 +558,7 @@
             loadingEl.style.display = "none";
 
             if (!data || !data.success) {
-                errorBox.textContent = (data && data.error) || "Không thể xử lý yêu cầu. Vui lòng thử lại.";
+                errorBox.textContent = (data && data.error) || "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
                 errorBox.style.display = "block";
                 return;
             }
@@ -550,19 +567,21 @@
             const icon = app.icon || "https://via.placeholder.com/120?text=App";
 
             appInfo.innerHTML = `
-                <img src="${icon}" alt="App Icon">
-                <div class="app-meta-main">
-                    <div class="app-title">${app.name || "Không rõ tên ứng dụng"}</div>
-                    <div>Bundle ID: <strong>${app.bundleId || "Không rõ"}</strong></div>
-                    <div>Phiên bản: <strong>${app.version || "Không rõ"}</strong></div>
-                    <div>Nhà phát hành: <strong>${app.artistName || "Không rõ"}</strong></div>
+                <img src="${icon}" alt="App Icon" class="app-icon">
+                <div class="app-details">
+                    <div class="app-name">${app.name || "Không rõ tên"}</div>
+                    <div class="app-meta">
+                        Bundle: <strong>${app.bundleId || "N/A"}</strong><br>
+                        Phiên bản: <strong>${app.version || "N/A"}</strong><br>
+                        Nhà phát hành: <strong>${app.artistName || "N/A"}</strong>
+                    </div>
                 </div>
             `;
 
             resultCard.style.display = "block";
         } catch (err) {
             loadingEl.style.display = "none";
-            errorBox.textContent = err.message || "Lỗi không xác định.";
+            errorBox.textContent = "❌ " + (err.message || "Lỗi không xác định");
             errorBox.style.display = "block";
         }
     });
