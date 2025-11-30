@@ -128,14 +128,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/ipatool-help', (req, res) => {
-  execFile('./ipatool', ['purchase', '--help'], (err, stdout, stderr) => {
-    const out = stdout?.toString().trim() || '';
-    const errOut = stderr?.toString().trim() || '';
-    res.send(`<pre>${out}\n${errOut}</pre>`);
-  });
-});
-
 // R2 Connection Test Endpoint
 app.get('/check-r2', async (req, res) => {
   try {
@@ -838,6 +830,35 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
+    // 1.5) Chuẩn hóa thông tin app cho UI (dùng cho cả success & STDQ)
+    // ==============================
+    let appInfo = null;
+
+    if (meta) {
+      appInfo = {
+        name: meta.trackName || null,
+        bundleId,
+        version: meta.version || null,
+        artistName: meta.sellerName || meta.artistName || null,
+        appId: meta.trackId || appId || null,
+        icon:
+          meta.artworkUrl512 ||
+          meta.artworkUrl100 ||
+          meta.artworkUrl60 ||
+          null
+      };
+    } else {
+      appInfo = {
+        name: null,
+        bundleId,
+        version: null,
+        artistName: null,
+        appId: appId || null,
+        icon: null
+      };
+    }
+
+    // ==============================
     // 2) Keychain pass + hàm gọi ipatool (global flag)
     // ==============================
 
@@ -899,11 +920,27 @@ app.post('/purchase', async (req, res) => {
     const auth = await runIpatool(authArgs);
 
     if (auth.success === false || auth.error) {
+      const rawErr = (auth.error || auth.message || '').toString();
+
+      const looksLike2FA =
+        /two[- ]factor|2fa|required an auth code|auth code/i.test(rawErr) ||
+        /failed to get account: failed to get item/i.test(rawErr);
+
+      if (looksLike2FA && !CODE) {
+        // Thiếu mã 2FA → yêu cầu người dùng nhập
+        return res.status(401).json({
+          success: false,
+          require2FA: true,
+          error:
+            'Tài khoản này đã bật xác minh 2 bước (2FA). Vui lòng lấy mã 6 số từ thiết bị tin cậy, nhập vào ô “Mã 2FA” rồi bấm lại.',
+          rawAuth: auth
+        });
+      }
+
       return res.status(400).json({
         success: false,
         error:
-          auth.error ||
-          auth.message ||
+          rawErr ||
           'ipatool auth login thất bại. Vui lòng kiểm tra Apple ID / mật khẩu / mã 2FA.',
         rawAuth: auth
       });
@@ -925,43 +962,28 @@ app.post('/purchase', async (req, res) => {
     const purchase = await runIpatool(purchaseArgs);
 
     if (purchase.success === false || purchase.error) {
+      const rawErr = (purchase.error || purchase.message || '').toString();
+      const isSTDQ = /STDQ/i.test(rawErr);
+
+      if (isSTDQ) {
+        // Nhiều khả năng app đã nằm trong Purchased → coi như thành công, chỉ báo khác message
+        return res.status(200).json({
+          success: true,
+          alreadyInPurchased: true,
+          message:
+            'Có vẻ ứng dụng này đã nằm trong mục “Đã mua” của Apple ID này. Bạn có thể mở App Store → tab Đã mua (Purchased) để kiểm tra và tải lại.',
+          app: appInfo,
+          rawPurchase: purchase
+        });
+      }
+
       return res.status(400).json({
         success: false,
         error:
-          purchase.error ||
-          purchase.message ||
+          rawErr ||
           'ipatool purchase thất bại.',
         rawPurchase: purchase
       });
-    }
-
-    // ==============================
-    // 5) Chuẩn hóa thông tin app trả về cho UI
-    // ==============================
-    let appInfo = null;
-
-    if (meta) {
-      appInfo = {
-        name: meta.trackName || null,
-        bundleId,
-        version: meta.version || null,
-        artistName: meta.sellerName || meta.artistName || null,
-        appId: meta.trackId || appId || null,
-        icon:
-          meta.artworkUrl512 ||
-          meta.artworkUrl100 ||
-          meta.artworkUrl60 ||
-          null
-      };
-    } else {
-      appInfo = {
-        name: null,
-        bundleId,
-        version: null,
-        artistName: null,
-        appId: appId || null,
-        icon: null
-      };
     }
 
     // ==============================
