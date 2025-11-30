@@ -900,7 +900,7 @@ app.post('/purchase', async (req, res) => {
       });
 
     // ==============================
-    // 3) Bước 1: auth login (bắt 2FA + sai mật khẩu)
+    // 3) Bước 1: auth login (bắt 2FA, giữ nguyên – chỉ map "something went wrong")
     // ==============================
     const authArgs = [
       'auth',
@@ -937,7 +937,7 @@ app.post('/purchase', async (req, res) => {
         });
       }
 
-      // Map "something went wrong" → thông báo sai pass dễ hiểu
+      // 🔁 Chỉ sửa thông báo "something went wrong" → sai tài khoản/mật khẩu
       let friendly = rawErr;
       if (!friendly || /something went wrong/i.test(friendly)) {
         friendly =
