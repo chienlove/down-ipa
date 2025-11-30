@@ -128,6 +128,14 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/ipatool-help', (req, res) => {
+  execFile('./ipatool', ['purchase', '--help'], (err, stdout, stderr) => {
+    const out = stdout?.toString().trim() || '';
+    const errOut = stderr?.toString().trim() || '';
+    res.send(`<pre>${out}\n${errOut}</pre>`);
+  });
+});
+
 // R2 Connection Test Endpoint
 app.get('/check-r2', async (req, res) => {
   try {
