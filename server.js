@@ -1,4 +1,5 @@
 import express from 'express';
+import { execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
@@ -756,70 +757,126 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-// purchase route (DEBUG enabled)
+// Thêm app vào "Đã mua" bằng ipatool CLI
 app.post('/purchase', async (req, res) => {
   try {
-    const { APPLE_ID, PASSWORD, CODE, input, storefront } = req.body || {};
+    const { APPLE_ID, PASSWORD, CODE, input } = req.body || {};
 
     if (!APPLE_ID || !PASSWORD || !input) {
       return res.status(400).json({
         success: false,
-        error: 'APPLE_ID, PASSWORD, input (AppID hoặc App Store URL) là bắt buộc',
+        error: 'APPLE_ID, PASSWORD và input (App ID / URL / bundle id) là bắt buộc.',
       });
     }
 
-    // 1) Parse adamId
-    const idFromUrl = String(input).match(/id(\d+)/)?.[1];
-    const idFromDigits = String(input).match(/^\d+$/)?.[0];
-    const adamId = idFromUrl || idFromDigits;
-    if (!adamId) {
-      return res.status(400).json({ success: false, error: 'Không lấy được App ID từ input' });
-    }
+    const trimmed = String(input).trim();
 
-    // 2) Auth (DEBUG)
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE, { debug: true });
-    if (user._state !== 'success') {
-      const isMfa = (user.failureType || '').toLowerCase().includes('mfa');
-      return res.status(isMfa ? 401 : 400).json({
+    // 1) Ưu tiên bắt App ID từ URL dạng .../id1234567890
+    const idFromUrl = trimmed.match(/id(\d{6,})/)?.[1];
+    // 2) Nếu chỉ là dãy số → coi là App ID
+    const idFromDigits = /^\d{6,}$/.test(trimmed) ? trimmed : null;
+    // 3) Nếu không phải App ID → coi là bundle id
+    const appId = idFromUrl || idFromDigits;
+    const bundleId = appId ? null : trimmed;
+
+    if (!appId && !bundleId) {
+      return res.status(400).json({
         success: false,
-        require2FA: isMfa,
-        error: user.customerMessage || 'Đăng nhập thất bại',
-        _debug: { auth: user._debug } // đính kèm debug auth
+        error: 'Không lấy được App ID hoặc bundle id hợp lệ từ input.',
       });
     }
 
-    // 3) Purchase (DEBUG + optional storefront override)
-    const pr = await Store.purchase(adamId, user, { debug: true, storefront });
+    // 2) Chuẩn bị args cho ipatool
+    const args = ['purchase', '--non-interactive', '--json',
+      '--username', APPLE_ID,
+      '--password', PASSWORD,
+    ];
 
-    const song0 = pr?.songList?.[0];
-    const meta = song0?.metadata || {};
+    if (CODE) {
+      args.push('--auth-code', CODE);
+    }
 
-    if (pr._state === 'success') {
-      return res.json({
-        success: true,
-        message: 'Đã thêm vào mục Đã mua (nếu là app miễn phí).',
-        adamId,
-        app: {
-          name: meta.bundleDisplayName || meta.softwareTitle || null,
-          bundleId: meta.softwareVersionBundleId || null,
-          version: meta.bundleShortVersionString || null,
-          artistName: meta.artistName || null,
-        },
-        _debug: pr._debug // toàn bộ bước debug purchase
+    if (appId) {
+      args.push('--app-id', appId);
+    } else {
+      args.push('--bundle-id', bundleId);
+    }
+
+    // 3) Gọi ipatool binary (đã commit trong repo ở cùng thư mục với server.js)
+    const result = await new Promise((resolve, reject) => {
+      execFile(
+        './ipatool',
+        args,
+        { timeout: 180000 },
+        (error, stdout, stderr) => {
+          if (error) {
+            return reject(
+              new Error(stderr?.trim() || stdout?.trim() || error.message)
+            );
+          }
+          if (!stdout) return reject(new Error('ipatool không trả stdout'));
+          try {
+            const parsed = JSON.parse(stdout);
+            resolve(parsed);
+          } catch (e) {
+            // Nếu stdout không phải JSON (hoặc có thêm log), trả về raw cho debug
+            resolve({ raw: stdout.trim(), parseError: e.message });
+          }
+        }
+      );
+    });
+
+    // 4) Chuẩn hoá response cho frontend
+    // Tuỳ theo schema JSON ipatool, bạn có thể map chính xác hơn.
+    // Ở đây mình bắt các field thường gặp và fallback sang raw.
+    let success = false;
+    let message = 'Đã gọi ipatool purchase.';
+    let appInfo = null;
+
+    if (result && typeof result === 'object') {
+      // Một số bản ipatool trả { error: false, result: {...} }
+      if (result.error === false || result.success === true) {
+        success = true;
+        message = result.message || 'Tải ứng dụng vào Apple ID thành công (ipatool purchase).';
+
+        const data = result.data || result.result || result;
+        appInfo = {
+          name: data.appName || data.name || null,
+          bundleId: data.appBundleId || data.bundleId || null,
+          version: data.appVer || data.version || null,
+          appId: data.appId || appId || null,
+          appVerId: data.appVerId || data.appVersionId || null,
+        };
+      } else {
+        success = false;
+        message =
+          result.message ||
+          result.error ||
+          'Không thể thêm vào mục Đã mua (ipatool báo lỗi).';
+      }
+    }
+
+    if (!success) {
+      return res.status(400).json({
+        success: false,
+        error: message,
+        raw: result, // nếu muốn ẩn trên UI thì để chỉ log debug
       });
     }
 
-    // Trả lỗi + debug chi tiết
-    return res.status(400).json({
-      success: false,
-      error: pr.customerMessage || 'Không thể thêm vào mục Đã mua',
-      failureType: pr.failureType || pr.failureCode || undefined,
-      storefrontUsed: pr.storefrontUsed || storefront || null,
-      _debug: pr._debug
+    return res.json({
+      success: true,
+      message,
+      app: appInfo,
+      // nếu không muốn lộ raw, có thể bỏ 2 dòng dưới
+      raw: result,
     });
   } catch (e) {
-    console.error('purchase error:', e);
-    return res.status(500).json({ success: false, error: e.message || 'Server error' });
+    console.error('purchase (ipatool) error:', e);
+    return res.status(500).json({
+      success: false,
+      error: e.message || 'Server error khi gọi ipatool purchase.',
+    });
   }
 });
 
