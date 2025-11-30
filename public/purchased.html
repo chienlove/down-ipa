@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>Thêm ứng dụng vào "Đã mua" – iOS Purchase Helper</title>
+<title>Thêm ứng dụng vào mục "Đã mua" của id apple – iOS Purchase Helper</title>
 
 <style>
     :root {
@@ -268,11 +268,24 @@
         border-left: 4px solid var(--danger);
     }
 
-    /* 2FA Alert (mới) */
+    /* 2FA Alert (mới) – màu xanh/info */
     .alert-info {
-        background: #eef2ff;
-        color: #3730a3;
-        border-left: 4px solid #6366f1;
+        background: #ecfeff;
+        color: #0f766e;
+        border-left: 4px solid #14b8a6;
+    }
+
+    /* Note 2FA – màu đỏ, kiểu ghi chú */
+    .twofa-note {
+        display: none;
+        margin-top: 8px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        background: #fef2f2;
+        color: #b91c1c;
+        border-left: 3px solid var(--danger);
     }
 
     /* Result */
@@ -405,7 +418,7 @@
             <span class="header-icon">📱</span>
             iOS Purchase Helper
         </h1>
-        <p class="header-subtitle">Thêm app miễn phí vào "Đã mua" để tải trên thiết bị iOS cũ</p>
+        <p class="header-subtitle">Thêm app miễn phí vào mục "Đã mua" của id apple để tải trên thiết bị iOS cũ</p>
     </header>
 
     <!-- Quick Info -->
@@ -415,7 +428,7 @@
                 💡 Công cụ này làm gì?
             </div>
             <div class="info-text">
-                Giúp bạn thêm app miễn phí vào danh sách "Đã mua" của Apple ID. Sau đó, bạn có thể tải phiên bản tương thích với iOS cũ hơn (nếu nhà phát triển vẫn hỗ trợ).
+                Giúp bạn thêm app miễn phí vào danh sách "Đã mua" của Apple ID trên web mà không cần App Store. Sau đó, bạn có thể mở App Store vào mục Đã mua để tải về phiên bản tương thích với iOS cũ hơn (nếu trước đó ứng dụng này từng có phiên bản tương thích với phiên bản iOS hiện tại của thiết bị của bạn).
             </div>
             <div class="info-example">
                 <strong>Ví dụ:</strong> iPhone cũ chạy iOS 10 không cài được Facebook phiên bản mới. Dùng công cụ này để thêm vào "Đã mua", sau đó mở App Store → tab Đã mua → tải phiên bản cũ phù hợp.
@@ -503,8 +516,10 @@
             </div>
         </form>
 
-        <!-- Hộp thông báo 2FA -->
+        <!-- Hộp thông báo 2FA (xanh) -->
         <div id="twofaBox" class="alert alert-info"></div>
+        <!-- Note 2FA (đỏ) -->
+        <div id="twofaNote" class="twofa-note"></div>
 
         <!-- Hộp lỗi -->
         <div id="errorBox" class="alert alert-error"></div>
@@ -541,6 +556,7 @@
     const loadingEl = $("#loading");
     const errorBox = $("#errorBox");
     const twofaBox = $("#twofaBox");
+    const twofaNote = $("#twofaNote");
     const resultCard = $("#resultCard");
     const appInfo = $("#appInfo");
     const resultHeader = $("#resultHeader");
@@ -548,11 +564,13 @@
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
-        // Reset trạng thái UI
+        // Reset UI
         errorBox.style.display = "none";
         errorBox.textContent = "";
         twofaBox.style.display = "none";
         twofaBox.textContent = "";
+        twofaNote.style.display = "none";
+        twofaNote.textContent = "";
         resultCard.style.display = "none";
         appInfo.innerHTML = "";
         resultHeader.textContent = "✅ Thành công!";
@@ -584,8 +602,16 @@
 
             // Trường hợp yêu cầu 2FA
             if (data.require2FA) {
-                twofaBox.textContent = data.error || "Tài khoản này yêu cầu mã xác minh 2 bước. Hãy nhập mã 6 số vào ô Mã 2FA rồi bấm lại.";
+                twofaBox.textContent =
+                    data.error ||
+                    "Vui lòng nhập mã 2FA gửi về thiết bị, sau đó bấm lại.";
                 twofaBox.style.display = "block";
+
+                if (data.note) {
+                    twofaNote.textContent = data.note;
+                    twofaNote.style.display = "block";
+                }
+
                 const codeInput = $("#CODE");
                 if (codeInput) codeInput.focus();
                 return;
@@ -593,21 +619,23 @@
 
             // Trường hợp lỗi chung
             if (!data.success) {
-                errorBox.textContent = (data && data.error) || "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
+                errorBox.textContent =
+                    data.error ||
+                    "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
                 errorBox.style.display = "block";
                 return;
             }
 
-            // Thành công (có thể là đã nằm trong Đã mua)
+            // Thành công (có thể đã nằm trong Đã mua)
             const app = data.app || {};
             const icon = app.icon || "https://via.placeholder.com/120?text=App";
 
             if (data.alreadyInPurchased) {
-                // App đã nằm trong Đã mua
-                resultHeader.textContent = "ℹ️ Ứng dụng này đã nằm trong \"Đã mua\" của Apple ID này.";
+                resultHeader.textContent =
+                    "ℹ️ Ứng dụng này đã nằm trong \"Đã mua\" của Apple ID này.";
             } else {
-                // Thêm mới thành công
-                resultHeader.textContent = "✅ Thêm ứng dụng vào \"Đã mua\" thành công.";
+                resultHeader.textContent =
+                    "✅ Thêm ứng dụng vào \"Đã mua\" thành công.";
             }
 
             appInfo.innerHTML = `
@@ -625,7 +653,8 @@
             resultCard.style.display = "block";
         } catch (err) {
             loadingEl.style.display = "none";
-            errorBox.textContent = "❌ " + (err.message || "Lỗi không xác định");
+            errorBox.textContent =
+                "❌ " + (err.message || "Lỗi không xác định");
             errorBox.style.display = "block";
         }
     });
