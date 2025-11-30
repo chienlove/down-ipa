@@ -773,171 +773,148 @@ app.post('/purchase', async (req, res) => {
     if (!APPLE_ID || !PASSWORD || !input) {
       return res.status(400).json({
         success: false,
-        error: 'APPLE_ID, PASSWORD và input là bắt buộc.',
+        error: 'APPLE_ID, PASSWORD và input là bắt buộc.'
       });
     }
 
-    const rawInput = String(input).trim();
-    if (!rawInput) {
-      return res.status(400).json({
-        success: false,
-        error: 'Input không được để trống.',
-      });
-    }
-
-    // ========= 1. Chuẩn hoá input: URL / App ID / bundle id =========
+    // ==============================
+    // 1) Chuẩn hóa input
+    // ==============================
+    const raw = String(input).trim();
     let bundleId = null;
     let appId = null;
 
-    // a) URL App Store: https://apps.apple.com/.../id1234567890
-    if (/^https?:\/\/apps\.apple\.com\//i.test(rawInput)) {
-      const m = rawInput.match(/id(\d{6,})/);
+    // URL Apple
+    if (/^https?:\/\/apps\.apple\.com\//i.test(raw)) {
+      const m = raw.match(/id(\d{6,})/);
       if (m) appId = m[1];
     }
-    // b) Toàn số → App ID
-    else if (/^\d{6,}$/.test(rawInput)) {
-      appId = rawInput;
+    // Chỉ số → app ID
+    else if (/^\d{6,}$/.test(raw)) {
+      appId = raw;
     }
-    // c) Có dấu chấm → coi như bundle id
-    else if (rawInput.includes('.')) {
-      bundleId = rawInput;
+    // Có dấu chấm → bundleId
+    else if (raw.includes('.')) {
+      bundleId = raw;
     }
 
-    // Hàm lookup bundleId từ appId qua iTunes
-    async function lookupBundleIdFromAppId(id) {
-      if (!id) return null;
-      const countries = ['vn', 'us'];
-      for (const cc of countries) {
+    // Tự động lookup bundleId từ appId
+    async function lookupBundle(id) {
+      const countries = ['vn', 'us', 'jp'];
+      for (const c of countries) {
         try {
-          const url = `https://itunes.apple.com/lookup?id=${encodeURIComponent(
-            id
-          )}&country=${encodeURIComponent(cc)}`;
-          const resp = await fetch(url);
-          if (!resp.ok) continue;
-          const data = await resp.json();
-          if (data.resultCount > 0 && data.results[0].bundleId) {
-            return { bundleId: data.results[0].bundleId, meta: data.results[0] };
-          }
-        } catch (e) {
-          console.warn('lookup error', id, e);
-        }
+          const r = await fetch(
+            `https://itunes.apple.com/lookup?id=${id}&country=${c}`
+          );
+          const j = await r.json();
+          if (j.resultCount > 0) return j.results[0];
+        } catch (e) {}
       }
       return null;
     }
 
-    let lookedUpMeta = null;
+    let meta = null;
 
     if (!bundleId && appId) {
-      const info = await lookupBundleIdFromAppId(appId);
-      if (info?.bundleId) {
-        bundleId = info.bundleId;
-        lookedUpMeta = info.meta;
-      }
+      meta = await lookupBundle(appId);
+      if (meta?.bundleId) bundleId = meta.bundleId;
     }
 
     if (!bundleId) {
       return res.status(400).json({
         success: false,
-        error:
-          'Không lấy được Bundle ID từ input. Hãy nhập bundle id dạng com.xxx.yyy hoặc URL/App ID hợp lệ.',
+        error: 'Không lấy được Bundle ID. Hãy nhập bundle id hoặc URL/App ID.'
       });
     }
 
-    // ========= 2. Hàm chạy ipatool & parse JSON =========
+    // ==============================
+    // 2) Hàm gọi ipatool và parse JSON
+    // ==============================
     const runIpatool = (args) =>
       new Promise((resolve, reject) => {
         execFile('./ipatool', args, (err, stdout, stderr) => {
           const out = stdout?.toString() || '';
           const errOut = stderr?.toString() || '';
+
           if (err) {
-            // ipatool log kiểu "ERR error=... success=false"
-            const combined = (out + '\n' + errOut).trim();
-            return reject(new Error(combined || err.message));
-          }
-          if (!out) return resolve({});
-          try {
-            const parsed = JSON.parse(out);
-            return resolve(parsed);
-          } catch (e) {
             return reject(
-              new Error(
-                'Không parse được JSON từ ipatool: ' + out.slice(0, 400)
-              )
+              new Error(errOut || out || err.message)
             );
+          }
+
+          try {
+            resolve(JSON.parse(out));
+          } catch (e) {
+            reject(new Error('ipatool xuất ra dữ liệu không phải JSON: ' + out));
           }
         });
       });
 
-    // ========= 3. Bước 1: auth login =========
-    // ipatool auth login --email ... --password ... [--auth-code ...] --format json --non-interactive
+    // ==============================
+    // 3) Bước 1: auth login
+    // ==============================
+
+    // Keychain passphrase bắt buộc khi non-interactive
+    const keychainPass = `${APPLE_ID}-storeios-pass`;
+
     const authArgs = [
-      'auth',
-      'login',
-      '--email',
-      APPLE_ID,
-      '--password',
-      PASSWORD,
-      '--format',
-      'json',
-      '--non-interactive',
+      'auth', 'login',
+      '--email', APPLE_ID,
+      '--password', PASSWORD,
+      '--keychain-passphrase', keychainPass,
+      '--format', 'json',
+      '--non-interactive'
     ];
-    if (CODE) {
-      authArgs.push('--auth-code', CODE);
-    }
 
-    const authResult = await runIpatool(authArgs);
+    if (CODE) authArgs.push('--auth-code', CODE);
 
-    if (authResult.success === false || authResult.error) {
+    const auth = await runIpatool(authArgs);
+
+    if (auth.success === false || auth.error) {
       return res.status(400).json({
         success: false,
-        error:
-          authResult.error ||
-          authResult.message ||
-          'ipatool auth login thất bại. Vui lòng kiểm tra Apple ID / mật khẩu / mã 2FA.',
-        rawAuth: authResult,
+        error: auth.error || auth.message || 'Không đăng nhập được Apple ID.',
+        rawAuth: auth
       });
     }
 
-    // ========= 4. Bước 2: purchase =========
-    // ipatool purchase -b com.xxx.yyy --format json --non-interactive
+    // ==============================
+    // 4) Bước 2: purchase
+    // ==============================
     const purchaseArgs = [
       'purchase',
-      '-b',
-      bundleId,
-      '--format',
-      'json',
-      '--non-interactive',
+      '-b', bundleId,
+      '--format', 'json',
+      '--non-interactive'
     ];
 
-    const purchaseResult = await runIpatool(purchaseArgs);
+    const purchase = await runIpatool(purchaseArgs);
 
-    if (purchaseResult.success === false || purchaseResult.error) {
+    if (purchase.success === false || purchase.error) {
       return res.status(400).json({
         success: false,
-        error:
-          purchaseResult.error ||
-          purchaseResult.message ||
-          'ipatool purchase thất bại.',
-        raw: purchaseResult,
+        error: purchase.error || purchase.message || 'Mua thất bại',
+        rawPurchase: purchase
       });
     }
 
-    // ========= 5. Chuẩn hoá thông tin app để frontend hiển thị đẹp =========
+    // ==============================
+    // 5) Chuẩn hoá dữ liệu app trả về
+    // ==============================
     let appInfo = null;
 
-    if (lookedUpMeta) {
+    if (meta) {
       appInfo = {
-        name: lookedUpMeta.trackName || null,
+        name: meta.trackName || null,
         bundleId,
-        version: lookedUpMeta.version || null,
-        artistName:
-          lookedUpMeta.sellerName || lookedUpMeta.artistName || null,
-        appId: lookedUpMeta.trackId || appId || null,
+        version: meta.version || null,
+        artistName: meta.sellerName || meta.artistName || null,
+        appId: meta.trackId || null,
         icon:
-          lookedUpMeta.artworkUrl512 ||
-          lookedUpMeta.artworkUrl100 ||
-          lookedUpMeta.artworkUrl60 ||
-          null,
+          meta.artworkUrl512 ||
+          meta.artworkUrl100 ||
+          meta.artworkUrl60 ||
+          null
       };
     } else {
       appInfo = {
@@ -946,25 +923,23 @@ app.post('/purchase', async (req, res) => {
         version: null,
         artistName: null,
         appId: appId || null,
-        icon: null,
+        icon: null
       };
     }
 
+    // ==============================
+    // 6) Thành công
+    // ==============================
     return res.json({
       success: true,
-      message:
-        purchaseResult.message ||
-        'Tải ứng dụng vào Apple ID thành công (ipatool purchase).',
-      app: appInfo,
-      // Nếu không muốn trả raw ra frontend, có thể xoá 2 dòng dưới:
-      rawAuth: authResult,
-      rawPurchase: purchaseResult,
+      message: 'Thêm ứng dụng vào “Đã mua” thành công.',
+      app: appInfo
     });
+
   } catch (e) {
-    console.error('purchase (ipatool) error:', e);
     return res.status(500).json({
       success: false,
-      error: e.message || 'Server error khi gọi ipatool purchase.',
+      error: e.message || 'Lỗi server.'
     });
   }
 });
