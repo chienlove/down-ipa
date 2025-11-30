@@ -268,6 +268,13 @@
         border-left: 4px solid var(--danger);
     }
 
+    /* 2FA Alert (mới) */
+    .alert-info {
+        background: #eef2ff;
+        color: #3730a3;
+        border-left: 4px solid #6366f1;
+    }
+
     /* Result */
     .result {
         display: none;
@@ -496,10 +503,15 @@
             </div>
         </form>
 
+        <!-- Hộp thông báo 2FA -->
+        <div id="twofaBox" class="alert alert-info"></div>
+
+        <!-- Hộp lỗi -->
         <div id="errorBox" class="alert alert-error"></div>
         
+        <!-- Kết quả -->
         <div id="resultCard" class="result">
-            <div class="result-header">
+            <div class="result-header" id="resultHeader">
                 ✅ Thành công!
             </div>
             <div class="app-display" id="appInfo"></div>
@@ -528,16 +540,23 @@
     const form = $("#purchaseForm");
     const loadingEl = $("#loading");
     const errorBox = $("#errorBox");
+    const twofaBox = $("#twofaBox");
     const resultCard = $("#resultCard");
     const appInfo = $("#appInfo");
+    const resultHeader = $("#resultHeader");
 
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
 
+        // Reset trạng thái UI
         errorBox.style.display = "none";
         errorBox.textContent = "";
+        twofaBox.style.display = "none";
+        twofaBox.textContent = "";
         resultCard.style.display = "none";
         appInfo.innerHTML = "";
+        resultHeader.textContent = "✅ Thành công!";
+
         loadingEl.style.display = "block";
 
         const body = {
@@ -557,14 +576,39 @@
             const data = await res.json();
             loadingEl.style.display = "none";
 
-            if (!data || !data.success) {
+            if (!data) {
+                errorBox.textContent = "❌ Không nhận được phản hồi từ máy chủ.";
+                errorBox.style.display = "block";
+                return;
+            }
+
+            // Trường hợp yêu cầu 2FA
+            if (data.require2FA) {
+                twofaBox.textContent = data.error || "Tài khoản này yêu cầu mã xác minh 2 bước. Hãy nhập mã 6 số vào ô Mã 2FA rồi bấm lại.";
+                twofaBox.style.display = "block";
+                const codeInput = $("#CODE");
+                if (codeInput) codeInput.focus();
+                return;
+            }
+
+            // Trường hợp lỗi chung
+            if (!data.success) {
                 errorBox.textContent = (data && data.error) || "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
                 errorBox.style.display = "block";
                 return;
             }
 
+            // Thành công (có thể là đã nằm trong Đã mua)
             const app = data.app || {};
             const icon = app.icon || "https://via.placeholder.com/120?text=App";
+
+            if (data.alreadyInPurchased) {
+                // App đã nằm trong Đã mua
+                resultHeader.textContent = "ℹ️ Ứng dụng này đã nằm trong \"Đã mua\" của Apple ID này.";
+            } else {
+                // Thêm mới thành công
+                resultHeader.textContent = "✅ Thêm ứng dụng vào \"Đã mua\" thành công.";
+            }
 
             appInfo.innerHTML = `
                 <img src="${icon}" alt="App Icon" class="app-icon">
