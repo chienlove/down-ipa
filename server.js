@@ -789,7 +789,7 @@ app.post('/purchase', async (req, res) => {
 
     async function lookupBundle(id) {
       if (!id) return null;
-      const countries = ["vn", "us", "jp"];
+      const countries = ["vn", "us", "jp", "kr", "cn", "tw", "hk", "sg"];
       for (const c of countries) {
         try {
           const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${c}`);
