@@ -758,9 +758,8 @@ app.post('/auth', async (req, res) => {
 });
 
 // ============================
-// ROUTE: /purchase (ipatool v2)
+// ROUTE: /purchase (ipatool v2 + STDQ + 2FA friendly)
 // ============================
-
 app.post('/purchase', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, input } = req.body || {};
@@ -830,10 +829,9 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 1.5) Chuẩn hóa thông tin app cho UI (dùng cho cả success & STDQ)
+    // 1.5) Chuẩn hóa thông tin app cho UI
     // ==============================
     let appInfo = null;
-
     if (meta) {
       appInfo = {
         name: meta.trackName || null,
@@ -859,15 +857,12 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 2) Keychain pass + hàm gọi ipatool (global flag)
+    // 2) Keychain pass + HÀM GỌI IPATOOL (đã sửa)
     // ==============================
-
-    // Passphrase để ipatool mã hóa keychain (tùy ý, miễn ổn định theo từng Apple ID)
     const keychainPass = `${APPLE_ID}-storeios-pass`;
 
     const runIpatool = (args) =>
       new Promise((resolve, reject) => {
-        // Global flags phải đặt TRƯỚC subcommand
         const finalArgs = [
           '--keychain-passphrase',
           keychainPass,
@@ -878,29 +873,37 @@ app.post('/purchase', async (req, res) => {
           const out = stdout?.toString() || '';
           const errOut = stderr?.toString() || '';
 
-          if (err) {
-            return reject(new Error(errOut || out || err.message));
-          }
-
+          // Nếu không có output JSON → coi như lỗi thực sự
           if (!out.trim()) {
+            if (err) {
+              return reject(
+                new Error(errOut || err.message || 'ipatool không trả dữ liệu')
+              );
+            }
             return resolve({});
           }
 
           try {
             const parsed = JSON.parse(out);
+
+            // Nếu ipatool exit code ≠ 0 vẫn resolve, chỉ gắn thêm meta
+            if (err) {
+              parsed.__exitCode = err.code;
+              parsed.__signal = err.signal;
+            }
             resolve(parsed);
           } catch (e) {
-            reject(
-              new Error('ipatool xuất ra dữ liệu không phải JSON: ' + out.slice(0, 400))
+            const msg = errOut || out || e.message;
+            return reject(
+              new Error('ipatool xuất ra dữ liệu không phải JSON: ' + msg.slice(0, 400))
             );
           }
         });
       });
 
     // ==============================
-    // 3) Bước 1: auth login
+    // 3) Bước 1: auth login (phát hiện 2FA)
     // ==============================
-
     const authArgs = [
       'auth',
       'login',
@@ -927,7 +930,7 @@ app.post('/purchase', async (req, res) => {
         /failed to get account: failed to get item/i.test(rawErr);
 
       if (looksLike2FA && !CODE) {
-        // Thiếu mã 2FA → yêu cầu người dùng nhập
+        // Thiếu mã 2FA → yêu cầu người dùng nhập mã
         return res.status(401).json({
           success: false,
           require2FA: true,
@@ -947,9 +950,8 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 4) Bước 2: purchase
+    // 4) Bước 2: purchase (bắt STDQ và coi là đã mua)
     // ==============================
-
     const purchaseArgs = [
       'purchase',
       '-b',
@@ -966,7 +968,7 @@ app.post('/purchase', async (req, res) => {
       const isSTDQ = /STDQ/i.test(rawErr);
 
       if (isSTDQ) {
-        // Nhiều khả năng app đã nằm trong Purchased → coi như thành công, chỉ báo khác message
+        // Trường hợp app đã nằm trong “Đã mua” → coi như success
         return res.status(200).json({
           success: true,
           alreadyInPurchased: true,
@@ -987,7 +989,7 @@ app.post('/purchase', async (req, res) => {
     }
 
     // ==============================
-    // 6) Thành công
+    // 5) Thành công (thêm mới)
     // ==============================
     return res.json({
       success: true,
