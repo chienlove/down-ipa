@@ -900,7 +900,7 @@ app.post('/purchase', async (req, res) => {
       });
 
     // ==============================
-    // 3) Bước 1: auth login (phân biệt 2FA vs sai pass)
+    // 3) Bước 1: auth login (giữ nguyên logic cũ, chỉ sửa "something went wrong")
     // ==============================
     const authArgs = [
       'auth',
@@ -922,23 +922,14 @@ app.post('/purchase', async (req, res) => {
 
     if (auth.success === false || auth.error) {
       const rawErrFull = (auth.error || auth.message || '').toString();
-      const rawErr = rawErrFull.toLowerCase();
+      const rawErr = rawErrFull; // giữ nguyên
 
-      // Nhận diện 2FA
-      const is2FA =
-        rawErr.includes('two-factor') ||
-        rawErr.includes('two factor') ||
-        rawErr.includes('2fa') ||
-        rawErr.includes('auth code') ||
-        rawErr.includes('code required');
+      const looksLike2FA =
+        /two[- ]factor|2fa|required an auth code|auth code/i.test(rawErr) ||
+        /failed to get account: failed to get item/i.test(rawErr);
 
-      // Nhận diện sai pass / account lỗi
-      const isWrongPass =
-        rawErr.includes('failed to get account') ||
-        rawErr.includes('failed to get item') ||
-        rawErr.includes('something went wrong');
-
-      if (is2FA && !CODE) {
+      // 🔐 GIỮ NGUYÊN: nếu ipatool nghĩ là 2FA → require2FA
+      if (looksLike2FA && !CODE) {
         return res.status(401).json({
           success: false,
           require2FA: true,
@@ -948,25 +939,22 @@ app.post('/purchase', async (req, res) => {
         });
       }
 
-      if (isWrongPass) {
-        return res.status(400).json({
-          success: false,
-          error: 'Đăng nhập thất bại. Vui lòng kiểm tra lại Apple ID và mật khẩu, hoặc thử đăng nhập trực tiếp trên App Store để chắc chắn tài khoản vẫn hoạt động.',
-          rawAuth: auth
-        });
+      // 🔁 CHỈ THÊM PHẦN NÀY: map "something went wrong" → sai tài khoản/mật khẩu
+      let friendly = rawErrFull;
+      if (!friendly || /something went wrong/i.test(friendly)) {
+        friendly =
+          'Đăng nhập thất bại. Vui lòng kiểm tra lại Apple ID và mật khẩu (hoặc thử đăng nhập trực tiếp trên App Store để chắc chắn tài khoản vẫn hoạt động bình thường).';
       }
 
       return res.status(400).json({
         success: false,
-        error:
-          rawErrFull ||
-          'ipatool auth login thất bại. Vui lòng kiểm tra Apple ID / mật khẩu / mã 2FA.',
+        error: friendly,
         rawAuth: auth
       });
     }
 
     // ==============================
-    // 4) Bước 2: purchase (chỉ bắt STDQ, KHÔNG bắt 2FA ở đây nữa)
+    // 4) Bước 2: purchase (bắt STDQ + 2FA như code cũ)
     // ==============================
     const purchaseArgs = [
       'purchase',
@@ -983,6 +971,20 @@ app.post('/purchase', async (req, res) => {
       const rawErr = (purchase.error || purchase.message || '').toString();
 
       const isSTDQ = /STDQ/i.test(rawErr);
+      const needs2FA =
+        /failed to get account: failed to get item/i.test(rawErr) ||
+        /two[- ]factor|2fa|required an auth code|auth code/i.test(rawErr);
+
+      // 🔐 Trường hợp ipatool báo lỗi keychain/account nhưng thực chất là cần 2FA
+      if (needs2FA && !CODE) {
+        return res.status(401).json({
+          success: false,
+          require2FA: true,
+          error:
+            'Tài khoản này đã bật xác minh 2 bước (2FA). Vui lòng nhập mã 6 số vào ô “Mã 2FA” rồi gửi lại.',
+          rawPurchase: purchase
+        });
+      }
 
       // 📌 STDQ: app đã nằm trong Purchased
       if (isSTDQ) {
