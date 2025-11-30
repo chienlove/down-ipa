@@ -900,7 +900,7 @@ app.post('/purchase', async (req, res) => {
       });
 
     // ==============================
-    // 3) Bước 1: auth login (bắt 2FA ở bước auth)
+    // 3) Bước 1: auth login (bắt 2FA + sai mật khẩu)
     // ==============================
     const authArgs = [
       'auth',
@@ -937,11 +937,16 @@ app.post('/purchase', async (req, res) => {
         });
       }
 
+      // Map "something went wrong" → thông báo sai pass dễ hiểu
+      let friendly = rawErr;
+      if (!friendly || /something went wrong/i.test(friendly)) {
+        friendly =
+          'Đăng nhập thất bại. Vui lòng kiểm tra lại Apple ID và mật khẩu (hoặc thử đăng nhập trực tiếp trên App Store để chắc chắn tài khoản vẫn hoạt động bình thường).';
+      }
+
       return res.status(400).json({
         success: false,
-        error:
-          rawErr ||
-          'ipatool auth login thất bại. Vui lòng kiểm tra Apple ID / mật khẩu / mã 2FA.',
+        error: friendly,
         rawAuth: auth
       });
     }
