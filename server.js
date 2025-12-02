@@ -757,12 +757,62 @@ app.post('/auth', async (req, res) => {
   }
 });
 
+// ================= reCAPTCHA cho purchased.storeios.net =================
+const PURCHASED_RECAPTCHA_SECRET = process.env.PURCHASED_SECRET_PURCHASED || '';
+
+async function verifyRecaptchaForPurchase(token) {
+  if (!token) {
+    return { ok: false, code: 'RECAPTCHA_REQUIRED' };
+  }
+
+  if (!PURCHASED_RECAPTCHA_SECRET) {
+    console.warn('⚠ PURCHASED_SECRET_PURCHASED chưa được cấu hình trong Heroku');
+    return { ok: false, code: 'NO_SECRET' };
+  }
+
+  const params = new URLSearchParams();
+  params.append('secret', PURCHASED_RECAPTCHA_SECRET);
+  params.append('response', token);
+
+  const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+
+  const data = await resp.json();
+  if (!data.success) {
+    return { ok: false, code: 'RECAPTCHA_FAILED', data };
+  }
+
+  return { ok: true, code: 'OK', data };
+}
+
 // ============================
 // ROUTE: /purchase (ipatool v2 + STDQ + 2FA friendly)
 // ============================
 app.post('/purchase', async (req, res) => {
   try {
-    const { APPLE_ID, PASSWORD, CODE, input } = req.body || {};
+    // ✅ Lấy thêm recaptchaToken từ body
+    const { APPLE_ID, PASSWORD, CODE, input, recaptchaToken } = req.body || {};
+
+    // ✅ Check reCAPTCHA trước khi làm bất kỳ thứ gì với Apple ID
+    const vr = await verifyRecaptchaForPurchase(recaptchaToken);
+    if (!vr.ok) {
+      let msg = 'Xác thực reCAPTCHA thất bại. Vui lòng tải lại trang và thử lại.';
+      if (vr.code === 'RECAPTCHA_REQUIRED') {
+        msg = 'Vui lòng tích vào ô reCAPTCHA trước khi tiếp tục.';
+      } else if (vr.code === 'NO_SECRET') {
+        msg = 'reCAPTCHA chưa được cấu hình đúng trên server.';
+      }
+
+      return res.status(400).json({
+        success: false,
+        recaptchaFailed: true,
+        error: msg,
+        recaptchaCode: vr.code,
+      });
+    }
 
     if (!APPLE_ID || !PASSWORD || !input) {
       return res.status(400).json({
