@@ -268,14 +268,12 @@
         border-left: 4px solid var(--danger);
     }
 
-    /* 2FA Alert (mới) – màu xanh/info */
     .alert-info {
         background: #ecfeff;
         color: #0f766e;
         border-left: 4px solid #14b8a6;
     }
 
-    /* Note 2FA – màu đỏ, kiểu ghi chú */
     .twofa-note {
         display: none;
         margin-top: 8px;
@@ -387,7 +385,6 @@
         font-weight: 700;
     }
 
-    /* Responsive */
     @media (max-width: 480px) {
         .header-title {
             font-size: 26px;
@@ -408,6 +405,9 @@
         }
     }
 </style>
+
+<!-- reCAPTCHA v3 -->
+<script src="https://www.google.com/recaptcha/api.js?render=6Lc3hx4sAAAAAMf4Mq51snfbEqj2GvHgsK2otrLP"></script>
 </head>
 
 <body>
@@ -550,6 +550,9 @@
 </div>
 
 <script>
+    const RECAPTCHA_SITE_KEY = "6Lc3hx4sAAAAAMf4Mq51snfbEqj2GvHgsK2otrLP";
+    const API_ENDPOINT = "https://ipadl.storeios.net/purchase"; // Đổi lại nếu backend của bạn khác
+
     const $ = (sel) => document.querySelector(sel);
 
     const form = $("#purchaseForm");
@@ -561,10 +564,7 @@
     const appInfo = $("#appInfo");
     const resultHeader = $("#resultHeader");
 
-    form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-
-        // Reset UI
+    function resetUI() {
         errorBox.style.display = "none";
         errorBox.textContent = "";
         twofaBox.style.display = "none";
@@ -574,83 +574,119 @@
         resultCard.style.display = "none";
         appInfo.innerHTML = "";
         resultHeader.textContent = "✅ Thành công!";
+    }
 
-        loadingEl.style.display = "block";
-
+    async function callPurchaseApi(recaptchaToken) {
         const body = {
             APPLE_ID: $("#APPLE_ID").value.trim(),
             PASSWORD: $("#PASSWORD").value.trim(),
             CODE: $("#CODE").value.trim(),
-            input: $("#INPUT").value.trim()
+            input: $("#INPUT").value.trim(),
+            recaptchaToken, // gửi token lên backend để verify
         };
 
+        const res = await fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+
+        return res.json();
+    }
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        resetUI();
+        loadingEl.style.display = "block";
+
         try {
-            const res = await fetch("/purchase", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body)
+            if (typeof grecaptcha === "undefined") {
+                throw new Error("Không tải được reCAPTCHA. Vui lòng tải lại trang.");
+            }
+
+            grecaptcha.ready(function() {
+                grecaptcha.execute(RECAPTCHA_SITE_KEY, {action: "purchase"})
+                    .then(async function(token) {
+                        try {
+                            const data = await callPurchaseApi(token);
+                            loadingEl.style.display = "none";
+
+                            if (!data) {
+                                errorBox.textContent = "❌ Không nhận được phản hồi từ máy chủ.";
+                                errorBox.style.display = "block";
+                                return;
+                            }
+
+                            if (data.recaptchaFailed) {
+                                errorBox.textContent = "❌ Xác thực reCAPTCHA thất bại. Vui lòng thử lại.";
+                                errorBox.style.display = "block";
+                                return;
+                            }
+
+                            // Trường hợp yêu cầu 2FA
+                            if (data.require2FA) {
+                                twofaBox.textContent =
+                                    data.error ||
+                                    "Vui lòng nhập mã 2FA gửi về thiết bị, sau đó bấm lại.";
+                                twofaBox.style.display = "block";
+
+                                if (data.note) {
+                                    twofaNote.textContent = data.note;
+                                    twofaNote.style.display = "block";
+                                }
+
+                                const codeInput = $("#CODE");
+                                if (codeInput) codeInput.focus();
+                                return;
+                            }
+
+                            // Trường hợp lỗi chung
+                            if (!data.success) {
+                                errorBox.textContent =
+                                    data.error ||
+                                    "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
+                                errorBox.style.display = "block";
+                                return;
+                            }
+
+                            const app = data.app || {};
+                            const icon = app.icon || "https://via.placeholder.com/120?text=App";
+
+                            if (data.alreadyInPurchased) {
+                                resultHeader.textContent =
+                                    "ℹ️ Ứng dụng này đã nằm trong \"Đã mua\" của Apple ID này.";
+                            } else {
+                                resultHeader.textContent =
+                                    "✅ Thêm ứng dụng vào \"Đã mua\" thành công.";
+                            }
+
+                            appInfo.innerHTML = `
+                                <img src="${icon}" alt="App Icon" class="app-icon">
+                                <div class="app-details">
+                                    <div class="app-name">${app.name || "Không rõ tên"}</div>
+                                    <div class="app-meta">
+                                        Bundle: <strong>${app.bundleId || "N/A"}</strong><br>
+                                        Phiên bản: <strong>${app.version || "N/A"}</strong><br>
+                                        Nhà phát hành: <strong>${app.artistName || "N/A"}</strong>
+                                    </div>
+                                </div>
+                            `;
+
+                            resultCard.style.display = "block";
+                        } catch (err) {
+                            loadingEl.style.display = "none";
+                            errorBox.textContent =
+                                "❌ " + (err.message || "Lỗi không xác định");
+                            errorBox.style.display = "block";
+                        }
+                    })
+                    .catch(function(err) {
+                        loadingEl.style.display = "none";
+                        errorBox.textContent =
+                            "❌ Lỗi reCAPTCHA: " + (err.message || "Không xác định");
+                        errorBox.style.display = "block";
+                    });
             });
-
-            const data = await res.json();
-            loadingEl.style.display = "none";
-
-            if (!data) {
-                errorBox.textContent = "❌ Không nhận được phản hồi từ máy chủ.";
-                errorBox.style.display = "block";
-                return;
-            }
-
-            // Trường hợp yêu cầu 2FA
-            if (data.require2FA) {
-                twofaBox.textContent =
-                    data.error ||
-                    "Vui lòng nhập mã 2FA gửi về thiết bị, sau đó bấm lại.";
-                twofaBox.style.display = "block";
-
-                if (data.note) {
-                    twofaNote.textContent = data.note;
-                    twofaNote.style.display = "block";
-                }
-
-                const codeInput = $("#CODE");
-                if (codeInput) codeInput.focus();
-                return;
-            }
-
-            // Trường hợp lỗi chung
-            if (!data.success) {
-                errorBox.textContent =
-                    data.error ||
-                    "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
-                errorBox.style.display = "block";
-                return;
-            }
-
-            // Thành công (có thể đã nằm trong Đã mua)
-            const app = data.app || {};
-            const icon = app.icon || "https://via.placeholder.com/120?text=App";
-
-            if (data.alreadyInPurchased) {
-                resultHeader.textContent =
-                    "ℹ️ Ứng dụng này đã nằm trong \"Đã mua\" của Apple ID này.";
-            } else {
-                resultHeader.textContent =
-                    "✅ Thêm ứng dụng vào \"Đã mua\" thành công.";
-            }
-
-            appInfo.innerHTML = `
-                <img src="${icon}" alt="App Icon" class="app-icon">
-                <div class="app-details">
-                    <div class="app-name">${app.name || "Không rõ tên"}</div>
-                    <div class="app-meta">
-                        Bundle: <strong>${app.bundleId || "N/A"}</strong><br>
-                        Phiên bản: <strong>${app.version || "N/A"}</strong><br>
-                        Nhà phát hành: <strong>${app.artistName || "N/A"}</strong>
-                    </div>
-                </div>
-            `;
-
-            resultCard.style.display = "block";
         } catch (err) {
             loadingEl.style.display = "none";
             errorBox.textContent =
