@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-<title>Thêm ứng dụng vào mục "Đã mua" của id apple – iOS Purchase Helper</title>
+<title>Thêm ứng dụng vào mục "Đã mua" của Apple ID – iOS Purchase Helper</title>
 
 <style>
     :root {
@@ -42,7 +42,6 @@
         margin: 0 auto;
     }
 
-    /* Header */
     .header {
         text-align: center;
         margin-bottom: 32px;
@@ -73,7 +72,6 @@
         font-weight: 500;
     }
 
-    /* Card */
     .card {
         background: var(--card-bg);
         border-radius: 20px;
@@ -83,7 +81,6 @@
         border: 1px solid rgba(255, 255, 255, 0.8);
     }
 
-    /* Info Box */
     .info-box {
         background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
         border-radius: 16px;
@@ -120,7 +117,6 @@
         color: var(--primary);
     }
 
-    /* Form */
     .form-header {
         margin-bottom: 20px;
     }
@@ -188,7 +184,6 @@
         color: var(--primary);
     }
 
-    /* Button */
     .btn-submit {
         width: 100%;
         padding: 16px;
@@ -201,7 +196,7 @@
         cursor: pointer;
         transition: all 0.3s ease;
         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-        margin-top: 8px;
+        margin-top: 12px;
     }
 
     .btn-submit:hover {
@@ -213,7 +208,6 @@
         transform: translateY(0);
     }
 
-    /* Loading */
     .loading {
         display: none;
         text-align: center;
@@ -240,7 +234,6 @@
         font-weight: 500;
     }
 
-    /* Alert */
     .alert {
         padding: 14px 16px;
         border-radius: 12px;
@@ -268,14 +261,12 @@
         border-left: 4px solid var(--danger);
     }
 
-    /* 2FA Alert (mới) – màu xanh/info */
     .alert-info {
         background: #ecfeff;
         color: #0f766e;
         border-left: 4px solid #14b8a6;
     }
 
-    /* Note 2FA – màu đỏ, kiểu ghi chú */
     .twofa-note {
         display: none;
         margin-top: 8px;
@@ -288,7 +279,6 @@
         border-left: 3px solid var(--danger);
     }
 
-    /* Result */
     .result {
         display: none;
         margin-top: 16px;
@@ -348,7 +338,6 @@
         color: var(--text-dark);
     }
 
-    /* Tips */
     .tips-box {
         background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
         border-radius: 16px;
@@ -387,7 +376,6 @@
         font-weight: 700;
     }
 
-    /* Responsive */
     @media (max-width: 480px) {
         .header-title {
             font-size: 26px;
@@ -407,36 +395,70 @@
             height: 80px;
         }
     }
+
+    .recaptcha-wrapper {
+        margin-top: 8px;
+        display: flex;
+        justify-content: center;
+    }
+
+    /* Quảng cáo */
+    .ad-card {
+        text-align: center;
+    }
+    .ad-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 6px;
+    }
 </style>
+
+<!-- AdSense -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3905625903416797"
+     crossorigin="anonymous"></script>
+
+<!-- reCAPTCHA v2 Checkbox -->
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 
 <body>
 <div class="container">
-    <!-- Header -->
     <header class="header">
         <h1 class="header-title">
             <span class="header-icon">📱</span>
             iOS Purchase Helper
         </h1>
-        <p class="header-subtitle">Thêm app miễn phí vào mục "Đã mua" của id apple để tải trên thiết bị iOS cũ</p>
+        <p class="header-subtitle">Thêm app miễn phí vào mục "Đã mua" của Apple ID để tải trên thiết bị iOS cũ</p>
     </header>
 
-    <!-- Quick Info -->
     <div class="card">
         <div class="info-box">
             <div class="info-title">
                 💡 Công cụ này làm gì?
             </div>
             <div class="info-text">
-                Giúp bạn thêm app miễn phí vào danh sách "Đã mua" của Apple ID trên web mà không cần App Store. Sau đó, bạn có thể mở App Store vào mục Đã mua để tải về phiên bản tương thích với iOS cũ hơn (nếu trước đó ứng dụng này từng có phiên bản tương thích với phiên bản iOS hiện tại của thiết bị của bạn).
+                Giúp bạn thêm app miễn phí vào danh sách "Đã mua" của Apple ID trên web mà không cần App Store. Sau đó, bạn mở App Store → tab Đã mua để tải phiên bản tương thích với iOS cũ (nếu vẫn còn).
             </div>
             <div class="info-example">
-                <strong>Ví dụ:</strong> iPhone cũ chạy iOS 10 không cài được Facebook phiên bản mới. Dùng công cụ này để thêm vào "Đã mua", sau đó mở App Store → tab Đã mua → tải phiên bản cũ phù hợp.
+                <strong>Ví dụ:</strong> iPhone cũ chạy iOS 10 không cài được Facebook phiên bản mới. Dùng công cụ này để thêm vào "Đã mua", sau đó mở App Store → Đã mua → tải phiên bản cũ phù hợp.
             </div>
         </div>
     </div>
 
-    <!-- Form -->
+    <!-- =======================
+         ADS SLOT #1 -- 300x250 giữa hai card
+         ======================= -->
+    <div class="card ad-card">
+        <div class="ad-label">Quảng cáo</div>
+        <ins class="adsbygoogle"
+             style="display:inline-block;width:300px;height:250px"
+             data-ad-client="ca-pub-3905625903416797"
+             data-ad-slot="5160182988"></ins>
+        <script>
+            (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
+
     <div class="card">
         <div class="form-header">
             <div class="form-title">
@@ -506,6 +528,14 @@
                 </div>
             </div>
 
+            <!-- reCAPTCHA v2 checkbox -->
+            <div class="recaptcha-wrapper">
+                <div
+                    class="g-recaptcha"
+                    data-sitekey="6Lc3hx4sAAAAAMf4Mq51snfbEqj2GvHgsK2otrLP">
+                </div>
+            </div>
+
             <button type="submit" class="btn-submit">
                 ✨ Thêm vào "Đã mua"
             </button>
@@ -516,15 +546,10 @@
             </div>
         </form>
 
-        <!-- Hộp thông báo 2FA (xanh) -->
         <div id="twofaBox" class="alert alert-info"></div>
-        <!-- Note 2FA (đỏ) -->
         <div id="twofaNote" class="twofa-note"></div>
-
-        <!-- Hộp lỗi -->
         <div id="errorBox" class="alert alert-error"></div>
-        
-        <!-- Kết quả -->
+
         <div id="resultCard" class="result">
             <div class="result-header" id="resultHeader">
                 ✅ Thành công!
@@ -533,7 +558,6 @@
         </div>
     </div>
 
-    <!-- Tips -->
     <div class="card">
         <div class="tips-box">
             <div class="tips-title">
@@ -547,9 +571,28 @@
             </ul>
         </div>
     </div>
+
+    <!-- =======================
+         ADS SLOT #2 -- Auto Relaxed footer
+         ======================= -->
+    <div class="card ad-card">
+        <div class="ad-label">Quảng cáo</div>
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-format="autorelaxed"
+             data-ad-client="ca-pub-3905625903416797"
+             data-ad-slot="7109430646"></ins>
+        <script>
+            (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
 </div>
 
 <script>
+    const API_BASE = "https://ipadl.storeios.net";
+    const API_ENDPOINT = API_BASE + "/purchase";
+    const TOKEN_ENDPOINT = API_BASE + "/purchase-token";
+
     const $ = (sel) => document.querySelector(sel);
 
     const form = $("#purchaseForm");
@@ -561,10 +604,7 @@
     const appInfo = $("#appInfo");
     const resultHeader = $("#resultHeader");
 
-    form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-
-        // Reset UI
+    function resetUI() {
         errorBox.style.display = "none";
         errorBox.textContent = "";
         twofaBox.style.display = "none";
@@ -574,24 +614,63 @@
         resultCard.style.display = "none";
         appInfo.innerHTML = "";
         resultHeader.textContent = "✅ Thành công!";
+    }
 
-        loadingEl.style.display = "block";
+    async function getPurchaseToken() {
+        const res = await fetch(TOKEN_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
 
+        const data = await res.json();
+        if (!data || !data.success || !data.token) {
+            throw new Error("Không tạo được token bảo mật. Vui lòng tải lại trang.");
+        }
+        return data.token;
+    }
+
+    async function callPurchaseApi(recaptchaToken, secureToken) {
         const body = {
             APPLE_ID: $("#APPLE_ID").value.trim(),
             PASSWORD: $("#PASSWORD").value.trim(),
             CODE: $("#CODE").value.trim(),
-            input: $("#INPUT").value.trim()
+            input: $("#INPUT").value.trim(),
+            recaptchaToken
         };
 
-        try {
-            const res = await fetch("/purchase", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body)
-            });
+        const res = await fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: { 
+                "Content-Type": "application/json",
+                "X-Purchase-Token": secureToken
+            },
+            body: JSON.stringify(body)
+        });
 
-            const data = await res.json();
+        return res.json();
+    }
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        resetUI();
+
+        const recaptchaResponse = document.querySelector("textarea[name='g-recaptcha-response']");
+        const token = recaptchaResponse ? recaptchaResponse.value : "";
+
+        if (!token) {
+            errorBox.textContent = "⚠️ Vui lòng tích vào ô \"Tôi không phải người máy\" trước khi tiếp tục.";
+            errorBox.style.display = "block";
+            return;
+        }
+
+        loadingEl.style.display = "block";
+
+        try {
+            // 1) Lấy secure token từ server (HMAC, gắn IP + UA)
+            const secureToken = await getPurchaseToken();
+
+            // 2) Gọi API purchase với recaptchaToken + secure token
+            const data = await callPurchaseApi(token, secureToken);
             loadingEl.style.display = "none";
 
             if (!data) {
@@ -600,11 +679,21 @@
                 return;
             }
 
-            // Trường hợp yêu cầu 2FA
+            if (data.tokenCode && !data.success) {
+                errorBox.textContent = "❌ Yêu cầu đã hết hạn hoặc không hợp lệ. Vui lòng tải lại trang.";
+                errorBox.style.display = "block";
+                return;
+            }
+
+            if (data.recaptchaFailed) {
+                errorBox.textContent = "❌ Xác thực reCAPTCHA thất bại. Vui lòng thử lại.";
+                errorBox.style.display = "block";
+                return;
+            }
+
             if (data.require2FA) {
                 twofaBox.textContent =
-                    data.error ||
-                    "Vui lòng nhập mã 2FA gửi về thiết bị, sau đó bấm lại.";
+                    data.error || "Vui lòng nhập mã 2FA gửi về thiết bị, sau đó bấm lại.";
                 twofaBox.style.display = "block";
 
                 if (data.note) {
@@ -617,16 +706,13 @@
                 return;
             }
 
-            // Trường hợp lỗi chung
             if (!data.success) {
                 errorBox.textContent =
-                    data.error ||
-                    "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
+                    data.error || "❌ Không thể xử lý yêu cầu. Vui lòng kiểm tra lại thông tin.";
                 errorBox.style.display = "block";
                 return;
             }
 
-            // Thành công (có thể đã nằm trong Đã mua)
             const app = data.app || {};
             const icon = app.icon || "https://via.placeholder.com/120?text=App";
 
@@ -651,6 +737,10 @@
             `;
 
             resultCard.style.display = "block";
+
+            if (typeof grecaptcha !== "undefined") {
+                grecaptcha.reset();
+            }
         } catch (err) {
             loadingEl.style.display = "none";
             errorBox.textContent =

@@ -17,6 +17,7 @@ import os from 'os';
 import plist from 'plist';
 import AdmZip from 'adm-zip';
 import certApi from './routes/certApi.js';
+import crypto from 'crypto'; // ✅ thêm cho HMAC token
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -305,12 +306,116 @@ async function extractMinimumOSVersion(ipaPath) {
 
 const progressMap = new Map();
 
+// ✅================= BẢO MẬT PURCHASE TOKEN (CÁCH 4) =================
+const PURCHASE_TOKEN_SECRET = process.env.PURCHASE_TOKEN_SECRET || '';
+const purchaseTokenStore = new Map(); // token -> { ipHash, uaHash, exp, used }
+
+function hashValue(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function getClientIp(req) {
+  return (
+    req.ip ||
+    (req.headers['x-forwarded-for']?.split(',')[0] || '').trim() ||
+    req.connection?.remoteAddress ||
+    ''
+  );
+}
+
+function createPurchaseToken(ip, ua) {
+  if (!PURCHASE_TOKEN_SECRET) {
+    console.warn('⚠ PURCHASE_TOKEN_SECRET is not set');
+    return null;
+  }
+  const now = Date.now();
+  const exp = now + 5000; // token sống 5s
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const ipHash = hashValue(ip);
+  const uaHash = hashValue(ua);
+  const payload = `${ipHash}.${uaHash}.${now}.${exp}.${nonce}`;
+  const sig = crypto.createHmac('sha256', PURCHASE_TOKEN_SECRET).update(payload).digest('hex');
+  const token = `${payload}.${sig}`;
+
+  purchaseTokenStore.set(token, {
+    ipHash,
+    uaHash,
+    exp,
+    used: false,
+  });
+
+  return token;
+}
+
+function verifyPurchaseToken(rawToken, ip, ua) {
+  if (!PURCHASE_TOKEN_SECRET) {
+    return { ok: false, code: 'NO_SECRET' };
+  }
+  if (!rawToken || typeof rawToken !== 'string') {
+    return { ok: false, code: 'NO_TOKEN' };
+  }
+
+  const parts = rawToken.split('.');
+  if (parts.length !== 6) {
+    return { ok: false, code: 'BAD_FORMAT' };
+  }
+
+  const [ipHash, uaHash, tsStr, expStr, nonce, sig] = parts;
+  const payload = `${ipHash}.${uaHash}.${tsStr}.${expStr}.${nonce}`;
+  const expectedSig = crypto.createHmac('sha256', PURCHASE_TOKEN_SECRET).update(payload).digest('hex');
+
+  if (expectedSig !== sig) {
+    return { ok: false, code: 'BAD_SIGNATURE' };
+  }
+
+  const now = Date.now();
+  const exp = Number(expStr) || 0;
+  if (now > exp) {
+    purchaseTokenStore.delete(rawToken);
+    return { ok: false, code: 'EXPIRED' };
+  }
+
+  const currentIpHash = hashValue(ip);
+  const currentUaHash = hashValue(ua);
+
+  if (currentIpHash !== ipHash || currentUaHash !== uaHash) {
+    return { ok: false, code: 'IP_OR_UA_MISMATCH' };
+  }
+
+  const saved = purchaseTokenStore.get(rawToken);
+  if (!saved) {
+    return { ok: false, code: 'NOT_FOUND' };
+  }
+  if (saved.used) {
+    return { ok: false, code: 'ALREADY_USED' };
+  }
+
+  saved.used = true;
+  purchaseTokenStore.set(rawToken, saved);
+
+  setTimeout(() => {
+    purchaseTokenStore.delete(rawToken);
+  }, 10 * 1000);
+
+  return { ok: true, code: 'OK' };
+}
+
+// Cleanup định kỳ tránh map phình
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, info] of purchaseTokenStore.entries()) {
+    if (info.exp < now) {
+      purchaseTokenStore.delete(token);
+    }
+  }
+}, 60 * 1000);
+// ✅==================================================================
+
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
-    // hỗ trợ hủy
     const globalAbort = new AbortController();
     const setProgress = (obj) => {
       const prev = progressMap.get(requestId) || {};
@@ -355,7 +460,6 @@ class IPATool {
           };
         }
         
-        // SỬA: Xử lý lỗi "client not found" cụ thể
         const errorMessage = app?.customerMessage || 'Failed to get app information';
         if (errorMessage.includes('client not found') || errorMessage.includes('not found')) {
           throw new Error('APP_NOT_OWNED: Ứng dụng này chưa được mua hoặc không có trong mục đã mua của Apple ID này.');
@@ -600,7 +704,6 @@ class IPATool {
       const msg = String(error.message || '');
       let code = undefined;
       
-      // SỬA: Phân loại lỗi cụ thể hơn
       if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
       else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
       else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
@@ -610,7 +713,6 @@ class IPATool {
 
       progressMap.set(requestId, { progress: 0, status: 'error', error: msg, code });
       
-      // SỬA: Đảm bảo giảm job counter ngay cả khi có lỗi
       currentJobs = Math.max(0, currentJobs - 1);
       throw error;
     } finally {
@@ -621,7 +723,7 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-/* ================= reCAPTCHA integration ================= */
+/* ================= reCAPTCHA integration (download) ================= */
 
 // endpoint trả sitekey để client render explicit
 app.get('/recaptcha-sitekey', (req, res) => {
@@ -671,7 +773,6 @@ app.get('/download-progress/:id', (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // heartbeat để Heroku không cắt
   const heartbeat = setInterval(() => {
     res.write(`: keep-alive ${Date.now()}\n\n`);
   }, 15000);
@@ -788,15 +889,56 @@ async function verifyRecaptchaForPurchase(token) {
   return { ok: true, code: 'OK', data };
 }
 
+// ✅ NEW: ROUTE SINH TOKEN BẢO MẬT CHO /purchase
+app.post('/purchase-token', (req, res) => {
+  try {
+    const ip = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const token = createPurchaseToken(ip, ua);
+    if (!token) {
+      return res.status(500).json({
+        success: false,
+        error: 'SERVER_TOKEN_ERROR',
+        message: 'Không tạo được token bảo mật'
+      });
+    }
+    return res.json({
+      success: true,
+      token,
+      ttl: 5
+    });
+  } catch (e) {
+    console.error('Error in /purchase-token:', e);
+    return res.status(500).json({
+      success: false,
+      error: e.message || 'Lỗi server khi tạo token'
+    });
+  }
+});
+
 // ============================
 // ROUTE: /purchase (ipatool v2 + STDQ + 2FA friendly)
 // ============================
 app.post('/purchase', async (req, res) => {
   try {
-    // ✅ Lấy thêm recaptchaToken từ body
     const { APPLE_ID, PASSWORD, CODE, input, recaptchaToken } = req.body || {};
 
-    // ✅ Check reCAPTCHA trước khi làm bất kỳ thứ gì với Apple ID
+    // ✅ 1) Kiểm tra token bảo mật
+    const clientIp = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const rawToken = req.headers['x-purchase-token'] || '';
+    const tokenCheck = verifyPurchaseToken(rawToken, clientIp, ua);
+
+    if (!tokenCheck.ok) {
+      console.warn('Invalid purchase token:', tokenCheck);
+      return res.status(403).json({
+        success: false,
+        error: 'Yêu cầu không hợp lệ hoặc đã hết hạn. Vui lòng tải lại trang và thử lại.',
+        tokenCode: tokenCheck.code,
+      });
+    }
+
+    // ✅ 2) Check reCAPTCHA cho route purchased
     const vr = await verifyRecaptchaForPurchase(recaptchaToken);
     if (!vr.ok) {
       let msg = 'Xác thực reCAPTCHA thất bại. Vui lòng tải lại trang và thử lại.';
@@ -1071,7 +1213,6 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
             require2FA: true,
             message: result.message,
           });
-          // SỬA: Đảm bảo giảm job counter khi có lỗi 2FA
           currentJobs = Math.max(0, currentJobs - 1);
           return;
         }
@@ -1102,7 +1243,6 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
           }
         }, 1000);
         
-        // SỬA: Đảm bảo giảm job counter khi thành công
         currentJobs = Math.max(0, currentJobs - 1);
       } catch (error) {
         console.error('Background download error:', error);
@@ -1121,13 +1261,11 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
           code,
         });
         
-        // SỬA: Đảm bảo giảm job counter khi có lỗi
         currentJobs = Math.max(0, currentJobs - 1);
       }
     });
   } catch (error) {
     console.error('Download error:', error);
-    // SỬA: Đảm bảo giảm job counter khi có lỗi ở level ngoài
     currentJobs = Math.max(0, currentJobs - 1);
     res.status(500).json({
       success: false,
@@ -1136,7 +1274,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
   }
 });
 
-// Verify 2FA (giữ 1 bản duy nhất)
+// Verify 2FA
 app.post('/verify', async (req, res) => {
   console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
