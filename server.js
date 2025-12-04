@@ -938,23 +938,25 @@ app.post('/purchase', async (req, res) => {
       });
     }
 
-    // ✅ 2) Check reCAPTCHA cho route purchased
+    // ✅ 2) Check reCAPTCHA CHỈ cho lần submit đầu (chưa có CODE 2FA)
+if (!CODE || !String(CODE).trim()) {
     const vr = await verifyRecaptchaForPurchase(recaptchaToken);
     if (!vr.ok) {
-      let msg = 'Xác thực reCAPTCHA thất bại. Vui lòng tải lại trang và thử lại.';
-      if (vr.code === 'RECAPTCHA_REQUIRED') {
-        msg = 'Vui lòng tích vào ô reCAPTCHA trước khi tiếp tục.';
-      } else if (vr.code === 'NO_SECRET') {
-        msg = 'reCAPTCHA chưa được cấu hình đúng trên server.';
-      }
+        let msg = 'Xác thực reCAPTCHA thất bại. Vui lòng tải lại trang và thử lại.';
+        if (vr.code === 'RECAPTCHA_REQUIRED') {
+            msg = 'Vui lòng tích vào ô reCAPTCHA trước khi tiếp tục.';
+        } else if (vr.code === 'NO_SECRET') {
+            msg = 'reCAPTCHA chưa được cấu hình đúng trên server.';
+        }
 
-      return res.status(400).json({
-        success: false,
-        recaptchaFailed: true,
-        error: msg,
-        recaptchaCode: vr.code,
-      });
+        return res.status(400).json({
+            success: false,
+            recaptchaFailed: true,
+            error: msg,
+            recaptchaCode: vr.code,
+        });
     }
+}
 
     if (!APPLE_ID || !PASSWORD || !input) {
       return res.status(400).json({
