@@ -502,8 +502,10 @@ document.addEventListener('DOMContentLoaded', () => {
           state.requestId = data.requestId;
           updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
-        } else {
-          showError(data.error || 'Tải ứng dụng thất bại.');
+                } else {
+          const friendlyMessage = mapServerErrorToMessage(data.error, data.message);
+          showError(friendlyMessage);
+          
           updateProgressSteps('Lỗi tải ứng dụng', 'error');
           setLoading(false);
           if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
