@@ -111,7 +111,7 @@ app.use('/api', certApi);
 // Rate-limiting cho /download (theo IP) - SỬA: tăng giới hạn từ 3 lên 5
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 15,
   message: {
     success: false,
     error: 'RATE_LIMIT_EXCEEDED',
