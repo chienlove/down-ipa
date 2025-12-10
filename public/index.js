@@ -48,6 +48,22 @@ document.addEventListener('DOMContentLoaded', () => {
     progressHistory: []
   };
 
+  // ✅ HÀM MỚI: Lấy token bảo mật từ server
+  const getPurchaseToken = async () => {
+    try {
+      const res = await fetch('/purchase-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.success ? data.token : null;
+    } catch (e) {
+      console.error('Lỗi lấy token:', e);
+      return null;
+    }
+  };
+
   let isLoading = false;
   let eventSource = null;
 
@@ -178,6 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (raw.startsWith('OUT_OF_MEMORY') || raw.includes('Insufficient memory')) return 'Máy chủ không đủ RAM để xử lý. Vui lòng thử lại sau.';
     if (raw === 'CANCELLED_BY_CLIENT') return 'Tiến trình đã bị hủy.';
     if (raw.startsWith('RECAPTCHA')) return 'Xác minh reCAPTCHA thất bại. Vui lòng thử lại.';
+    if (raw.includes('SESSION_EXPIRED')) return 'Phiên làm việc hết hạn. Vui lòng tải lại trang.';
     
     return message || error || 'Đã xảy ra lỗi không xác định.';
   };
@@ -441,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ✅ ĐÃ SỬA: Thêm logic lấy Token bảo mật
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
       if (eventSource) safeCloseEventSource();
@@ -486,10 +504,24 @@ document.addEventListener('DOMContentLoaded', () => {
         bodyPayload.recaptchaToken = token;
       }
 
+      // ✅ THÊM MỚI: Lấy Purchase Token
+      const secureToken = await getPurchaseToken();
+      if (!secureToken) {
+        showError('Không thể khởi tạo phiên làm việc bảo mật. Vui lòng tải lại trang.');
+        updateProgressSteps('Lỗi: Không lấy được token bảo mật', 'error');
+        setLoading(false);
+        if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
+        return;
+      }
+
       try {
         const response = await fetch('/download', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // ✅ THÊM MỚI: Gửi kèm header x-purchase-token
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-purchase-token': secureToken
+          },
           body: JSON.stringify(bodyPayload)
         });
 
@@ -502,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
           state.requestId = data.requestId;
           updateProgressSteps('Khởi tạo tiến trình tải', 'success');
           listenProgress(data.requestId);
-                } else {
+        } else {
           const friendlyMessage = mapServerErrorToMessage(data.error, data.message);
           showError(friendlyMessage);
           

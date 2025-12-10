@@ -1,4 +1,5 @@
 import express from 'express';
+import { execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs, { promises as fsPromises, createWriteStream, createReadStream } from 'fs';
@@ -16,6 +17,7 @@ import os from 'os';
 import plist from 'plist';
 import AdmZip from 'adm-zip';
 import certApi from './routes/certApi.js';
+import crypto from 'crypto'; // ✅ thêm cho HMAC token
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -106,10 +108,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 app.use('/api', certApi);
 
-// Rate-limiting cho /download (theo IP)
+// Rate-limiting cho /download (theo IP) - SỬA: tăng giới hạn từ 3 lên 5
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 3,
+  max: 15,
+  message: {
+    success: false,
+    error: 'RATE_LIMIT_EXCEEDED',
+    message: 'Quá nhiều yêu cầu. Vui lòng thử lại sau 15 phút.'
+  }
 });
 app.use('/download', limiter);
 
@@ -167,6 +174,14 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 // Giới hạn số job đồng thời (phù hợp Heroku Hobby)
 let currentJobs = 0;
 const MAX_JOBS = 2; // có thể hạ xuống 1 nếu vẫn quá tải
+
+// SỬA: Thêm hàm reset job counter tự động
+setInterval(() => {
+  if (currentJobs > 0) {
+    console.log(`Auto-reset job counter. Current jobs: ${currentJobs}`);
+    currentJobs = 0;
+  }
+}, 5 * 60 * 1000); // 5 phút
 
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -291,12 +306,116 @@ async function extractMinimumOSVersion(ipaPath) {
 
 const progressMap = new Map();
 
+// ✅================= BẢO MẬT PURCHASE TOKEN (CÁCH 4) =================
+const PURCHASE_TOKEN_SECRET = process.env.PURCHASE_TOKEN_SECRET || '';
+const purchaseTokenStore = new Map(); // token -> { ipHash, uaHash, exp, used }
+
+function hashValue(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
+
+function getClientIp(req) {
+  return (
+    req.ip ||
+    (req.headers['x-forwarded-for']?.split(',')[0] || '').trim() ||
+    req.connection?.remoteAddress ||
+    ''
+  );
+}
+
+function createPurchaseToken(ip, ua) {
+  if (!PURCHASE_TOKEN_SECRET) {
+    console.warn('⚠ PURCHASE_TOKEN_SECRET is not set');
+    return null;
+  }
+  const now = Date.now();
+  const exp = now + 5000; // token sống 5s
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const ipHash = hashValue(ip);
+  const uaHash = hashValue(ua);
+  const payload = `${ipHash}.${uaHash}.${now}.${exp}.${nonce}`;
+  const sig = crypto.createHmac('sha256', PURCHASE_TOKEN_SECRET).update(payload).digest('hex');
+  const token = `${payload}.${sig}`;
+
+  purchaseTokenStore.set(token, {
+    ipHash,
+    uaHash,
+    exp,
+    used: false,
+  });
+
+  return token;
+}
+
+function verifyPurchaseToken(rawToken, ip, ua) {
+  if (!PURCHASE_TOKEN_SECRET) {
+    return { ok: false, code: 'NO_SECRET' };
+  }
+  if (!rawToken || typeof rawToken !== 'string') {
+    return { ok: false, code: 'NO_TOKEN' };
+  }
+
+  const parts = rawToken.split('.');
+  if (parts.length !== 6) {
+    return { ok: false, code: 'BAD_FORMAT' };
+  }
+
+  const [ipHash, uaHash, tsStr, expStr, nonce, sig] = parts;
+  const payload = `${ipHash}.${uaHash}.${tsStr}.${expStr}.${nonce}`;
+  const expectedSig = crypto.createHmac('sha256', PURCHASE_TOKEN_SECRET).update(payload).digest('hex');
+
+  if (expectedSig !== sig) {
+    return { ok: false, code: 'BAD_SIGNATURE' };
+  }
+
+  const now = Date.now();
+  const exp = Number(expStr) || 0;
+  if (now > exp) {
+    purchaseTokenStore.delete(rawToken);
+    return { ok: false, code: 'EXPIRED' };
+  }
+
+  const currentIpHash = hashValue(ip);
+  const currentUaHash = hashValue(ua);
+
+  if (currentIpHash !== ipHash || currentUaHash !== uaHash) {
+    return { ok: false, code: 'IP_OR_UA_MISMATCH' };
+  }
+
+  const saved = purchaseTokenStore.get(rawToken);
+  if (!saved) {
+    return { ok: false, code: 'NOT_FOUND' };
+  }
+  if (saved.used) {
+    return { ok: false, code: 'ALREADY_USED' };
+  }
+
+  saved.used = true;
+  purchaseTokenStore.set(rawToken, saved);
+
+  setTimeout(() => {
+    purchaseTokenStore.delete(rawToken);
+  }, 10 * 1000);
+
+  return { ok: true, code: 'OK' };
+}
+
+// Cleanup định kỳ tránh map phình
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, info] of purchaseTokenStore.entries()) {
+    if (info.exp < now) {
+      purchaseTokenStore.delete(token);
+    }
+  }
+}, 60 * 1000);
+// ✅==================================================================
+
 class IPATool {
   async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
-    // hỗ trợ hủy
     const globalAbort = new AbortController();
     const setProgress = (obj) => {
       const prev = progressMap.get(requestId) || {};
@@ -340,7 +459,13 @@ class IPATool {
             message: app.customerMessage || '2FA verification required',
           };
         }
-        throw new Error(app?.customerMessage || 'Failed to get app information');
+        
+        const errorMessage = app?.customerMessage || 'Failed to get app information';
+        if (errorMessage.includes('client not found') || errorMessage.includes('not found')) {
+          throw new Error('APP_NOT_OWNED: Ứng dụng này chưa được mua hoặc không có trong mục đã mua của Apple ID này.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const appInfo = {
@@ -578,11 +703,17 @@ class IPATool {
       console.error('Download error:', error);
       const msg = String(error.message || '');
       let code = undefined;
+      
       if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
       else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
       else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+      else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+      else if (msg.includes('client not found') || msg.includes('not found')) code = 'APP_NOT_OWNED';
+      else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
       progressMap.set(requestId, { progress: 0, status: 'error', error: msg, code });
+      
+      currentJobs = Math.max(0, currentJobs - 1);
       throw error;
     } finally {
       console.log(`Finished processing requestId: ${requestId}`);
@@ -592,7 +723,7 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-/* ================= reCAPTCHA integration ================= */
+/* ================= reCAPTCHA integration (download) ================= */
 
 // endpoint trả sitekey để client render explicit
 app.get('/recaptcha-sitekey', (req, res) => {
@@ -642,7 +773,6 @@ app.get('/download-progress/:id', (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // heartbeat để Heroku không cắt
   const heartbeat = setInterval(() => {
     res.write(`: keep-alive ${Date.now()}\n\n`);
   }, 15000);
@@ -728,6 +858,308 @@ app.post('/auth', async (req, res) => {
   }
 });
 
+// ================= reCAPTCHA cho purchased.storeios.net =================
+const PURCHASED_RECAPTCHA_SECRET = process.env.PURCHASED_SECRET_PURCHASED || '';
+
+async function verifyRecaptchaForPurchase(token) {
+  if (!token) {
+    return { ok: false, code: 'RECAPTCHA_REQUIRED' };
+  }
+
+  if (!PURCHASED_RECAPTCHA_SECRET) {
+    console.warn('⚠ PURCHASED_SECRET_PURCHASED chưa được cấu hình trong Heroku');
+    return { ok: false, code: 'NO_SECRET' };
+  }
+
+  const params = new URLSearchParams();
+  params.append('secret', PURCHASED_RECAPTCHA_SECRET);
+  params.append('response', token);
+
+  const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+
+  const data = await resp.json();
+  if (!data.success) {
+    return { ok: false, code: 'RECAPTCHA_FAILED', data };
+  }
+
+  return { ok: true, code: 'OK', data };
+}
+
+// ✅ NEW: ROUTE SINH TOKEN BẢO MẬT CHO /purchase
+app.post('/purchase-token', (req, res) => {
+  try {
+    const ip = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const token = createPurchaseToken(ip, ua);
+    if (!token) {
+      return res.status(500).json({
+        success: false,
+        error: 'SERVER_TOKEN_ERROR',
+        message: 'Không tạo được token bảo mật'
+      });
+    }
+    return res.json({
+      success: true,
+      token,
+      ttl: 5
+    });
+  } catch (e) {
+    console.error('Error in /purchase-token:', e);
+    return res.status(500).json({
+      success: false,
+      error: e.message || 'Lỗi server khi tạo token'
+    });
+  }
+});
+
+// ============================
+// ROUTE: /purchase (ipatool v2 + STDQ + 2FA friendly)
+// ============================
+app.post('/purchase', async (req, res) => {
+  try {
+    const { APPLE_ID, PASSWORD, CODE, input, recaptchaToken } = req.body || {};
+
+    // ✅ 1) Kiểm tra token bảo mật
+    const clientIp = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const rawToken = req.headers['x-purchase-token'] || '';
+    const tokenCheck = verifyPurchaseToken(rawToken, clientIp, ua);
+
+    if (!tokenCheck.ok) {
+      console.warn('Invalid purchase token:', tokenCheck);
+      return res.status(403).json({
+        success: false,
+        error: 'Yêu cầu không hợp lệ hoặc đã hết hạn. Vui lòng tải lại trang và thử lại.',
+        tokenCode: tokenCheck.code,
+      });
+    }
+
+    // ✅ 2) Check reCAPTCHA CHỈ cho lần submit đầu (chưa có CODE 2FA)
+if (!CODE || !String(CODE).trim()) {
+    const vr = await verifyRecaptchaForPurchase(recaptchaToken);
+    if (!vr.ok) {
+        let msg = 'Xác thực reCAPTCHA thất bại. Vui lòng tải lại trang và thử lại.';
+        if (vr.code === 'RECAPTCHA_REQUIRED') {
+            msg = 'Vui lòng tích vào ô reCAPTCHA trước khi tiếp tục.';
+        } else if (vr.code === 'NO_SECRET') {
+            msg = 'reCAPTCHA chưa được cấu hình đúng trên server.';
+        }
+
+        return res.status(400).json({
+            success: false,
+            recaptchaFailed: true,
+            error: msg,
+            recaptchaCode: vr.code,
+        });
+    }
+}
+
+    if (!APPLE_ID || !PASSWORD || !input) {
+      return res.status(400).json({
+        success: false,
+        error: "APPLE_ID, PASSWORD và input là bắt buộc."
+      });
+    }
+
+    // ==============================
+    // 1) Chuẩn hóa input
+    // ==============================
+    const raw = String(input).trim();
+    let bundleId = null;
+    let appId = null;
+
+    if (/^https?:\/\/apps\.apple\.com\//i.test(raw)) {
+      const m = raw.match(/id(\d{6,})/);
+      if (m) appId = m[1];
+    } else if (/^\d{6,}$/.test(raw)) {
+      appId = raw;
+    } else if (raw.includes('.')) {
+      bundleId = raw;
+    }
+
+    async function lookupBundle(id) {
+      if (!id) return null;
+      const countries = ["vn", "us", "jp", "kr", "cn", "tw", "hk", "sg"];
+      for (const c of countries) {
+        try {
+          const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${c}`);
+          if (!r.ok) continue;
+          const j = await r.json();
+          if (j.resultCount > 0 && j.results[0].bundleId) return j.results[0];
+        } catch {}
+      }
+      return null;
+    }
+
+    let meta = null;
+    if (!bundleId && appId) {
+      meta = await lookupBundle(appId);
+      if (meta?.bundleId) bundleId = meta.bundleId;
+    }
+
+    if (!bundleId) {
+      return res.status(400).json({
+        success: false,
+        error: "Không lấy được Bundle ID từ input. Hãy nhập bundle id dạng com.xxx.yyy hoặc URL/App ID hợp lệ."
+      });
+    }
+
+    let appInfo = meta
+      ? {
+          name: meta.trackName,
+          bundleId,
+          version: meta.version,
+          artistName: meta.sellerName || meta.artistName,
+          appId: meta.trackId || appId,
+          icon: meta.artworkUrl512 || meta.artworkUrl100 || meta.artworkUrl60
+        }
+      : {
+          name: null,
+          bundleId,
+          version: null,
+          artistName: null,
+          appId,
+          icon: null
+        };
+
+    // ==============================
+    // 2) run ipatool
+    // ==============================
+    const keychainPass = `${APPLE_ID}-storeios-pass`;
+
+    const runIpatool = (args) =>
+      new Promise((resolve, reject) => {
+        const finalArgs = ["--keychain-passphrase", keychainPass, ...args];
+
+        execFile("./ipatool", finalArgs, (err, stdout, stderr) => {
+          const out = stdout?.toString() || "";
+          const errOut = stderr?.toString() || "";
+
+          if (!out.trim()) {
+            if (err) return reject(new Error(errOut || err.message));
+            return resolve({});
+          }
+
+          try {
+            const parsed = JSON.parse(out);
+            if (err) {
+              parsed.__exitCode = err.code;
+              parsed.__signal = err.signal;
+            }
+            resolve(parsed);
+          } catch {
+            reject(new Error("ipatool xuất ra dữ liệu không phải JSON: " + out.slice(0, 400)));
+          }
+        });
+      });
+
+    // ==============================
+    // 3) Auth Login
+    // ==============================
+    const authArgs = [
+      "auth",
+      "login",
+      "--email",
+      APPLE_ID,
+      "--password",
+      PASSWORD,
+      "--format",
+      "json",
+      "--non-interactive"
+    ];
+    if (CODE) authArgs.push("--auth-code", CODE);
+
+    const auth = await runIpatool(authArgs);
+
+    if (auth.success === false || auth.error) {
+      const rawErr = (auth.error || auth.message || "").toString();
+
+      const looksLike2FA =
+        /two[- ]factor|2fa|required|auth code/i.test(rawErr) ||
+        /failed to get account: failed to get item/i.test(rawErr);
+
+      if (looksLike2FA && !CODE) {
+        return res.status(401).json({
+          success: false,
+          require2FA: true,
+          error: "Vui lòng nhập mã 2FA gửi về thiết bị.",
+          note:
+            "Nếu không thấy mã gửi về thiết bị, rất có thể bạn đã nhập sai Apple ID hoặc mật khẩu. Vui lòng kiểm tra lại và thử lại.",
+          rawAuth: auth
+        });
+      }
+
+      let friendly = rawErr;
+      if (!friendly || /something went wrong/i.test(friendly)) {
+        friendly = "Đăng nhập thất bại. Vui lòng kiểm tra lại Apple ID và mật khẩu.";
+      }
+
+      return res.status(400).json({ success: false, error: friendly, rawAuth: auth });
+    }
+
+    // ==============================
+    // 4) Purchase
+    // ==============================
+    const purchaseArgs = ["purchase", "-b", bundleId, "--format", "json", "--non-interactive"];
+    const purchase = await runIpatool(purchaseArgs);
+
+    if (purchase.success === false || purchase.error) {
+      const rawErr = (purchase.error || purchase.message || "").toString();
+
+      const isSTDQ = /STDQ/i.test(rawErr);
+      const needs2FA =
+        /failed to get account: failed to get item/i.test(rawErr) ||
+        /two[- ]factor|2fa|required|auth code/i.test(rawErr);
+
+      if (needs2FA && !CODE) {
+        return res.status(401).json({
+          success: false,
+          require2FA: true,
+          error: "Vui lòng nhập mã 2FA gửi về thiết bị.",
+          note:
+            "Nếu không thấy mã gửi về thiết bị, rất có thể bạn đã nhập sai Apple ID hoặc mật khẩu. Vui lòng kiểm tra lại và thử lại.",
+          rawPurchase: purchase
+        });
+      }
+
+      if (isSTDQ) {
+        return res.json({
+          success: true,
+          alreadyInPurchased: true,
+          message:
+            "Ứng dụng này đã có trong mục “Đã mua”. Bạn có thể mở App Store → tab Đã mua để kiểm tra.",
+          app: appInfo,
+          rawPurchase: purchase
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        error: rawErr || "ipatool purchase thất bại.",
+        rawPurchase: purchase
+      });
+    }
+
+    // ==============================
+    // 5) Thành công
+    // ==============================
+    return res.json({
+      success: true,
+      message: "Thêm ứng dụng vào “Đã mua” thành công.",
+      app: appInfo
+    });
+  } catch (e) {
+    return res.status(500).json({
+      success: false,
+      error: e.message || "Lỗi server khi gọi ipatool purchase."
+    });
+  }
+});
+
 // Download (áp verifyRecaptcha + giới hạn số job)
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
@@ -783,6 +1215,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
             require2FA: true,
             message: result.message,
           });
+          currentJobs = Math.max(0, currentJobs - 1);
           return;
         }
 
@@ -811,6 +1244,8 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
             }
           }
         }, 1000);
+        
+        currentJobs = Math.max(0, currentJobs - 1);
       } catch (error) {
         console.error('Background download error:', error);
         const msg = String(error.message || '');
@@ -818,6 +1253,8 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
         if (msg.startsWith('FILE_TOO_LARGE')) code = 'FILE_TOO_LARGE';
         else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
         else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
+        else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+        else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
         progressMap.set(requestId, {
           progress: 0,
@@ -825,12 +1262,13 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
           error: msg || 'Download failed',
           code,
         });
-      } finally {
+        
         currentJobs = Math.max(0, currentJobs - 1);
       }
     });
   } catch (error) {
     console.error('Download error:', error);
+    currentJobs = Math.max(0, currentJobs - 1);
     res.status(500).json({
       success: false,
       error: error.message || 'Download failed',
@@ -838,7 +1276,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
   }
 });
 
-// Verify 2FA (giữ 1 bản duy nhất)
+// Verify 2FA
 app.post('/verify', async (req, res) => {
   console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {

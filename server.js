@@ -1164,6 +1164,22 @@ if (!CODE || !String(CODE).trim()) {
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
+    const clientIp = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const rawToken = req.headers['x-purchase-token'] || '';
+    
+    const tokenCheck = verifyPurchaseToken(rawToken, clientIp, ua);
+
+    if (!tokenCheck.ok) {
+      console.warn('Invalid download token:', tokenCheck);
+      return res.status(403).json({
+        success: false,
+        error: 'SESSION_EXPIRED',
+        message: 'Phiên làm việc hết hạn hoặc không hợp lệ. Vui lòng tải lại trang.',
+        tokenCode: tokenCheck.code,
+      });
+    }
+
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !APPID) {
@@ -1254,6 +1270,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
         else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
         else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
         else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+        else if (msg.includes('client not found') || msg.includes('not found')) code = 'APP_NOT_OWNED';
         else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
         progressMap.set(requestId, {
@@ -1275,6 +1292,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
     });
   }
 });
+
 
 // Verify 2FA
 app.post('/verify', async (req, res) => {
