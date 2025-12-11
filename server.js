@@ -17,7 +17,7 @@ import os from 'os';
 import plist from 'plist';
 import AdmZip from 'adm-zip';
 import certApi from './routes/certApi.js';
-import crypto from 'crypto'; // ✅ thêm cho HMAC token
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
