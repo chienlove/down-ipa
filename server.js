@@ -1296,31 +1296,31 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
 
 // Verify 2FA
 app.post('/verify', async (req, res) => {
-  console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
+  console.log('Received /verify request checking format only');
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !CODE) {
-      console.log('Missing required fields in /verify');
       return res.status(400).json({
         success: false,
-        error: 'All fields are required',
+        error: 'Vui lòng nhập đầy đủ thông tin',
       });
     }
 
-    console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-    if (user._state !== 'success') {
-      console.log('2FA verification failed:', user.customerMessage);
-      throw new Error(user.customerMessage || 'Verification failed');
+    if (CODE.length !== 6 || isNaN(CODE)) {
+        return res.status(400).json({
+            success: false,
+            error: 'Mã xác minh không hợp lệ (phải là 6 số)',
+        });
     }
 
-    console.log('2FA verification successful');
+    // Trả về thành công giả lập để Client chuyển bước
+    console.log('2FA format check passed, passing to download step');
     res.json({
       success: true,
-      dsid: user.dsPersonId,
+      dsid: 'pending_verification_at_download', 
     });
+
   } catch (error) {
     console.error('Verify error:', error.message);
     res.status(500).json({
@@ -1329,6 +1329,7 @@ app.post('/verify', async (req, res) => {
     });
   }
 });
+
 
 /* ================ Trang trung gian đếm ngược 10s ================= */
 app.get('/go', (req, res) => {
