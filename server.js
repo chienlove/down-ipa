@@ -1164,22 +1164,6 @@ if (!CODE || !String(CODE).trim()) {
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
-    const clientIp = getClientIp(req);
-    const ua = req.headers['user-agent'] || '';
-    const rawToken = req.headers['x-purchase-token'] || '';
-    
-    const tokenCheck = verifyPurchaseToken(rawToken, clientIp, ua);
-
-    if (!tokenCheck.ok) {
-      console.warn('Invalid download token:', tokenCheck);
-      return res.status(403).json({
-        success: false,
-        error: 'SESSION_EXPIRED',
-        message: 'Phiên làm việc hết hạn hoặc không hợp lệ. Vui lòng tải lại trang.',
-        tokenCode: tokenCheck.code,
-      });
-    }
-
     const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !APPID) {
@@ -1270,7 +1254,6 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
         else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
         else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
         else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
-        else if (msg.includes('client not found') || msg.includes('not found')) code = 'APP_NOT_OWNED';
         else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
         progressMap.set(requestId, {
@@ -1293,34 +1276,33 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
   }
 });
 
-
 // Verify 2FA
 app.post('/verify', async (req, res) => {
-  console.log('Received /verify request checking format only');
+  console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !CODE) {
+      console.log('Missing required fields in /verify');
       return res.status(400).json({
         success: false,
-        error: 'Vui lòng nhập đầy đủ thông tin',
+        error: 'All fields are required',
       });
     }
 
-    if (CODE.length !== 6 || isNaN(CODE)) {
-        return res.status(400).json({
-            success: false,
-            error: 'Mã xác minh không hợp lệ (phải là 6 số)',
-        });
+    console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+    if (user._state !== 'success') {
+      console.log('2FA verification failed:', user.customerMessage);
+      throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    // Trả về thành công giả lập để Client chuyển bước
-    console.log('2FA format check passed, passing to download step');
+    console.log('2FA verification successful');
     res.json({
       success: true,
-      dsid: 'pending_verification_at_download', 
+      dsid: user.dsPersonId,
     });
-
   } catch (error) {
     console.error('Verify error:', error.message);
     res.status(500).json({
@@ -1329,7 +1311,6 @@ app.post('/verify', async (req, res) => {
     });
   }
 });
-
 
 /* ================ Trang trung gian đếm ngược 10s ================= */
 app.get('/go', (req, res) => {
