@@ -412,7 +412,8 @@ setInterval(() => {
 // ✅==================================================================
 
 class IPATool {
-  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId } = {}) {
+  // ✅ SỬA 1: Thêm tham số dsid, bỏ login lại
+  async downipa({ path: downloadPath, APPLE_ID, APPID, appVerId, requestId, dsid } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
@@ -432,18 +433,13 @@ class IPATool {
     try {
       setProgress({ progress: 0, status: 'processing', abortController: globalAbort, cancelRequested: false });
 
-      console.log('Authenticating with Apple ID...');
-      const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
-
-      if (user._state !== 'success') {
-        if (user.failureType?.toLowerCase().includes('mfa')) {
-          return {
-            require2FA: true,
-            message: user.customerMessage || '2FA verification required',
-          };
-        }
-        throw new Error(user.customerMessage || 'Authentication failed');
-      }
+      // ✅ SỬA 2: Không gọi Store.authenticate ở đây nữa.
+      // Dùng dsid từ phiên trước để tạo user object giả lập.
+      console.log(`Using existing session for DSID: ${dsid}`);
+      const user = { 
+          dsPersonId: dsid, 
+          _state: 'success' 
+      };
 
       setProgress({ progress: 10, status: 'processing' });
       ensureNotCancelled();
@@ -456,7 +452,7 @@ class IPATool {
         if (app?.failureType?.toLowerCase().includes('mfa')) {
           return {
             require2FA: true,
-            message: app.customerMessage || '2FA verification required',
+            message: app.customerMessage || 'Phiên đăng nhập hết hạn. Vui lòng thử lại.',
           };
         }
         
@@ -1160,11 +1156,27 @@ if (!CODE || !String(CODE).trim()) {
   }
 });
 
-// Download (áp verifyRecaptcha + giới hạn số job)
+// ✅ ROUTE DOWNLOAD: Token chống spam + Dùng session cũ (Không login lại)
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
-    const { APPLE_ID, PASSWORD, CODE, APPID, appVerId } = req.body;
+    // 🛡️ 1. CHECK TOKEN BẢO MẬT (Chống Spam)
+    const clientIp = getClientIp(req);
+    const ua = req.headers['user-agent'] || '';
+    const rawToken = req.headers['x-purchase-token'] || ''; 
+    const tokenCheck = verifyPurchaseToken(rawToken, clientIp, ua);
+
+    if (!tokenCheck.ok) {
+      console.warn('Invalid download token:', tokenCheck);
+      return res.status(403).json({
+        success: false,
+        error: 'SESSION_EXPIRED',
+        message: 'Phiên làm việc hết hạn hoặc không hợp lệ. Vui lòng tải lại trang.',
+        tokenCode: tokenCheck.code,
+      });
+    }
+
+    const { APPLE_ID, PASSWORD, CODE, APPID, appVerId, dsid } = req.body;
 
     if (!APPLE_ID || !PASSWORD || !APPID) {
       console.log('Missing required fields in /download');
@@ -1197,6 +1209,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
 
     setImmediate(async () => {
       try {
+        // 🛡️ 2. GỌI DOWNIPA VỚI DSID (Không gửi mã 2FA đi nữa)
         const result = await ipaTool.downipa({
           path: uniqueDownloadPath,
           APPLE_ID,
@@ -1205,6 +1218,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
           APPID,
           appVerId,
           requestId,
+          dsid,
         });
 
         if (result?.require2FA) {
@@ -1254,6 +1268,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
         else if (msg.startsWith('OUT_OF_MEMORY')) code = 'OUT_OF_MEMORY';
         else if (msg === 'CANCELLED_BY_CLIENT') code = 'CANCELLED_BY_CLIENT';
         else if (msg.includes('APP_NOT_OWNED')) code = 'APP_NOT_OWNED';
+        else if (msg.includes('client not found') || msg.includes('not found')) code = 'APP_NOT_OWNED';
         else if (msg.includes('too many requests')) code = 'RATE_LIMIT_EXCEEDED';
 
         progressMap.set(requestId, {
@@ -1276,7 +1291,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
   }
 });
 
-// Verify 2FA
+// ✅ ROUTE VERIFY: XÁC THỰC THẬT (Check 6 số đúng sai ngay lập tức)
 app.post('/verify', async (req, res) => {
   console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
@@ -1291,6 +1306,7 @@ app.post('/verify', async (req, res) => {
     }
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
+    // Gọi Apple thật để kiểm tra mã và lưu Cookie
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {

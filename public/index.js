@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressHistory: []
   };
 
-  // ✅ HÀM MỚI: Lấy token bảo mật từ server
+  // ✅ [THÊM MỚI] Hàm lấy Token bảo mật từ server
   const getPurchaseToken = async () => {
     try {
       const res = await fetch('/purchase-token', {
@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return null;
     }
   };
+  // ✅ [KẾT THÚC THÊM MỚI]
 
   let isLoading = false;
   let eventSource = null;
@@ -458,7 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // ✅ ĐÃ SỬA: Thêm logic lấy Token bảo mật
   if (elements.downloadBtn) {
     elements.downloadBtn.addEventListener('click', async (e) => {
       if (eventSource) safeCloseEventSource();
@@ -504,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bodyPayload.recaptchaToken = token;
       }
 
-      // ✅ THÊM MỚI: Lấy Purchase Token
+      // ✅ [THÊM MỚI] Lấy Token bảo mật trước khi tải
       const secureToken = await getPurchaseToken();
       if (!secureToken) {
         showError('Không thể khởi tạo phiên làm việc bảo mật. Vui lòng tải lại trang.');
@@ -513,14 +513,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.sessionNotice) elements.sessionNotice.classList.add('hidden');
         return;
       }
+      // ✅ [KẾT THÚC THÊM MỚI]
 
       try {
         const response = await fetch('/download', {
           method: 'POST',
-          // ✅ THÊM MỚI: Gửi kèm header x-purchase-token
+          // ✅ [SỬA ĐỔI] Thêm header token
           headers: { 
             'Content-Type': 'application/json',
-            'x-purchase-token': secureToken
+            'x-purchase-token': secureToken 
           },
           body: JSON.stringify(bodyPayload)
         });
