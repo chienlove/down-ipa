@@ -2,13 +2,23 @@ import plist from 'plist';
 import getMAC from 'getmac';
 import fetchCookie from 'fetch-cookie';
 import nodeFetch from 'node-fetch';
+import { CookieJar } from 'tough-cookie';
 
 class Store {
-  static get guid() {
+  constructor() {
+    this.cookieJar = new CookieJar();
+    this.fetch = fetchCookie(nodeFetch, this.cookieJar);
+    this.Headers = {
+      'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
+  }
+
+  get guid() {
     return getMAC().replace(/:/g, '').toUpperCase();
   }
 
-  static async authenticate(email, password, mfa) {
+  async authenticate(email, password, mfa) {
     const dataJson = {
       appleId: email,
       attempt: mfa ? 2 : 4,
@@ -20,16 +30,21 @@ class Store {
     };
     const body = plist.build(dataJson);
     const url = `https://auth.itunes.apple.com/auth/v1/native/fast?guid=${this.guid}`;
-    const resp = await this.fetch(url, {
-      method: 'POST',
-      body,
-      headers: this.Headers
-    });
-    const parsedResp = plist.parse(await resp.text());
-    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+    
+    try {
+      const resp = await this.fetch(url, {
+        method: 'POST',
+        body,
+        headers: this.Headers
+      });
+      const parsedResp = plist.parse(await resp.text());
+      return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+    } catch (e) {
+      return { _state: 'failure', customerMessage: e.message || 'Connection error' };
+    }
   }
 
-  static async download(appIdentifier, appVerId, Cookie) {
+  async download(appIdentifier, appVerId, Cookie) {
     const dataJson = {
       creditDisplay: '',
       guid: this.guid,
@@ -38,26 +53,32 @@ class Store {
     };
     const body = plist.build(dataJson);
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/volumeStoreDownloadProduct?guid=${this.guid}`;
-    const resp = await this.fetch(url, {
-      method: 'POST',
-      body,
-      headers: {
-        ...this.Headers,
-        'X-Dsid': Cookie.dsPersonId,
-        'iCloud-DSID': Cookie.dsPersonId
-      }
-    });
-    const parsedResp = plist.parse(await resp.text());
-    return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+    
+    try {
+      const resp = await this.fetch(url, {
+        method: 'POST',
+        body,
+        headers: {
+          ...this.Headers,
+          'X-Dsid': Cookie.dsPersonId,
+          'iCloud-DSID': Cookie.dsPersonId
+        }
+      });
+      const parsedResp = plist.parse(await resp.text());
+      return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
+    } catch (e) {
+      return { _state: 'failure', customerMessage: e.message || 'Download error' };
+    }
   }
 
-  static async purchase(bundleId, Cookie) {
+  async purchase(bundleId, Cookie) {
     const dataJson = {
       guid: this.guid,
       salableAdamId: bundleId
     };
     const body = plist.build(dataJson);
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/buyProduct?guid=${this.guid}`;
+    
     const resp = await this.fetch(url, {
       method: 'POST',
       body,
@@ -71,7 +92,7 @@ class Store {
     return { ...parsedResp, _state: parsedResp.failureType ? 'failure' : 'success' };
   }
 
-  static async purchaseHistory(Cookie) {
+  async purchaseHistory(Cookie) {
     const url = `https://p25-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/purchaseHistory`;
     const resp = await this.fetch(url, {
       method: 'POST',
@@ -85,12 +106,5 @@ class Store {
     return parsedResp;
   }
 }
-
-Store.cookieJar = new fetchCookie.toughCookie.CookieJar();
-Store.fetch = fetchCookie(nodeFetch, Store.cookieJar);
-Store.Headers = {
-  'User-Agent': 'Configurator/2.15 (Macintosh; OS X 11.0.0; 16G29) AppleWebKit/2603.3.8',
-  'Content-Type': 'application/x-www-form-urlencoded',
-};
 
 export { Store };

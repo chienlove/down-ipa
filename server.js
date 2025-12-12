@@ -25,13 +25,11 @@ const app = express();
 app.set('trust proxy', true);
 const port = process.env.PORT || 5004;
 
-// Debug trust proxy
 app.use((req, res, next) => {
   console.log('Request IP:', req.ip, 'X-Forwarded-For:', req.headers['x-forwarded-for']);
   next();
 });
 
-// R2 Configuration
 const R2_PUBLIC_BASE = 'https://file.storeios.net';
 const R2_ENDPOINT = 'https://b9b33e1228ae77e510897cc002c1735c.r2.cloudflarestorage.com';
 const r2Client = new S3Client({
@@ -46,7 +44,6 @@ const r2Client = new S3Client({
   retryMode: 'standard',
 });
 
-// R2 Helper Functions
 async function uploadToR2({ key, filePath, contentType }) {
   try {
     console.log(`Preparing to upload to R2: ${key} (multi-part)`);
@@ -76,12 +73,7 @@ async function uploadToR2({ key, filePath, contentType }) {
     console.log('Upload successful:', result);
     return result;
   } catch (error) {
-    console.error('R2 upload error:', {
-      message: error.message,
-      stack: error.stack,
-      code: error.code,
-      statusCode: error.$metadata?.httpStatusCode,
-    });
+    console.error('R2 upload error:', error);
     throw error;
   }
 }
@@ -100,7 +92,6 @@ async function deleteFromR2(key) {
   }
 }
 
-// Middleware
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -108,7 +99,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/.well-known/acme-challenge', express.static(path.join(__dirname, '.well-known', 'acme-challenge')));
 app.use('/api', certApi);
 
-// Rate-limiting cho /download (theo IP) - SỬA: tăng giới hạn từ 3 lên 5
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 15,
@@ -120,7 +110,6 @@ const limiter = rateLimit({
 });
 app.use('/download', limiter);
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
@@ -129,7 +118,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// R2 Connection Test Endpoint
 app.get('/check-r2', async (req, res) => {
   try {
     const testKey = `test-${Date.now()}.txt`;
@@ -153,7 +141,6 @@ app.get('/check-r2', async (req, res) => {
   }
 });
 
-// Serve index.html
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -162,7 +149,6 @@ app.get('/go', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'go.html'));
 });
 
-// Constants
 const CHUNK_SIZE = 5 * 1024 * 1024;
 const MAX_CONCURRENT_DOWNLOADS = 2;
 const MAX_RETRIES = 5;
@@ -171,17 +157,15 @@ const REQUEST_TIMEOUT = 15000;
 const MAX_FILE_SIZE_MB = 300;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
-// Giới hạn số job đồng thời (phù hợp Heroku Hobby)
 let currentJobs = 0;
-const MAX_JOBS = 2; // có thể hạ xuống 1 nếu vẫn quá tải
+const MAX_JOBS = 2; 
 
-// SỬA: Thêm hàm reset job counter tự động
 setInterval(() => {
   if (currentJobs > 0) {
     console.log(`Auto-reset job counter. Current jobs: ${currentJobs}`);
     currentJobs = 0;
   }
-}, 5 * 60 * 1000); // 5 phút
+}, 5 * 60 * 1000); 
 
 function generateRandomString(length = 16) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -244,7 +228,6 @@ async function checkMemory(requiredMB) {
   }
 }
 
-// Lưu ý: statfs có thể không có trên một số runtime Node. Code gốc giữ nguyên.
 async function checkDiskSpace(pathTarget, requiredSpace) {
   const stats = await fsPromises.statfs(pathTarget);
   const freeDisk = stats.bavail * stats.bsize;
@@ -255,60 +238,38 @@ async function checkDiskSpace(pathTarget, requiredSpace) {
 
 async function extractMinimumOSVersion(ipaPath) {
   try {
-    console.log(`Extracting MinimumOSVersion from IPA: ${ipaPath}`);
     const unzipDir = path.join(__dirname, 'temp_unzip', uuidv4());
     await fsPromises.mkdir(unzipDir, { recursive: true });
-    console.log(`Created temp unzip directory: ${unzipDir}`);
 
-    console.log('Extracting IPA file...');
     const zip = new AdmZip(ipaPath);
     zip.extractAllTo(unzipDir, true);
-    console.log(`Extracted IPA to: ${unzipDir}`);
 
     const payloadDir = path.join(unzipDir, 'Payload');
-    console.log(`Checking Payload directory: ${payloadDir}`);
     const dirents = await fsPromises.readdir(payloadDir, { withFileTypes: true });
-    console.log(`Payload dir contents: ${dirents.map(d => d.name).join(', ')}`);
     const appDir = dirents.find(dirent => dirent.isDirectory() && dirent.name.endsWith('.app'))?.name;
     
-    if (!appDir) {
-      console.error('No .app directory found in Payload');
-      throw new Error('No .app directory found in IPA');
-    }
-    console.log(`Found .app directory: ${appDir}`);
+    if (!appDir) throw new Error('No .app directory found in IPA');
 
     const infoPlistPath = path.join(payloadDir, appDir, 'Info.plist');
-    console.log(`Checking Info.plist: ${infoPlistPath}`);
     await fsPromises.access(infoPlistPath, fs.constants.F_OK);
     const plistContent = await fsPromises.readFile(infoPlistPath, 'utf8');
-    console.log(`Read Info.plist (${plistContent.length} bytes)`);
     
-    console.log('Parsing Info.plist...');
     const plistData = plist.parse(plistContent);
-    console.log(`Parsed Info.plist keys: ${Object.keys(plistData).join(', ')}`);
-    
     const minimumOSVersion = plistData.MinimumOSVersion || plistData.LSMinimumSystemVersion || 'Unknown';
-    console.log(`Extracted MinimumOSVersion: ${minimumOSVersion}`);
     
     await fsPromises.rm(unzipDir, { recursive: true, force: true });
-    console.log(`Cleaned up temp directory: ${unzipDir}`);
     
     return minimumOSVersion;
   } catch (error) {
-    console.error('Error extracting MinimumOSVersion:', {
-      message: error.message,
-      stack: error.stack,
-      ipaPath,
-    });
+    console.error('Error extracting MinimumOSVersion:', error);
     return 'Unknown';
   }
 }
 
 const progressMap = new Map();
 
-// ✅================= BẢO MẬT PURCHASE TOKEN (CÁCH 4) =================
 const PURCHASE_TOKEN_SECRET = process.env.PURCHASE_TOKEN_SECRET || '';
-const purchaseTokenStore = new Map(); // token -> { ipHash, uaHash, exp, used }
+const purchaseTokenStore = new Map(); 
 
 function hashValue(value) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -329,7 +290,7 @@ function createPurchaseToken(ip, ua) {
     return null;
   }
   const now = Date.now();
-  const exp = now + 5000; // token sống 5s
+  const exp = now + 5000; 
   const nonce = crypto.randomBytes(16).toString('hex');
   const ipHash = hashValue(ip);
   const uaHash = hashValue(ua);
@@ -400,7 +361,6 @@ function verifyPurchaseToken(rawToken, ip, ua) {
   return { ok: true, code: 'OK' };
 }
 
-// Cleanup định kỳ tránh map phình
 setInterval(() => {
   const now = Date.now();
   for (const [token, info] of purchaseTokenStore.entries()) {
@@ -409,11 +369,9 @@ setInterval(() => {
     }
   }
 }, 60 * 1000);
-// ✅==================================================================
 
 class IPATool {
-  // ✅ SỬA 1: Thêm tham số dsid, bỏ login lại
-  async downipa({ path: downloadPath, APPLE_ID, APPID, appVerId, requestId, dsid } = {}) {
+  async downipa({ path: downloadPath, APPLE_ID, PASSWORD, CODE, APPID, appVerId, requestId, dsid } = {}) {
     downloadPath = downloadPath || '.';
     console.log(`Starting download for app: ${APPID}, requestId: ${requestId}`);
 
@@ -433,11 +391,25 @@ class IPATool {
     try {
       setProgress({ progress: 0, status: 'processing', abortController: globalAbort, cancelRequested: false });
 
-      // ✅ SỬA 2: Không gọi Store.authenticate ở đây nữa.
-      // Dùng dsid từ phiên trước để tạo user object giả lập.
-      console.log(`Using existing session for DSID: ${dsid}`);
+      const store = new Store();
+      
+      console.log(`Authenticating new session for download (reqId: ${requestId})...`);
+      
+      const authUser = await store.authenticate(APPLE_ID, PASSWORD, CODE);
+
+      if (authUser._state !== 'success') {
+          if (authUser.failureType?.toLowerCase().includes('mfa') || 
+              authUser.customerMessage?.includes('verification')) {
+              return {
+                  require2FA: true,
+                  message: authUser.customerMessage || 'Phiên làm việc hết hạn, vui lòng xác minh lại.',
+              };
+          }
+          throw new Error(authUser.customerMessage || 'Lỗi xác thực lại trước khi tải.');
+      }
+      
       const user = { 
-          dsPersonId: dsid, 
+          dsPersonId: authUser.dsPersonId || dsid, 
           _state: 'success' 
       };
 
@@ -445,7 +417,7 @@ class IPATool {
       ensureNotCancelled();
 
       console.log('Fetching app info...');
-      const app = await Store.download(APPID, appVerId, user);
+      const app = await store.download(APPID, appVerId, user);
       const songList0 = app?.songList?.[0];
 
       if (!app || app._state !== 'success' || !songList0 || !songList0.metadata) {
@@ -709,7 +681,6 @@ class IPATool {
 
       progressMap.set(requestId, { progress: 0, status: 'error', error: msg, code });
       
-      currentJobs = Math.max(0, currentJobs - 1);
       throw error;
     } finally {
       console.log(`Finished processing requestId: ${requestId}`);
@@ -719,9 +690,6 @@ class IPATool {
 
 const ipaTool = new IPATool();
 
-/* ================= reCAPTCHA integration (download) ================= */
-
-// endpoint trả sitekey để client render explicit
 app.get('/recaptcha-sitekey', (req, res) => {
   const siteKey = process.env.RECAPTCHA_SITE_KEY || '';
   res.json({ siteKey });
@@ -754,7 +722,6 @@ async function verifyRecaptcha(req, res, next) {
   }
 }
 
-/* ================= SSE progress ================= */
 app.get('/download-progress/:id', (req, res) => {
   const id = req.params.id;
   console.log(`SSE connection opened for progress id: ${id}`);
@@ -806,11 +773,13 @@ app.get('/status/:id', (req, res) => {
   res.json({ id, ...progress });
 });
 
-// Authentication routes
+// Route: /auth
 app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
-    const user = await Store.authenticate(APPLE_ID, PASSWORD);
+    
+    const store = new Store();
+    const user = await store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
       _state: user._state,
@@ -854,7 +823,6 @@ app.post('/auth', async (req, res) => {
   }
 });
 
-// ================= reCAPTCHA cho purchased.storeios.net =================
 const PURCHASED_RECAPTCHA_SECRET = process.env.PURCHASED_SECRET_PURCHASED || '';
 
 async function verifyRecaptchaForPurchase(token) {
@@ -885,7 +853,6 @@ async function verifyRecaptchaForPurchase(token) {
   return { ok: true, code: 'OK', data };
 }
 
-// ✅ NEW: ROUTE SINH TOKEN BẢO MẬT CHO /purchase
 app.post('/purchase-token', (req, res) => {
   try {
     const ip = getClientIp(req);
@@ -912,13 +879,11 @@ app.post('/purchase-token', (req, res) => {
   }
 });
 
-// ============================
-// ROUTE: /purchase (ipatool v2 + STDQ + 2FA friendly)
+// Route: /purchase
 app.post('/purchase', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE, input, recaptchaToken } = req.body || {};
 
-    // 1. Check Token (Giữ nguyên bảo mật)
     const clientIp = getClientIp(req);
     const ua = req.headers['user-agent'] || '';
     const rawToken = req.headers['x-purchase-token'] || '';
@@ -933,7 +898,6 @@ app.post('/purchase', async (req, res) => {
       });
     }
 
-    // 2. Check ReCaptcha (Giữ nguyên)
     if (!CODE || !String(CODE).trim()) {
         const vr = await verifyRecaptchaForPurchase(recaptchaToken);
         if (!vr.ok) {
@@ -960,8 +924,6 @@ app.post('/purchase', async (req, res) => {
       });
     }
 
-    // 🟢 [FIX MỚI - TỐI ƯU]: Chỉ xóa session cũ KHI CÓ mã 2FA mới gửi lên
-    // Nếu không có CODE (lần 2, 3...), server sẽ giữ nguyên session cũ để chạy cho nhanh.
     if (CODE) { 
         try {
             console.log('New 2FA code detected. Revoking old session to prevent conflict...');
@@ -970,14 +932,9 @@ app.post('/purchase', async (req, res) => {
                 execFile("./ipatool", ["auth", "revoke", "--keychain-passphrase", keychainPass], () => resolve());
             });
         } catch (e) {
-            // Lỗi ở đây không quan trọng, cứ tiếp tục
         }
     }
-    // 🟢 [HẾT PHẦN FIX]
 
-    // ==============================
-    // 1) Chuẩn hóa input
-    // ==============================
     const raw = String(input).trim();
     let bundleId = null;
     let appId = null;
@@ -1036,9 +993,6 @@ app.post('/purchase', async (req, res) => {
           icon: null
         };
 
-    // ==============================
-    // 2) run ipatool
-    // ==============================
     const keychainPass = `${APPLE_ID}-storeios-pass`;
 
     const runIpatool = (args) =>
@@ -1067,9 +1021,6 @@ app.post('/purchase', async (req, res) => {
         });
       });
 
-    // ==============================
-    // 3) Auth Login
-    // ==============================
     const authArgs = [
       "auth",
       "login",
@@ -1111,9 +1062,6 @@ app.post('/purchase', async (req, res) => {
       return res.status(400).json({ success: false, error: friendly, rawAuth: auth });
     }
 
-    // ==============================
-    // 4) Purchase
-    // ==============================
     const purchaseArgs = ["purchase", "-b", bundleId, "--format", "json", "--non-interactive"];
     const purchase = await runIpatool(purchaseArgs);
 
@@ -1154,9 +1102,6 @@ app.post('/purchase', async (req, res) => {
       });
     }
 
-    // ==============================
-    // 5) Thành công
-    // ==============================
     return res.json({
       success: true,
       message: "Thêm ứng dụng vào “Đã mua” thành công.",
@@ -1170,12 +1115,10 @@ app.post('/purchase', async (req, res) => {
   }
 });
 
-
-// ✅ ROUTE DOWNLOAD: Token chống spam + Dùng session cũ (Không login lại)
+// Route: /download
 app.post('/download', verifyRecaptcha, async (req, res) => {
   console.log('Received /download request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
-    // 🛡️ 1. CHECK TOKEN BẢO MẬT (Chống Spam)
     const clientIp = getClientIp(req);
     const ua = req.headers['user-agent'] || '';
     const rawToken = req.headers['x-purchase-token'] || ''; 
@@ -1224,7 +1167,6 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
 
     setImmediate(async () => {
       try {
-        // 🛡️ 2. GỌI DOWNIPA VỚI DSID (Không gửi mã 2FA đi nữa)
         const result = await ipaTool.downipa({
           path: uniqueDownloadPath,
           APPLE_ID,
@@ -1306,7 +1248,7 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
   }
 });
 
-// ✅ ROUTE VERIFY: XÁC THỰC THẬT (Check 6 số đúng sai ngay lập tức)
+// Route: /verify
 app.post('/verify', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
@@ -1319,7 +1261,8 @@ app.post('/verify', async (req, res) => {
     }
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
+    const store = new Store();
+    const user = await store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
       throw new Error(user.customerMessage || 'Verification failed');
@@ -1338,7 +1281,6 @@ app.post('/verify', async (req, res) => {
   }
 });
 
-/* ================ Trang trung gian đếm ngược 10s ================= */
 app.get('/go', (req, res) => {
   const { url, type } = req.query || {};
   const safeUrl = typeof url === 'string' ? url : '#';
@@ -1385,7 +1327,6 @@ app.get('/go', (req, res) => {
   `);
 });
 
-/* ================= 404 & error handlers ================= */
 app.use((req, res) => {
   console.log(`404 Not Found: ${req.method} ${req.url}`);
   res.status(404).json({ error: 'Not Found' });
