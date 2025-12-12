@@ -1308,37 +1308,32 @@ app.post('/download', verifyRecaptcha, async (req, res) => {
 
 // ✅ ROUTE VERIFY: XÁC THỰC THẬT (Check 6 số đúng sai ngay lập tức)
 app.post('/verify', async (req, res) => {
-  console.log('Received /verify request:', { body: { ...req.body, PASSWORD: '***' } });
   try {
     const { APPLE_ID, PASSWORD, CODE } = req.body;
-
+    
     if (!APPLE_ID || !PASSWORD || !CODE) {
-      console.log('Missing required fields in /verify');
-      return res.status(400).json({
-        success: false,
-        error: 'All fields are required',
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
       });
     }
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    // Gọi Apple thật để kiểm tra mã và lưu Cookie
     const user = await Store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
-      console.log('2FA verification failed:', user.customerMessage);
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
-    console.log('2FA verification successful');
-    res.json({
+    res.json({ 
       success: true,
-      dsid: user.dsPersonId,
+      dsid: user.dsPersonId
     });
   } catch (error) {
-    console.error('Verify error:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Verification error',
+    console.error('Verify error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Verification error' 
     });
   }
 });
