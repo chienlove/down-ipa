@@ -113,7 +113,7 @@ app.use('/download', limiter);
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    version: '1.0.3',
+    version: '1.0.4', // Updated version
     timestamp: new Date().toISOString(),
   });
 });
@@ -268,6 +268,33 @@ async function extractMinimumOSVersion(ipaPath) {
 
 const progressMap = new Map();
 
+// [FIX] Bộ nhớ lưu phiên làm việc riêng cho từng Apple ID
+// Giúp Apple nhận diện đây là người dùng thật, không phải bot spam
+const userSessions = new Map();
+
+// Hàm lấy Store (CookieJar) riêng của từng người
+function getStoreForUser(appleId) {
+  if (!appleId) return new Store(); // Fallback an toàn
+  const key = String(appleId).toLowerCase().trim();
+  
+  if (!userSessions.has(key)) {
+    console.log(`Creating NEW session for user: ${key}`);
+    userSessions.set(key, new Store());
+  } else {
+    console.log(`Using EXISTING session for user: ${key}`);
+  }
+  
+  return userSessions.get(key);
+}
+
+// Dọn dẹp session cũ mỗi 30 phút để tránh đầy RAM
+setInterval(() => {
+  if (userSessions.size > 0) {
+    console.log(`🧹 Clearing ${userSessions.size} user sessions from cache...`);
+    userSessions.clear();
+  }
+}, 30 * 60 * 1000);
+
 const PURCHASE_TOKEN_SECRET = process.env.PURCHASE_TOKEN_SECRET || '';
 const purchaseTokenStore = new Map(); 
 
@@ -391,9 +418,10 @@ class IPATool {
     try {
       setProgress({ progress: 0, status: 'processing', abortController: globalAbort, cancelRequested: false });
 
-      const store = new Store();
+      // [FIX] Lấy đúng session đã authenticate từ bước Login/Verify
+      const store = getStoreForUser(APPLE_ID);
       
-      console.log(`Authenticating new session for download (reqId: ${requestId})...`);
+      console.log(`Authenticating session for download (reqId: ${requestId})...`);
       
       const authUser = await store.authenticate(APPLE_ID, PASSWORD, CODE);
 
@@ -778,7 +806,8 @@ app.post('/auth', async (req, res) => {
   try {
     const { APPLE_ID, PASSWORD } = req.body;
     
-    const store = new Store();
+    // [FIX] Lấy đúng session của người dùng (tạo mới nếu chưa có)
+    const store = getStoreForUser(APPLE_ID);
     const user = await store.authenticate(APPLE_ID, PASSWORD);
 
     const debugLog = {
@@ -1261,7 +1290,8 @@ app.post('/verify', async (req, res) => {
     }
 
     console.log(`Verifying 2FA for: ${APPLE_ID}`);
-    const store = new Store();
+    // [FIX] Lấy đúng session đang chờ nhập mã 2FA
+    const store = getStoreForUser(APPLE_ID);
     const user = await store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
