@@ -987,7 +987,11 @@ app.post('/purchase', async (req, res) => {
       const countries = ["vn", "us", "jp", "kr", "cn", "tw", "hk", "sg"];
       for (const c of countries) {
         try {
-          const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${c}`);
+          const r = await fetch(`https://itunes.apple.com/lookup?id=${id}&country=${c}`, {
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+    }
+});
           if (!r.ok) continue;
           const j = await r.json();
           if (j.resultCount > 0 && j.results[0].bundleId) return j.results[0];
