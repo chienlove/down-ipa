@@ -426,6 +426,8 @@ class IPATool {
       const authUser = await store.authenticate(APPLE_ID, PASSWORD, CODE);
 
       if (authUser._state !== 'success') {
+        userSessions.delete(String(APPLE_ID).toLowerCase().trim());
+
           if (authUser.failureType?.toLowerCase().includes('mfa') || 
               authUser.customerMessage?.includes('verification')) {
               return {
@@ -842,6 +844,9 @@ app.post('/auth', async (req, res) => {
         debug: debugLog
       });
     }
+
+    userSessions.delete(String(APPLE_ID).toLowerCase().trim());
+
 
     throw new Error(user.customerMessage || 'Đăng nhập thất bại');
   } catch (error) {
@@ -1295,6 +1300,8 @@ app.post('/verify', async (req, res) => {
     const user = await store.authenticate(APPLE_ID, PASSWORD, CODE);
 
     if (user._state !== 'success') {
+      userSessions.delete(String(APPLE_ID).toLowerCase().trim());
+
       throw new Error(user.customerMessage || 'Verification failed');
     }
 
